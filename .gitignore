@@ -1,0 +1,36 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+
+# Local data — never commit the price book DB
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/*.db
+master_pricebook.db
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Secrets
+.env
+.env.*
+*.pem
+.streamlit/secrets.toml
+
+# Logs / temp
+*.log
+/tmp/
