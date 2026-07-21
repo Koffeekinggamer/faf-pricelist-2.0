@@ -2,6 +2,9 @@
 
 **For the next agent:** read this file end-to-end before coding.
 
+> **Fresh start (2026-07-21):** User wants a clean greenfield pricelist.  
+> Work **only** in this repo. Do **not** keep developing `~/FAF-pricebook` for 2.0.
+
 | | |
 |--|--|
 | **Project** | FAF Pricelist 2.0 |
@@ -9,7 +12,8 @@
 | **Local path** | `/Users/lordjudsonmiller/FAF-pricelist-2.0` |
 | **GitHub** | https://github.com/Koffeekinggamer/faf-pricelist-2.0 |
 | **Date** | 2026-07-21 |
-| **Prior app** | `~/FAF-pricebook` (v1 — do not continue that UI; greenfield 2.0) |
+| **Status** | Scaffold only — implement phase 1 from here |
+| **Prior app** | `~/FAF-pricebook` (v1 legacy — reference only) |
 
 ---
 
