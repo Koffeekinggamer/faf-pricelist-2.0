@@ -35,11 +35,11 @@ Out of scope for phase 1 UI (keep in design notes / later):
 
 ```bash
 cd ~/FAF-pricelist-2.0
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-streamlit run app.py --server.port 8510
+./run.sh
+# http://127.0.0.1:8510
 ```
+
+Login: **Foothills** / **Amish**
 
 ## Docs
 

@@ -12,7 +12,7 @@
 | **Local path** | `/Users/lordjudsonmiller/FAF-pricelist-2.0` |
 | **GitHub** | https://github.com/Koffeekinggamer/faf-pricelist-2.0 |
 | **Date** | 2026-07-21 |
-| **Status** | Scaffold only — implement phase 1 from here |
+| **Status** | Phase 1 implemented (2026-07-21) — Drop→PDF + Admin live on :8510 |
 | **Prior app** | `~/FAF-pricebook` (v1 legacy — reference only) |
 
 ---
