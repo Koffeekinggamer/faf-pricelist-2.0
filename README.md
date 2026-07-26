@@ -41,6 +41,13 @@ cd ~/FAF-pricelist-2.0
 
 Login: **Foothills** / **Amish**
 
+```bash
+# Tests
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pytest -q
+```
+
 ## Docs
 
 - **[docs/HANDOFF.md](docs/HANDOFF.md)** — full agent handoff (read first)

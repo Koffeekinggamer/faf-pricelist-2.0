@@ -53,12 +53,9 @@ class CatalogService:
         vendor: str = "",
         multiplier: Optional[float] = None,
     ) -> dict:
-        builder = (vendor or "").strip()
-        if not builder:
-            # guess first, then check saved mult
-            from .import_excel import _guess_builder
+        from .import_excel import _guess_builder
 
-            builder = _guess_builder(filename, "")
+        builder = _guess_builder(filename, vendor)
         mult = multiplier
         if mult is None:
             mult = self.get_multiplier(builder)
@@ -93,8 +90,10 @@ class CatalogService:
                 item.get("base_price"), mult
             )
             prepared.append(item)
-        result = db.replace_vendor_rows(vendor, prepared, db_path=self.db_path)
-        db.set_multiplier(
-            vendor, float(mult), notes="From Drop files", db_path=self.db_path
+        return db.replace_vendor_rows(
+            vendor,
+            prepared,
+            db_path=self.db_path,
+            multiplier=float(mult),
+            notes="From Drop files",
         )
-        return result

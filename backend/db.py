@@ -94,42 +94,67 @@ def insert_rows(rows: list[dict], db_path: Optional[Path] = None) -> int:
         return 0
     now = _now()
     with connect(db_path) as conn:
-        n = 0
-        for r in rows:
-            conn.execute(
-                """
-                INSERT INTO items (
-                    vendor, collection, part_number, description, species,
-                    finish_state, base_price, multiplier, adjusted_price,
-                    source_file, imported_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                """,
-                (
-                    r.get("vendor"),
-                    r.get("collection"),
-                    r.get("part_number"),
-                    r.get("description"),
-                    r.get("species"),
-                    r.get("finish_state"),
-                    r.get("base_price"),
-                    r.get("multiplier"),
-                    r.get("adjusted_price"),
-                    r.get("source_file"),
-                    now,
-                ),
-            )
-            n += 1
-        return n
+        return _insert_rows_conn(conn, rows, now)
+
+
+def _insert_rows_conn(conn: sqlite3.Connection, rows: list[dict], now: str) -> int:
+    n = 0
+    for r in rows:
+        conn.execute(
+            """
+            INSERT INTO items (
+                vendor, collection, part_number, description, species,
+                finish_state, base_price, multiplier, adjusted_price,
+                source_file, imported_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                r.get("vendor"),
+                r.get("collection"),
+                r.get("part_number"),
+                r.get("description"),
+                r.get("species"),
+                r.get("finish_state"),
+                r.get("base_price"),
+                r.get("multiplier"),
+                r.get("adjusted_price"),
+                r.get("source_file"),
+                now,
+            ),
+        )
+        n += 1
+    return n
 
 
 def replace_vendor_rows(
-    vendor: str, rows: list[dict], db_path: Optional[Path] = None
+    vendor: str,
+    rows: list[dict],
+    db_path: Optional[Path] = None,
+    *,
+    multiplier: Optional[float] = None,
+    notes: str = "",
 ) -> dict:
-    deleted = delete_vendor(vendor, db_path=db_path)
+    """Replace one builder's catalog atomically (single transaction)."""
+    now = _now()
     for r in rows:
         r["vendor"] = vendor
-    inserted = insert_rows(rows, db_path=db_path)
-    return {"deleted": deleted, "inserted": inserted}
+    with connect(db_path) as conn:
+        cur = conn.execute("DELETE FROM items WHERE vendor = ?", (vendor,))
+        deleted = cur.rowcount
+        inserted = _insert_rows_conn(conn, rows, now) if rows else 0
+        if multiplier is not None:
+            conn.execute(
+                """
+                INSERT INTO vendors (name, multiplier, notes, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    multiplier = excluded.multiplier,
+                    notes = COALESCE(excluded.notes, vendors.notes),
+                    updated_at = excluded.updated_at
+                """,
+                (vendor, float(multiplier), notes or None, now),
+            )
+        return {"deleted": deleted, "inserted": inserted}
 
 
 def get_multiplier(
@@ -141,7 +166,6 @@ def get_multiplier(
         ).fetchone()
         if row and row["multiplier"] is not None:
             return float(row["multiplier"])
-        # fallback: common mult on items
         row2 = conn.execute(
             "SELECT multiplier FROM items WHERE vendor = ? AND multiplier IS NOT NULL LIMIT 1",
             (vendor,),
@@ -172,7 +196,16 @@ def set_multiplier(
 
 
 def set_phone(vendor: str, phone: str = "", db_path: Optional[Path] = None) -> None:
+    """Update phone without clobbering an existing multiplier."""
     with connect(db_path) as conn:
+        existing = conn.execute(
+            "SELECT multiplier FROM vendors WHERE name = ?", (vendor,)
+        ).fetchone()
+        mult = (
+            float(existing["multiplier"])
+            if existing and existing["multiplier"] is not None
+            else float(DEFAULT_MULTIPLIER)
+        )
         conn.execute(
             """
             INSERT INTO vendors (name, multiplier, phone, updated_at)
@@ -181,7 +214,7 @@ def set_phone(vendor: str, phone: str = "", db_path: Optional[Path] = None) -> N
                 phone = excluded.phone,
                 updated_at = excluded.updated_at
             """,
-            (vendor, DEFAULT_MULTIPLIER, phone or None, _now()),
+            (vendor, mult, phone or None, _now()),
         )
 
 
@@ -196,9 +229,10 @@ def get_phone(vendor: str, db_path: Optional[Path] = None) -> str:
 def reapply_multiplier(
     vendor: str, multiplier: float, db_path: Optional[Path] = None
 ) -> int:
-    """Recompute adjusted_price for all items of vendor."""
+    """Recompute adjusted_price for all items of vendor (one transaction)."""
     from .pricing import retail_from_wholesale
 
+    now = _now()
     with connect(db_path) as conn:
         rows = conn.execute(
             "SELECT id, base_price FROM items WHERE vendor = ?", (vendor,)
@@ -211,24 +245,58 @@ def reapply_multiplier(
                 (float(multiplier), retail, r["id"]),
             )
             n += 1
-        set_multiplier(vendor, multiplier, db_path=db_path)
+        conn.execute(
+            """
+            INSERT INTO vendors (name, multiplier, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                multiplier = excluded.multiplier,
+                updated_at = excluded.updated_at
+            """,
+            (vendor, float(multiplier), now),
+        )
         return n
 
 
 def vendor_table(db_path: Optional[Path] = None) -> list[dict]:
     with connect(db_path) as conn:
-        vendors = list_vendors(db_path)
+        vendors = [
+            r["vendor"]
+            for r in conn.execute(
+                "SELECT DISTINCT vendor FROM items "
+                "WHERE vendor IS NOT NULL AND vendor != '' ORDER BY vendor"
+            ).fetchall()
+        ]
         out = []
         for v in vendors:
             cnt = conn.execute(
                 "SELECT COUNT(*) AS c FROM items WHERE vendor = ?", (v,)
             ).fetchone()["c"]
+            mult_row = conn.execute(
+                "SELECT multiplier FROM vendors WHERE name = ?", (v,)
+            ).fetchone()
+            if mult_row and mult_row["multiplier"] is not None:
+                mult = float(mult_row["multiplier"])
+            else:
+                item_mult = conn.execute(
+                    "SELECT multiplier FROM items WHERE vendor = ? "
+                    "AND multiplier IS NOT NULL LIMIT 1",
+                    (v,),
+                ).fetchone()
+                mult = (
+                    float(item_mult["multiplier"])
+                    if item_mult and item_mult["multiplier"] is not None
+                    else float(DEFAULT_MULTIPLIER)
+                )
+            phone_row = conn.execute(
+                "SELECT phone FROM vendors WHERE name = ?", (v,)
+            ).fetchone()
             out.append(
                 {
                     "Builder": v,
-                    "Phone": get_phone(v, db_path),
+                    "Phone": (phone_row["phone"] or "") if phone_row else "",
                     "Items": cnt,
-                    "Multiplier": get_multiplier(v, db_path=db_path),
+                    "Multiplier": mult,
                 }
             )
         return out

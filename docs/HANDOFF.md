@@ -12,7 +12,7 @@
 | **Local path** | `/Users/lordjudsonmiller/FAF-pricelist-2.0` |
 | **GitHub** | https://github.com/Koffeekinggamer/faf-pricelist-2.0 |
 | **Date** | 2026-07-21 |
-| **Status** | Phase 1 implemented (2026-07-21) — Drop→PDF + Admin live on :8510 |
+| **Status** | Phase 1 hardened (2026-07-26) — Drop→PDF + Admin; wide import vendored; tests |
 | **Prior app** | `~/FAF-pricebook` (v1 legacy — reference only) |
 
 ---
@@ -67,9 +67,14 @@ FAF-pricelist-2.0/
   app.py                 # Streamlit entry
   backend/
     db.py                # SQLite schema: items + vendors (mult, phone)
-    import_excel.py      # Excel → structured rows (or reuse patterns from v1)
+    import_excel.py      # Excel → structured rows (wide + flat)
+    wide_import.py       # Vendored v1 wide species-matrix unpivot
+    normalize.py         # long/flat → master row dicts
+    standardize.py       # builder/species/finish canon
     pdf_catalog.py       # rows → polished multi-page retail PDF (fpdf2)
     service.py           # orchestration
+    pricing.py           # even-dollar retail
+  tests/                 # pricing, import, db, pdf
   scripts/
     backup_db.py
   data/                  # gitignored DBs
@@ -85,10 +90,7 @@ Streamlit **1.50+** has `st.pdf(bytes)`. Use a tall viewer (~700px). Fallback: b
 
 ### Excel parsing
 
-v1 has battle-tested **wide species matrix** unpivot in `wide_import.py` + `backend/import_service.py`. Options:
-
-1. **Copy** only the import/pricing modules into 2.0 (preferred if speed matters).  
-2. **Reimplement** a thinner importer for the common layouts you care about first.
+Wide species-matrix unpivot lives **in this repo** (`backend/wide_import.py` + `normalize.py` / `standardize.py`). Flat tables fall back to a simple parser. No runtime dependency on `~/FAF-pricebook`.
 
 Do **not** surface long-form rows as the main UI even if you parse under the hood.
 
@@ -106,16 +108,18 @@ Retail = `wholesale × multiplier` (round policy: v1 used “next even dollar”
 
 ## Implementation checklist for the fresh agent
 
-- [ ] Confirm Python 3.9+ and create `.venv`; `pip install -r requirements.txt`
-- [ ] Implement SQLite schema + backup script (local path under `~/Documents/FAF-pricelist-2.0-backups` or `data/backups`)
-- [ ] Excel drop → parse → **PDF bytes** → `st.pdf` + download
-- [ ] Builder name field updates PDF header and save identity
-- [ ] Multiplier control affects retail on PDF
-- [ ] Admin: list builders, edit mult, recompute retail, backup now
-- [ ] Optional: “Save into master” after drop (replace that builder)
-- [ ] Login gate (simple)
-- [ ] Run on a free port (e.g. **8510**) so v1 on **8501** can keep running
-- [ ] Commit and push to `origin` on this repo only
+- [x] Confirm Python 3.9+ and create `.venv`; `pip install -r requirements.txt`
+- [x] Implement SQLite schema + backup script (local path under `~/Documents/FAF-pricelist-2.0-backups` or `data/backups`)
+- [x] Excel drop → parse → **PDF bytes** → `st.pdf` + download
+- [x] Builder name field updates PDF header and save identity
+- [x] Multiplier control affects retail on PDF
+- [x] Admin: list builders, edit mult, recompute retail, backup now
+- [x] Optional: “Save into master” after drop (replace that builder)
+- [x] Login gate (simple; supports `APP_PASSWORD_HASH=sha256:…` / secrets)
+- [x] Run on a free port (e.g. **8510**) so v1 on **8501** can keep running
+- [x] Wide import vendored in-repo (no `~/FAF-pricebook` sys.path)
+- [x] Atomic builder replace + pytest coverage (pricing / import / db / pdf)
+- [x] Commit and push to `origin` on this repo only
 
 ---
 
