@@ -22,6 +22,7 @@
 Autostart LaunchAgents may already be running Streamlit on **8501**.  
 **Online (Mac can be closed):** https://faf-pricebook.fly.dev · Login Foothills / Amish  
 Refresh Fly after local catalog updates: `./scripts/push_db_to_fly.sh`  
+**Deploy code to Fly:** `fly deploy -a faf-pricebook` (Mac), or GitHub Action on `main` once `FLY_API_TOKEN` is set (see `DEPLOY.md`)  
 Mac tunnel (optional): `~/Documents/FAF-pricebook-backups/CURRENT_PUBLIC_URL.txt`
 
 **Live DB (gitignored):** `~/FAF-pricebook/master_pricebook.db`  

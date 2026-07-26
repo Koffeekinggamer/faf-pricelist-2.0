@@ -13,6 +13,8 @@
 | GitHub | https://github.com/Koffeekinggamer/faf-pricelist-2.0 |
 | Login | **Foothills** / **Amish** |
 
+Deploy: push to `main` (needs repo secret `FLY_API_TOKEN`) or from Mac: `fly deploy -a faf-pricebook`. See [DEPLOY.md](DEPLOY.md).
+
 ## Tabs (accuracy mode)
 
 - **Search** — verify retail prices (builder / wood / finish)
