@@ -17,8 +17,32 @@ from pathlib import Path
 
 import streamlit as st
 
-from backend.config import APP_PASSWORD, APP_USERNAME, DB_PATH, DEFAULT_MULTIPLIER
+from backend.config import (
+    APP_PASSWORD,
+    APP_PASSWORD_HASH,
+    APP_USERNAME,
+    DB_PATH,
+    DEFAULT_MULTIPLIER,
+    password_matches,
+)
 from backend.service import CatalogService
+
+
+def _auth_credentials() -> tuple[str, str, str]:
+    """Username / password / optional sha256 hash from secrets or env."""
+    user = APP_USERNAME
+    plain = APP_PASSWORD
+    pwd_hash = APP_PASSWORD_HASH
+    try:
+        secrets = st.secrets  # type: ignore[attr-defined]
+        user = str(secrets.get("APP_USERNAME", user)).strip() or user
+        if "APP_PASSWORD_HASH" in secrets:
+            pwd_hash = str(secrets["APP_PASSWORD_HASH"]).strip()
+        if "APP_PASSWORD" in secrets:
+            plain = str(secrets["APP_PASSWORD"])
+    except Exception:
+        pass
+    return user, plain, pwd_hash
 
 ROOT = Path(__file__).resolve().parent
 ASSETS = ROOT / "assets"
@@ -125,10 +149,10 @@ if not st.session_state.authenticated:
             u = st.text_input("Username", autocomplete="username")
             p = st.text_input("Password", type="password", autocomplete="current-password")
             if st.form_submit_button("Sign in", type="primary", use_container_width=True):
-                if (
-                    u.strip().lower() == APP_USERNAME.strip().lower()
-                    and p == APP_PASSWORD
-                ):
+                expect_user, expect_plain, expect_hash = _auth_credentials()
+                user_ok = u.strip().lower() == expect_user.strip().lower()
+                pass_ok = password_matches(p, expect_plain, expect_hash)
+                if user_ok and pass_ok:
                     st.session_state.authenticated = True
                     st.rerun()
                 else:
@@ -209,13 +233,17 @@ with tab_drop:
         except (TypeError, ValueError):
             default_mult = float(DEFAULT_MULTIPLIER)
 
+        # Keys include file sig so Streamlit remounts widgets for each upload
+        drop_sig = st.session_state.get("drop_sig") or ("none", 0)
+        widget_suffix = f"{drop_sig[0]}_{drop_sig[1]}"
+
         c1, c2 = st.columns([2.4, 1.0])
         with c1:
             builder = (
                 st.text_input(
                     "Builder",
                     value=default_builder,
-                    key="builder_name",
+                    key=f"builder_name_{widget_suffix}",
                     help="Title on the PDF — change it and the book updates",
                 ).strip()
                 or default_builder
@@ -227,7 +255,7 @@ with tab_drop:
                 max_value=20.0,
                 value=float(default_mult),
                 step=0.1,
-                key="builder_mult",
+                key=f"builder_mult_{widget_suffix}",
                 help="Retail = wholesale × mult (even-dollar round up)",
             )
 

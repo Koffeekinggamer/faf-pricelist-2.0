@@ -1,26 +1,28 @@
-"""Excel → long-form price rows.
-
-Uses v1 wide_import engine when ~/FAF-pricebook is present; otherwise a simple
-pandas fallback for flat tables.
-"""
+"""Excel → long-form price rows (wide species matrix + flat fallback)."""
 
 from __future__ import annotations
 
 import io
 import re
-import sys
 from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
 
-from .config import DEFAULT_MULTIPLIER, V1_ROOT
+from .config import DEFAULT_MULTIPLIER
+from .normalize import long_df_to_rows, map_columns, normalize_dataframe, to_float
 from .pricing import retail_from_wholesale
+from .standardize import resolve_builder_vendor
+from .wide_import import import_workbook
 
 
 def _guess_builder(filename: str, explicit: str = "") -> str:
     if (explicit or "").strip():
-        return explicit.strip()
+        resolved = resolve_builder_vendor(explicit, filename=filename)
+        return (resolved or explicit).strip()
+    resolved = resolve_builder_vendor("", filename=filename)
+    if resolved:
+        return resolved
     stem = Path(filename or "Builder").stem
     stem = re.sub(r"[_\-]+", " ", stem)
     stem = re.sub(r"\s+", " ", stem).strip()
@@ -28,7 +30,7 @@ def _guess_builder(filename: str, explicit: str = "") -> str:
 
 
 def _simple_parse(data: bytes, filename: str, vendor: str, mult: float) -> dict[str, Any]:
-    """Flat table fallback: first sheet with part/desc/price-like columns."""
+    """Flat table fallback: first sheets with part/desc/price-like columns."""
     try:
         xl = pd.ExcelFile(io.BytesIO(data))
     except Exception as exc:
@@ -51,60 +53,60 @@ def _simple_parse(data: bytes, filename: str, vendor: str, mult: float) -> dict[
         if df.empty or len(df.columns) < 2:
             continue
         df = df.dropna(how="all")
-        cols = [str(c).strip() for c in df.columns]
-        df.columns = cols
-        lower = {c: c.lower() for c in cols}
-
-        def find(*keys):
-            for c, lc in lower.items():
-                if any(k in lc for k in keys):
-                    return c
-            return None
-
-        part_c = find("part", "sku", "item #", "item#", "item no")
-        desc_c = find("desc", "description", "name", "item")
-        price_c = find("price", "wholesale", "cost", "amount", "list")
-        wood_c = find("wood", "species", "material")
-        if not price_c:
-            # last numeric-ish column
+        mapping = map_columns(df)
+        if "base_price" not in mapping and len(mapping) < 2:
+            # numeric last-column guess
+            cols = [str(c).strip() for c in df.columns]
+            df.columns = cols
+            price_c = None
             for c in reversed(cols):
                 sample = pd.to_numeric(df[c], errors="coerce")
                 if sample.notna().sum() >= max(3, len(df) // 5):
                     price_c = c
                     break
-        if not price_c:
+            if not price_c:
+                continue
+            part_c = mapping.get("part_number")
+            desc_c = mapping.get("description")
+            wood_c = mapping.get("species")
+            n_before = len(rows)
+            for _, r in df.iterrows():
+                bp = to_float(r.get(price_c))
+                if bp is None or bp <= 0:
+                    continue
+                desc = str(r.get(desc_c) or "").strip() if desc_c else ""
+                part = str(r.get(part_c) or "").strip() if part_c else ""
+                if not desc and not part:
+                    continue
+                wood = str(r.get(wood_c) or "").strip() if wood_c else ""
+                rows.append(
+                    {
+                        "vendor": vendor,
+                        "collection": sheet,
+                        "part_number": part or None,
+                        "description": desc or part,
+                        "species": wood or None,
+                        "finish_state": "finished",
+                        "base_price": bp,
+                        "multiplier": mult,
+                        "adjusted_price": retail_from_wholesale(bp, mult),
+                        "source_file": filename,
+                    }
+                )
+            if len(rows) > n_before:
+                notes.append(f"{sheet}:{len(rows) - n_before}")
             continue
-        if not desc_c and not part_c:
-            continue
-        n_before = len(rows)
-        for _, r in df.iterrows():
-            try:
-                bp = float(pd.to_numeric(r.get(price_c), errors="coerce"))
-            except (TypeError, ValueError):
-                continue
-            if bp != bp or bp <= 0:  # NaN
-                continue
-            desc = str(r.get(desc_c) or "").strip() if desc_c else ""
-            part = str(r.get(part_c) or "").strip() if part_c else ""
-            if not desc and not part:
-                continue
-            wood = str(r.get(wood_c) or "").strip() if wood_c else ""
-            rows.append(
-                {
-                    "vendor": vendor,
-                    "collection": sheet,
-                    "part_number": part or None,
-                    "description": desc or part,
-                    "species": wood or None,
-                    "finish_state": "finished",
-                    "base_price": bp,
-                    "multiplier": mult,
-                    "adjusted_price": retail_from_wholesale(bp, mult),
-                    "source_file": filename,
-                }
-            )
-        if len(rows) > n_before:
-            notes.append(f"{sheet}:{len(rows) - n_before}")
+
+        sheet_rows = normalize_dataframe(
+            df,
+            source_file=filename,
+            default_collection=sheet,
+            multiplier=mult,
+            vendor=vendor,
+        )
+        if sheet_rows:
+            rows.extend(sheet_rows)
+            notes.append(f"{sheet}:{len(sheet_rows)}")
 
     return {
         "vendor": vendor,
@@ -116,54 +118,37 @@ def _simple_parse(data: bytes, filename: str, vendor: str, mult: float) -> dict[
     }
 
 
-def _v1_parse(data: bytes, filename: str, vendor: str, mult: float) -> Optional[dict[str, Any]]:
-    if not V1_ROOT.is_dir():
-        return None
-    root = str(V1_ROOT)
-    if root not in sys.path:
-        sys.path.insert(0, root)
+def _wide_parse(data: bytes, filename: str, vendor: str, mult: float) -> dict[str, Any]:
+    """Primary path: wide species-matrix unpivot (vendored from v1)."""
     try:
-        from backend.import_service import ImportService  # type: ignore
-        from backend.standardize import resolve_builder_vendor  # type: ignore
-    except Exception:
-        return None
-
-    vend = resolve_builder_vendor(vendor or filename, filename=filename) or vendor
-    try:
-        prev = ImportService().preview_excel(
+        wb = import_workbook(
             data,
+            vendor=vendor,
             filename=filename,
-            vendor=vend,
-            multiplier=mult,
-            use_workbook_markup=False,
         )
     except Exception as exc:
         return {
-            "vendor": vend,
+            "vendor": vendor,
             "rows": [],
-            "error": f"v1 import failed: {exc}",
+            "error": f"Wide import failed: {exc}",
             "row_count": 0,
             "detected_markup": None,
-            "notes": "v1",
+            "notes": "wide",
         }
 
-    rows = []
-    for r in prev.rows or []:
-        item = dict(r)
-        item["vendor"] = vend
-        item["multiplier"] = mult
-        bp = item.get("base_price")
-        item["adjusted_price"] = retail_from_wholesale(bp, mult)
-        item["source_file"] = filename
-        rows.append(item)
-
+    rows = long_df_to_rows(
+        wb.long_df,
+        source_file=filename,
+        multiplier=mult,
+        vendor=vendor,
+    )
     return {
-        "vendor": vend,
+        "vendor": vendor,
         "rows": rows,
         "error": "" if rows else "No prices found in workbook.",
         "row_count": len(rows),
-        "detected_markup": prev.detected_markup,
-        "notes": (prev.notes or "v1 wide_import")[:500],
+        "detected_markup": wb.detected_markup,
+        "notes": (wb.notes or "wide_import")[:500],
     }
 
 
@@ -182,14 +167,14 @@ def parse_excel(
     builder = _guess_builder(name, vendor)
     mult = float(multiplier if multiplier is not None else DEFAULT_MULTIPLIER)
 
-    v1 = _v1_parse(data, name, builder, mult)
-    if v1 and v1.get("rows"):
-        v1["engine"] = "v1"
-        return v1
+    wide = _wide_parse(data, name, builder, mult)
+    if wide.get("rows"):
+        wide["engine"] = "wide"
+        return wide
 
     simple = _simple_parse(data, name, builder, mult)
     simple["engine"] = "simple"
-    if v1 and v1.get("error") and not simple.get("rows"):
-        simple["error"] = v1.get("error") or simple.get("error")
-        simple["notes"] = f"v1 miss; {simple.get('notes')}"
+    if wide.get("error") and not simple.get("rows"):
+        simple["error"] = wide.get("error") or simple.get("error")
+        simple["notes"] = f"wide miss; {simple.get('notes')}"
     return simple

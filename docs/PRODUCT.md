@@ -6,7 +6,7 @@ Floor staff need accurate builder pricelists they can **read on a tablet/desktop
 
 ## Phase 1 (build this first)
 
-1. **Auth** — simple store login (defaults Foothills / Amish; override via env or secrets).
+1. **Auth** — simple store login (defaults Foothills / Amish; override via env or `.streamlit/secrets.toml`). Prefer `APP_PASSWORD_HASH=sha256:<hex>` over plaintext when deploying.
 2. **Drop Excel** → convert to a **formatted retail PDF**.
 3. **Builder name** control — selecting/editing builder updates the PDF title/header and what is saved.
 4. **PDF viewer in-app** (`st.pdf` or equivalent) — primary UI for the team.
