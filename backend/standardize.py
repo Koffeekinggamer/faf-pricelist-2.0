@@ -736,7 +736,7 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
         "source_file": source,
     })
     # nicer base_price: 2 decimal for money; retail = even whole dollars
-    from .pricing import retail_from_wholesale
+    from backend.pricing import retail_from_wholesale
 
     out["base_price"] = round(float(base_f), 2)
     out["adjusted_price"] = retail_from_wholesale(base_f, mult_f)

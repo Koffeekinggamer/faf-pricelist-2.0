@@ -1,3 +1,4 @@
+# Python
 .venv/
 venv/
 __pycache__/
@@ -9,13 +10,13 @@ dist/
 build/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 
-# Local data — never commit the price book DB
+# Local data — keep price book DB private (not on GitHub)
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
-data/*.db
 master_pricebook.db
 
 # OS / editor
@@ -25,12 +26,24 @@ master_pricebook.db
 *.swp
 *~
 
-# Secrets
+# Secrets / env
 .env
 .env.*
 *.pem
+credentials.json
+
+# Streamlit
 .streamlit/secrets.toml
 
-# Logs / temp
-*.log
+# Floor iPad pins (local preference)
+.floor_favorites.json
+
+# Temp / analysis
 /tmp/
+*.log
+smoke_test_quote.pdf
+
+# 2.0 data dir
+data/*.db
+data/
+!.gitkeep

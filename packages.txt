@@ -1,0 +1,2 @@
+# System packages for Streamlit Community Cloud (apt).
+# Pure-Python stack today — leave empty unless PDF/native deps are needed.

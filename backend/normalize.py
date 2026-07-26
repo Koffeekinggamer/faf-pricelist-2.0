@@ -1,4 +1,4 @@
-"""Map long/flat DataFrames into master row dicts for FAF Pricelist 2.0."""
+"""Map builder DataFrames into master row dicts."""
 
 from __future__ import annotations
 
@@ -8,73 +8,42 @@ from typing import Optional
 
 import pandas as pd
 
-from .config import DEFAULT_MULTIPLIER
-from .pricing import retail_from_wholesale
-from .standardize import standardize_rows
-
-COLUMN_ALIASES = {
-    "part_number": [
-        "part_number", "part number", "part #", "part#", "part no", "part no.",
-        "sku", "item", "item #", "item number", "item no", "item no.",
-        "style", "style #", "style number", "model", "model #", "code",
-        "catalog #", "catalog number", "stock #", "item name",
-    ],
-    "description": [
-        "description", "desc", "item description", "product", "product name",
-        "name", "title", "product description", "descr.",
-    ],
-    "species": [
-        "species", "wood", "wood species", "finish wood", "material",
-        "wood type", "species/finish",
-    ],
-    "base_price": [
-        "base_price", "base price", "price", "wholesale", "wholesale price",
-        "net price", "net", "dealer price", "dealer", "cost", "unit price",
-        "list price", "your price", "amount", "retail", "msrp",
-        "wholesale $", "price $", "net $", "whsl. price", "regular",
-    ],
-    "unit": ["unit", "uom", "um", "each", "units"],
-    "collection": [
-        "collection", "series", "line", "product line", "category",
-        "group", "family", "brand", "manufacturer",
-    ],
-    "notes": ["notes", "note", "comments", "comment", "remarks", "options"],
-    "dimensions": [
-        "dimensions", "dimension", "dims", "size", "w x d x h", "overall size",
-    ],
-    "vendor": ["vendor", "builder", "supplier", "manufacturer name"],
-    "finish_state": ["finish", "finish_state", "finish state", "finished"],
-}
+from backend.config import DEFAULT_MULTIPLIER, DEFAULT_PRICE_BASIS
+from backend.models import COLUMN_ALIASES
+from backend.standardize import standardize_rows
 
 
 def norm_col(name: str) -> str:
-    return re.sub(r"\s+", " ", str(name or "").strip().lower())
+    s = str(name).strip().lower()
+    return re.sub(r"\s+", " ", s)
 
 
 def map_columns(df: pd.DataFrame) -> dict[str, str]:
-    """Return canonical_field → actual column name."""
-    out: dict[str, str] = {}
-    lower = {c: norm_col(c) for c in df.columns}
-    for canon, aliases in COLUMN_ALIASES.items():
-        for c, lc in lower.items():
-            if lc == canon or lc in aliases:
-                out[canon] = c
+    """Return mapping: canonical_field -> original column name."""
+    originals = {norm_col(c): c for c in df.columns}
+    mapping: dict[str, str] = {}
+    for field, aliases in COLUMN_ALIASES.items():
+        for alias in aliases:
+            if alias in originals:
+                mapping[field] = originals[alias]
                 break
-    return out
+    return mapping
 
 
 def to_float(val) -> Optional[float]:
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return None
-    if isinstance(val, (int, float)):
+    if isinstance(val, (int, float)) and not isinstance(val, bool):
         return float(val)
-    s = str(val).strip().replace(",", "").replace("$", "")
-    if not s:
+    s = str(val).strip()
+    if not s or s.lower() in {"nan", "none", "-", "n/a", "na"}:
         return None
+    s = s.replace("$", "").replace(",", "").replace(" ", "")
     try:
         return float(s)
     except ValueError:
-        return None
+        m = re.search(r"-?\d+(?:\.\d+)?", s)
+        return float(m.group()) if m else None
 
 
 def normalize_dataframe(
@@ -85,6 +54,7 @@ def normalize_dataframe(
     multiplier: float = DEFAULT_MULTIPLIER,
     column_map: Optional[dict[str, str]] = None,
     vendor: str = "",
+    price_basis: str = DEFAULT_PRICE_BASIS,
 ) -> list[dict]:
     """Map a flat/long DataFrame into master insert dicts."""
     if df is None or df.empty:
@@ -92,18 +62,9 @@ def normalize_dataframe(
 
     mapping = column_map or map_columns(df)
     for canon in (
-        "part_number",
-        "description",
-        "base_price",
-        "species",
-        "collection",
-        "unit",
-        "notes",
-        "dimensions",
-        "vendor",
-        "finish_state",
-        "species_tier",
-        "option_key",
+        "part_number", "description", "base_price", "species", "collection",
+        "unit", "notes", "dimensions", "vendor", "finish_state", "species_tier",
+        "option_key", "price_basis",
     ):
         if canon in df.columns:
             mapping.setdefault(canon, canon)
@@ -147,29 +108,34 @@ def normalize_dataframe(
             tier_i = None
 
         vend = _s(get("vendor")) or _s(vendor)
-        adj = retail_from_wholesale(base, multiplier) if base is not None else None
+        basis = _s(get("price_basis")) or price_basis or DEFAULT_PRICE_BASIS
+        from backend.pricing import retail_from_wholesale
 
-        rows.append(
-            {
-                "vendor": vend,
-                "collection": collection,
-                "part_number": _s(part),
-                "description": _s(desc),
-                "dimensions": _s(get("dimensions")),
-                "option_key": _s(get("option_key")),
-                "species": _s(get("species")),
-                "species_tier": tier_i,
-                "finish_state": _s(get("finish_state")),
-                "base_price": base,
-                "multiplier": multiplier,
-                "adjusted_price": adj,
-                "unit": _s(get("unit")),
-                "notes": _s(get("notes")),
-                "source_file": source_file,
-                "imported_at": now,
-            }
+        adj = (
+            retail_from_wholesale(base, multiplier) if base is not None else None
         )
 
+        rows.append({
+            "vendor": vend,
+            "collection": collection,
+            "part_number": _s(part),
+            "description": _s(desc),
+            "dimensions": _s(get("dimensions")),
+            "option_key": _s(get("option_key")),
+            "species": _s(get("species")),
+            "species_tier": tier_i,
+            "finish_state": _s(get("finish_state")),
+            "base_price": base,
+            "price_basis": basis,
+            "multiplier": multiplier,
+            "adjusted_price": adj,
+            "unit": _s(get("unit")),
+            "notes": _s(get("notes")),
+            "source_file": source_file,
+            "imported_at": now,
+        })
+
+    # Canonical shape for every import path
     return standardize_rows(rows, default_multiplier=multiplier)
 
 
@@ -190,3 +156,26 @@ def long_df_to_rows(
         multiplier=multiplier,
         vendor=vendor,
     )
+
+
+def read_excel_bytes(data: bytes) -> pd.DataFrame:
+    """Read first usable sheet; try header detection for messy lists."""
+    import io
+
+    bio = io.BytesIO(data)
+    try:
+        df = pd.read_excel(bio, engine="openpyxl")
+    except Exception:
+        bio.seek(0)
+        df = pd.read_excel(bio)
+
+    if len(map_columns(df)) < 2:
+        for header_row in range(0, 8):
+            try:
+                bio.seek(0)
+                trial = pd.read_excel(bio, header=header_row, engine="openpyxl")
+            except Exception:
+                continue
+            if len(map_columns(trial)) >= 2:
+                return trial.dropna(how="all")
+    return df.dropna(how="all")

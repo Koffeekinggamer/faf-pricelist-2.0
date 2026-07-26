@@ -1,58 +1,49 @@
-# FAF Pricelist 2.0
+# FAF Price Book
 
-**Foothills Amish Furniture** — next-generation floor pricelist app.
+**Foothills Amish Furniture** — floor price book (Streamlit + SQLite).
 
-> Greenfield project. Not a fork of the legacy Streamlit app — start clean, reuse lessons from v1.
+**Current focus: catalog accuracy.** OrderTrac quoting UI is hidden.
 
-## Product goal (v2.0 phase 1)
+## Live
 
-| Tab | Purpose |
-|-----|---------|
-| **Drop files** | Drop builder Excel (`.xls` / `.xlsx`) → **show a formatted PDF on screen** for the team (not a raw row grid) |
-| **Admin** | Backup the master DB after updates · set **multiplier per builder** |
+| Access | URL |
+|--------|-----|
+| Local | http://localhost:8501 |
+| Fly.io | https://faf-pricebook.fly.dev |
+| GitHub | https://github.com/Koffeekinggamer/faf-pricelist-2.0 |
+| Login | **Foothills** / **Amish** |
 
-Out of scope for phase 1 UI (keep in design notes / later):
-- OrderTrac quote push
-- Full catalog search / pins
-- Viztech bulk sync UI
+## Tabs (accuracy mode)
 
-## Login (phase 1 defaults)
+- **Search** — verify retail prices (builder / wood / finish)
+- **Drop files** — import builder Excel/PDF (replace that builder’s catalog)
+- **Vendors** — per-builder multipliers + phone
+- **Admin** — backup, Viztech sync, data quality
 
-| | |
-|--|--|
-| Username | `Foothills` |
-| Password | `Amish` |
-
-## Related projects on this Mac
-
-| Path | Role |
-|------|------|
-| `~/FAF-pricebook` | **v1** live app (legacy) — port 8501, Fly `faf-pricebook.fly.dev` |
-| `~/FAF-pricebook/pricebook_app_legacy.py` | Full v1 UI archive |
-| `~/FAF-pricelist-2.0` | **This repo** — clean rebuild |
+OrderTrac quote / connection UI stays in the codebase behind flags (`SHOW_ORDERTRAC_* = False` in `pricebook_app.py`).
 
 ## Run (local)
 
 ```bash
-cd ~/FAF-pricelist-2.0
 ./run.sh
-# http://127.0.0.1:8510
+# http://127.0.0.1:8501
 ```
 
-Login: **Foothills** / **Amish**
+## App entrypoints
 
-```bash
-# Tests
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-pytest -q
-```
+| File | Role |
+|------|------|
+| `pricebook_app.py` | **Main** — accuracy mode (Search · Drop · Vendors · Admin) |
+| `pricebook_app_slim.py` | Slim Drop→PDF + Admin only |
+| `pricebook_app_legacy.py` | Archive copy |
 
 ## Docs
 
-- **[docs/HANDOFF.md](docs/HANDOFF.md)** — full agent handoff (read first)
-- **[docs/PRODUCT.md](docs/PRODUCT.md)** — product decisions and non-goals
+- **[HANDOFF.md](HANDOFF.md)** — agent / operator handoff
+- **[DEPLOY.md](DEPLOY.md)** — Fly / Streamlit Cloud
+- **[FLOOR_CHEAT_SHEET.md](FLOOR_CHEAT_SHEET.md)** — floor staff
+- **[ORDERTRAC_CONNECTION.md](ORDERTRAC_CONNECTION.md)** — OrderTrac setup (hidden in UI for now)
 
-## GitHub
+## Safety
 
-https://github.com/Koffeekinggamer/faf-pricelist-2.0
+Never commit `master_pricebook.db`, `.env`, or `.streamlit/secrets.toml`.

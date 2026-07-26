@@ -1,4 +1,4 @@
-"""Even-dollar retail rounding."""
+"""Even-dollar retail rounding — trust-critical for floor prices."""
 
 from backend.pricing import retail_from_wholesale, round_up_even_dollar
 
@@ -13,9 +13,9 @@ def test_round_up_even_dollar_examples():
 
 
 def test_retail_from_wholesale():
-    # 100 * 2.7 = 270 → even stays
     assert retail_from_wholesale(100, 2.7) == 270.0
     # 111 * 2.7 = 299.7 → 300
     assert retail_from_wholesale(111, 2.7) == 300.0
     # Genuine Oak-ish 1.7
     assert retail_from_wholesale(200, 1.7) == 340.0
+    assert retail_from_wholesale(None, 2.7) is None
