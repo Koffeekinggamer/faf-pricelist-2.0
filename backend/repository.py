@@ -564,6 +564,73 @@ class PriceBookRepository:
             conn.commit()
             return cur.rowcount
 
+    def replace_vendor_rows(
+        self,
+        vendor: str,
+        rows: list[dict],
+        *,
+        multiplier: Optional[float] = None,
+        notes: str = "",
+    ) -> dict:
+        """
+        Atomically replace one builder's catalog (delete + insert, one transaction).
+
+        If insert fails, the prior catalog is preserved (rollback).
+        Optionally upsert the vendor multiplier in the same transaction.
+        """
+        if not vendor:
+            raise ValueError("vendor is required for replace_vendor_rows")
+        for r in rows:
+            r["vendor"] = vendor
+        placeholders = ",".join("?" * len(PRICEBOOK_COLS))
+        insert_sql = (
+            f"INSERT INTO pricebook ({','.join(PRICEBOOK_COLS)}) "
+            f"VALUES ({placeholders})"
+        )
+        values = [tuple(r.get(c) for c in PRICEBOOK_COLS) for r in rows]
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._conn() as conn:
+            cur = conn.execute(
+                "DELETE FROM pricebook WHERE vendor = ?", (vendor,)
+            )
+            deleted = cur.rowcount
+            if values:
+                conn.executemany(insert_sql, values)
+            if multiplier is not None:
+                conn.execute(
+                    """
+                    INSERT INTO vendors (name, multiplier, notes, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(name) DO UPDATE SET
+                        multiplier = excluded.multiplier,
+                        notes = COALESCE(excluded.notes, vendors.notes),
+                        updated_at = excluded.updated_at
+                    """,
+                    (vendor, float(multiplier), notes or None, now),
+                )
+            conn.commit()
+            return {"deleted": deleted, "inserted": len(values)}
+
+    def replace_source_rows(self, source_file: str, rows: list[dict]) -> dict:
+        """Atomically replace rows for one source_file (delete + insert)."""
+        if not source_file:
+            raise ValueError("source_file is required for replace_source_rows")
+        placeholders = ",".join("?" * len(PRICEBOOK_COLS))
+        insert_sql = (
+            f"INSERT INTO pricebook ({','.join(PRICEBOOK_COLS)}) "
+            f"VALUES ({placeholders})"
+        )
+        values = [tuple(r.get(c) for c in PRICEBOOK_COLS) for r in rows]
+        with self._conn() as conn:
+            cur = conn.execute(
+                "DELETE FROM pricebook WHERE source_file = ?", (source_file,)
+            )
+            deleted = cur.rowcount
+            if values:
+                conn.executemany(insert_sql, values)
+            conn.commit()
+            return {"deleted": deleted, "inserted": len(values)}
+
     def upsert_rows(self, rows: list[dict]) -> dict:
         """
         Insert new configs; update base_price/multiplier/adjusted when identity matches.

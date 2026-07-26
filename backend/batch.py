@@ -183,29 +183,33 @@ class BatchImporter:
                             r["base_price"], mult_used
                         )
 
-                # One builder = one catalog. replace_* clears the vendor first.
+                # One builder = one catalog. replace_* is atomic (one transaction).
                 use_mode = mode
                 if use_mode in (
                     "replace_vendor",
                     "replace_builder",
                     "replace_source",
                 ):
-                    deleted = self.repo.delete_by_vendor(vendor)
-                    n = self.repo.insert_rows(rows)
+                    result = self.repo.replace_vendor_rows(
+                        vendor,
+                        rows,
+                        multiplier=float(mult_used),
+                        notes="batch import",
+                    )
                     counts = {
-                        "inserted": n,
+                        "inserted": result.get("inserted", 0),
                         "updated": 0,
-                        "total": n,
-                        "deleted": deleted,
+                        "total": result.get("inserted", 0),
+                        "deleted": result.get("deleted", 0),
                     }
                 elif use_mode == "upsert":
                     counts = self.repo.upsert_rows(rows)
                     counts["deleted"] = 0
+                    self.repo.set_vendor_multiplier(vendor, float(mult_used))
                 else:
                     n = self.repo.insert_rows(rows)
                     counts = {"inserted": n, "updated": 0, "total": n, "deleted": 0}
-
-                self.repo.set_vendor_multiplier(vendor, float(mult_used))
+                    self.repo.set_vendor_multiplier(vendor, float(mult_used))
 
                 result.files.append(
                     BatchFileResult(

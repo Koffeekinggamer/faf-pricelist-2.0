@@ -143,18 +143,25 @@ class PriceBookService:
         for r in rows:
             r["vendor"] = vend
 
-        deleted = 0
         if mode in ("replace_source", "replace_vendor", "replace_builder"):
-            # One builder = one book: wipe this vendor entirely, then load
+            # One builder = one book: wipe + load in a single transaction
             if vend:
-                deleted = self.repo.delete_by_vendor(vend)
+                result = self.repo.replace_vendor_rows(vend, rows)
             elif source:
-                deleted = self.repo.delete_by_source(source)
-            n = self.repo.insert_rows(rows)
+                result = self.repo.replace_source_rows(source, rows)
+            else:
+                n = self.repo.insert_rows(rows)
+                return {
+                    "inserted": n,
+                    "updated": 0,
+                    "deleted": 0,
+                    "total": n,
+                }
+            n = result.get("inserted", 0)
             return {
                 "inserted": n,
                 "updated": 0,
-                "deleted": deleted,
+                "deleted": result.get("deleted", 0),
                 "total": n,
             }
 
