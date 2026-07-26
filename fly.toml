@@ -1,0 +1,39 @@
+# fly.toml — FAF Price Book on Fly.io (full catalog on persistent volume)
+#
+# App: https://faf-pricebook.fly.dev
+# DB lives on volume "pricebook_data" at /data/master_pricebook.db
+# Refresh from Mac after catalog updates:
+#   ./scripts/push_db_to_fly.sh
+
+app = 'faf-pricebook'
+primary_region = 'iad'
+
+[build]
+
+[env]
+  FAF_DB_PATH = '/data/master_pricebook.db'
+  STREAMLIT_SERVER_HEADLESS = 'true'
+  STREAMLIT_BROWSER_GATHER_USAGE_STATS = 'false'
+  STREAMLIT_SERVER_PORT = '8501'
+  STREAMLIT_SERVER_ADDRESS = '0.0.0.0'
+  # Login via FAF_APP_USER / FAF_APP_PASSWORD secrets (or built-in defaults)
+
+[http_service]
+  internal_port = 8501
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  # Keep one machine warm so first visitor after Mac-off isn't too slow
+  min_machines_running = 1
+  processes = ['app']
+
+[[mounts]]
+  source = 'pricebook_data'
+  destination = '/data'
+  initial_size = '3gb'
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 1024

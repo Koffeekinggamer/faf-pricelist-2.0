@@ -9,8 +9,8 @@ if [[ ! -d .venv ]]; then
   .venv/bin/pip install -r requirements.txt
 fi
 
-PORT="${PORT:-8510}"
-exec .venv/bin/streamlit run app.py \
+PORT="${PORT:-8501}"
+exec .venv/bin/streamlit run pricebook_app.py \
   --server.headless true \
   --server.port "$PORT" \
   --browser.gatherUsageStats false

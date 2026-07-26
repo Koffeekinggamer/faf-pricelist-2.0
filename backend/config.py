@@ -1,40 +1,39 @@
-"""Paths and defaults for FAF Pricelist 2.0."""
+"""Paths and defaults."""
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = Path(os.environ.get("FAF2_DATA_DIR", ROOT / "data"))
-DB_PATH = Path(os.environ.get("FAF2_DB_PATH", DATA_DIR / "master_pricebook.db"))
-BACKUP_DIR = Path(
-    os.environ.get(
-        "FAF2_BACKUP_DIR",
-        Path.home() / "Documents" / "FAF-pricelist-2.0-backups",
-    )
-)
+# Project root: parent of backend/
+APP_DIR = Path(__file__).resolve().parent.parent
+
+# Local default: ./master_pricebook.db
+# Fly: set FAF_DB_PATH=/data/master_pricebook.db (volume mount)
+_env_db = (os.environ.get("FAF_DB_PATH") or os.environ.get("PRICEBOOK_DB_PATH") or "").strip()
+DB_PATH = Path(_env_db) if _env_db else (APP_DIR / "master_pricebook.db")
 
 DEFAULT_MULTIPLIER = 2.7
-APP_USERNAME = (os.environ.get("APP_USERNAME") or "Foothills").strip()
-APP_PASSWORD = (os.environ.get("APP_PASSWORD") or "Amish").strip()
-# Optional: sha256:<hex> — preferred over plaintext APP_PASSWORD when set
-APP_PASSWORD_HASH = (os.environ.get("APP_PASSWORD_HASH") or "").strip()
+DEFAULT_PRICE_BASIS = "wholesale"
+DEFAULT_SEARCH_LIMIT = 150
 
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+# Shown on customer quote PDFs (edit to match the store)
+STORE = {
+    "name": "Foothills Amish Furniture",
+    "tagline": "Customer Price Quote",
+    "phone": "",
+    "email": "",
+    "address": "",
+    "footer": "Prices subject to change. Thank you for your business.",
+}
 
-
-def password_matches(provided: str, expected_plain: str = "", expected_hash: str = "") -> bool:
-    """Constant-time password check. Supports sha256:<hex> hashes."""
-    provided = provided or ""
-    expected_hash = (expected_hash or APP_PASSWORD_HASH or "").strip()
-    if expected_hash:
-        digest = expected_hash
-        if digest.lower().startswith("sha256:"):
-            digest = digest.split(":", 1)[1]
-        got = hashlib.sha256(provided.encode("utf-8")).hexdigest()
-        return hmac.compare_digest(got.lower(), digest.lower())
-    expected = expected_plain if expected_plain != "" else APP_PASSWORD
-    return hmac.compare_digest(provided, expected)
+# Unique identity for a sellable configuration (dedupe / upsert)
+IDENTITY_FIELDS = (
+    "vendor",
+    "collection",
+    "part_number",
+    "species",
+    "finish_state",
+    "option_key",
+    "dimensions",
+)

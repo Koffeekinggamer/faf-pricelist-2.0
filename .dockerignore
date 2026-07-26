@@ -1,0 +1,18 @@
+.venv
+__pycache__
+*.pyc
+.git
+.streamlit/secrets.toml
+Documents
+*.log
+# Never bake the private floor catalog into the image
+master_pricebook.db
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+~/Documents
+assets/*.psd
+HANDOFF.md
+CONTINUE.md
+smoke_test_quote.pdf

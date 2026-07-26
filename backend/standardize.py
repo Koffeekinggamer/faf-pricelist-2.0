@@ -272,7 +272,7 @@ def standardize_species(val: Any) -> Optional[str]:
         }.get(base.lower().replace("  ", " "), base.title())
 
     # Clean parenthetical notes: "(Also Rustic)" → treat as Rustic variant flag
-    work = re.sub(r"\(also\s+([^)]+)\)", r"\1", base, flags=re.IGNORECASE)
+    work = re.sub(r"\((?i)also\s+([^)]+)\)", r"\1", base)
     work = re.sub(r"\([^)]*\)", " ", work)  # drop other parentheticals
     work = _collapse_ws(work)
 
@@ -690,11 +690,10 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
         return None
     # Drop section banners that landed as product rows
     if desc and re.match(
-        r"^new(\s*product|\s*items?)?$|"
-        r"^new\s+(january|february|march|april|may|june|july|august|"
+        r"(?i)^new(\s*product|\s*items?)?$|"
+        r"(?i)^new\s+(january|february|march|april|may|june|july|august|"
         r"september|october|november|december)\b",
         desc,
-        flags=re.IGNORECASE,
     ):
         return None
 
@@ -736,7 +735,7 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
         "source_file": source,
     })
     # nicer base_price: 2 decimal for money; retail = even whole dollars
-    from .pricing import retail_from_wholesale
+    from backend.pricing import retail_from_wholesale
 
     out["base_price"] = round(float(base_f), 2)
     out["adjusted_price"] = retail_from_wholesale(base_f, mult_f)
