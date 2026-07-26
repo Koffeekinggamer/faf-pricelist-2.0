@@ -1,8 +1,10 @@
 """
-Price Book System — Streamlit UI (full product)
+FAF Price Book — Streamlit UI (content-accuracy phase)
 
-Tabs: Search · OrderTrac quote · Drop files · Vendors · Admin
-All logic via backend.PriceBookService
+Tabs: Search · Drop files · Vendors · Admin
+Verify retail prices and builder catalogs. OrderTrac UI is hidden.
+
+OrderTrac modules remain in backend/ for later restore (flags below).
 
 Run:  streamlit run pricebook_app.py
 """
@@ -29,10 +31,10 @@ _FAVICON = APP_DIR / "assets" / "favicon.png"
 _LOGO = APP_DIR / "assets" / "logo.png"
 
 # Feature flags — content-accuracy phase (set True to restore later)
-SHOW_ORDERTRAC_QUOTE = True  # quote tab + search cart + sidebar badge
-SHOW_ORDERTRAC_ADMIN = True  # Admin: OrderTrac connection, user sync, push tools
-SHOW_SIMPLE_UI = False  # lean Search/Drop/Vendors; hide pins & bulk tools
-SHOW_ADMIN_ADVANCED = False  # Viztech / cleanup / deploy / CLI under Admin
+SHOW_ORDERTRAC_QUOTE = False  # quote tab + search cart + sidebar badge
+SHOW_ORDERTRAC_ADMIN = False  # Admin: OrderTrac connection, user sync, push tools
+SHOW_SIMPLE_UI = True  # lean Search/Drop/Vendors; hide pins & bulk tools
+SHOW_ADMIN_ADVANCED = True  # Viztech / cleanup / deploy / CLI under Admin (accuracy tools)
 # TRACE restore quoting: SHOW_ORDERTRAC_* = True
 # TRACE full UI: SHOW_SIMPLE_UI = False; SHOW_ADMIN_ADVANCED = True
 
@@ -449,6 +451,10 @@ if SHOW_SIMPLE_UI:
         f"**FAF Price Book** · accuracy mode · "
         f"{stats['rows']:,} rows · {stats['vendors']} builders"
     )
+    st.info(
+        "**Content accuracy mode** — OrderTrac quoting is hidden. "
+        "Use **Search**, **Drop files**, and **Vendors** to verify and rebuild the catalog."
+    )
 else:
     d1, d2, d3 = st.columns([1, 1, 2.2])
     d1.metric("Price rows", f"{stats['rows']:,}")
@@ -460,10 +466,6 @@ else:
             "color:inherit;padding-top:0.15rem;'>Foothills Amish Furniture</div>",
             unsafe_allow_html=True,
         )
-    st.info(
-        "**Content accuracy mode** — quoting & OrderTrac are hidden. "
-        "Use **Search**, **Drop files**, and **Vendors** to verify and rebuild the catalog."
-    )
 
 # ===========================================================================
 # TABS

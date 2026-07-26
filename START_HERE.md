@@ -1,6 +1,6 @@
 # FAF Price Book — start here
 
-**This repo is the main Price Book** (full floor app).
+**Main app · content accuracy mode** (OrderTrac UI hidden).
 
 | | |
 |--|--|
@@ -8,11 +8,10 @@
 | Port | **8501** (`./run.sh`) |
 | Live | https://faf-pricebook.fly.dev |
 | Login | **Foothills** / **Amish** |
+| Tabs | Search · Drop files · Vendors · Admin |
 
 ```bash
 ./run.sh
 ```
 
-Details: [HANDOFF.md](HANDOFF.md) · [README.md](README.md)
-
-Slim Drop→PDF-only experiment: git branch `backup/phase1-slim-2026-07-26`.
+Focus: verify builder catalogs and retail prices. Details: [HANDOFF.md](HANDOFF.md).

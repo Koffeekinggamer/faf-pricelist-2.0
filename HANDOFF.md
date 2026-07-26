@@ -5,7 +5,8 @@
 **Working copy:** this repo (`faf-pricelist-2.0`) or `~/FAF-pricebook` on the Mac  
 **Canonical git remote:** `origin` → https://github.com/Koffeekinggamer/faf-pricelist-2.0  
 **Sibling remotes (reference):** `pricebook-system`, `faf-pricebook-system`  
-**Main UI:** `pricebook_app.py` — full Fly model (Search · OrderTrac quote · Drop · Vendors · Admin)  
+**Main UI:** `pricebook_app.py` — **accuracy mode** (Search · Drop · Vendors · Admin)  
+**OrderTrac:** hidden in UI (`SHOW_ORDERTRAC_* = False`); backend kept for later  
 **Backup of slim Phase‑1 experiment:** branch `backup/phase1-slim-2026-07-26`
 
 ---
@@ -40,7 +41,7 @@ Streamlit + SQLite **floor price book** for Amish furniture builders.
 
 | Layer | Path | Role |
 |-------|------|------|
-| UI | `pricebook_app.py` | Full Streamlit (Search / OrderTrac quote / Drop / Vendors / Admin) |
+| UI | `pricebook_app.py` | Accuracy mode (Search / Drop / Vendors / Admin); OrderTrac flags off |
 | Logic | `backend.PriceBookService` | All real operations |
 | Excel | `wide_import.py` | Wide builder matrices → long rows |
 | PDF | `pdf_import.py` | PDF price lists |

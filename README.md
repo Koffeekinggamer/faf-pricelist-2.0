@@ -2,7 +2,7 @@
 
 **Foothills Amish Furniture** — floor price book (Streamlit + SQLite).
 
-This repository is the **main** Price Book app (full UI matching production).
+**Current focus: catalog accuracy.** OrderTrac quoting UI is hidden.
 
 ## Live
 
@@ -11,22 +11,20 @@ This repository is the **main** Price Book app (full UI matching production).
 | Local | http://localhost:8501 |
 | Fly.io | https://faf-pricebook.fly.dev |
 | GitHub | https://github.com/Koffeekinggamer/faf-pricelist-2.0 |
-| Login | **Foothills** / **Amish** (or OrderTrac-synced staff) |
+| Login | **Foothills** / **Amish** |
 
-## Tabs
+## Tabs (accuracy mode)
 
-- **Search** — retail prices, builder / wood / finish filters, pinned builders
-- **OrderTrac quote** — stage FAF lines → push Quote (not a sale)
+- **Search** — verify retail prices (builder / wood / finish)
 - **Drop files** — import builder Excel/PDF (replace that builder’s catalog)
 - **Vendors** — per-builder multipliers + phone
-- **Admin** — backup, Viztech sync, OrderTrac connection, data quality
+- **Admin** — backup, Viztech sync, data quality
+
+OrderTrac quote / connection UI stays in the codebase behind flags (`SHOW_ORDERTRAC_* = False` in `pricebook_app.py`).
 
 ## Run (local)
 
 ```bash
-cd ~/FAF-pricelist-2.0   # or this checkout
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
 ./run.sh
 # http://127.0.0.1:8501
 ```
@@ -35,18 +33,16 @@ pip install -r requirements.txt
 
 | File | Role |
 |------|------|
-| `pricebook_app.py` | **Main** — full UI (Search · OrderTrac · Drop · Vendors · Admin) |
-| `pricebook_app_slim.py` | Slim Drop→PDF + Admin only (Phase 1 experiment) |
-| `pricebook_app_legacy.py` | Archive copy of the pre-restore accuracy-mode UI |
-
-Slim Phase‑1 greenfield history: branch `backup/phase1-slim-2026-07-26`.
+| `pricebook_app.py` | **Main** — accuracy mode (Search · Drop · Vendors · Admin) |
+| `pricebook_app_slim.py` | Slim Drop→PDF + Admin only |
+| `pricebook_app_legacy.py` | Archive copy |
 
 ## Docs
 
 - **[HANDOFF.md](HANDOFF.md)** — agent / operator handoff
 - **[DEPLOY.md](DEPLOY.md)** — Fly / Streamlit Cloud
 - **[FLOOR_CHEAT_SHEET.md](FLOOR_CHEAT_SHEET.md)** — floor staff
-- **[ORDERTRAC_CONNECTION.md](ORDERTRAC_CONNECTION.md)** — OrderTrac setup
+- **[ORDERTRAC_CONNECTION.md](ORDERTRAC_CONNECTION.md)** — OrderTrac setup (hidden in UI for now)
 
 ## Safety
 
