@@ -71,7 +71,9 @@ password = "Amish"
 ## Fly.io (full catalog on volume — works when Mac is closed)
 
 **Public app:** https://faf-pricebook.fly.dev  
-**Login:** Foothills / Amish (or set `FAF_APP_USER` / `FAF_APP_PASSWORD` secrets)
+**Login:** Foothills / Amish (or set `FAF_APP_USER` / `FAF_APP_PASSWORD` secrets)  
+**GitHub source (main):** https://github.com/Koffeekinggamer/faf-pricelist-2.0  
+**Current UI mode:** content accuracy (Search · Drop · Vendors · Admin; OrderTrac hidden)
 
 | Piece | Detail |
 |-------|--------|
@@ -79,12 +81,26 @@ password = "Amish"
 | Volume | `pricebook_data` → `/data` (3 GB) |
 | DB path | `/data/master_pricebook.db` (`FAF_DB_PATH`) |
 | Source of truth | Still the **Mac** DB; push a copy to Fly after big updates |
+| Auto-deploy | `.github/workflows/fly-deploy.yml` on push to `main` |
 
-### First-time / redeploy
+### GitHub Actions token (required once)
+
+Deploy workflow needs a Fly token in **this** repo’s Actions secrets:
+
+```bash
+# On a machine logged into Fly:
+fly tokens create deploy -a faf-pricebook
+# Then: GitHub → faf-pricelist-2.0 → Settings → Secrets and variables → Actions
+# Add secret: FLY_API_TOKEN = <token>
+```
+
+Without `FLY_API_TOKEN`, the Fly Deploy Action fails (empty token). Redeploy from Mac instead (below), or set the secret and re-run the workflow.
+
+### First-time / redeploy from Mac
 
 ```bash
 export PATH="$HOME/.fly/bin:$PATH"
-cd ~/FAF-pricebook
+cd ~/FAF-pricelist-2.0   # or this checkout
 fly auth login   # if needed
 
 # Volume (once): created automatically on deploy if missing, or:
@@ -93,7 +109,7 @@ fly auth login   # if needed
 fly secrets set FAF_APP_USER=Foothills FAF_APP_PASSWORD=Amish -a faf-pricebook
 fly deploy -a faf-pricebook
 
-# Upload full catalog from this Mac
+# Upload full catalog from this Mac (optional — keeps Fly DB in sync)
 ./scripts/push_db_to_fly.sh
 ```
 
