@@ -217,6 +217,18 @@ def _bytes(upload) -> bytes:
     return data
 
 
+def _python_executable() -> str:
+    """Python for subprocess scripts — works on Mac (.venv) and Fly/Docker."""
+    venv_py = APP_DIR / ".venv" / "bin" / "python"
+    if venv_py.is_file():
+        return str(venv_py)
+    return sys.executable
+
+
+def _is_macos_host() -> bool:
+    return sys.platform == "darwin"
+
+
 def _auto_col_widths(
     df: pd.DataFrame,
     *,
@@ -2399,9 +2411,10 @@ with tab_admin:
 
     st.markdown("##### Viztech monthly update")
     st.caption(
-        "Every **~30 days** this Mac downloads builder pricelists from "
-        "**viztechfurniture.com** and updates the book "
-        "(keeps builders Viztech doesn’t have · FN Chair = Level One only)."
+        "Downloads builder pricelists from **viztechfurniture.com** and updates the book "
+        "(keeps builders Viztech doesn’t have · FN Chair = Level One only). "
+        "Scheduled LaunchAgents are **Mac-only**; Run/Check work on Fly when Viztech "
+        "secrets are configured."
     )
     st.info(_viztech_sync_hint())
     vz1, vz2, vz3 = st.columns(3)
@@ -2409,11 +2422,11 @@ with tab_admin:
         if st.button("Check Viztech login", use_container_width=True):
             import subprocess
 
-            py = APP_DIR / ".venv" / "bin" / "python"
+            py = _python_executable()
             script = APP_DIR / "scripts" / "viztech_sync.py"
             with st.spinner("Logging into Viztech…"):
                 proc = subprocess.run(
-                    [str(py), str(script), "--dry-run"],
+                    [py, str(script), "--dry-run"],
                     cwd=str(APP_DIR),
                     capture_output=True,
                     text=True,
@@ -2437,13 +2450,13 @@ with tab_admin:
         ):
             import subprocess
 
-            py = APP_DIR / ".venv" / "bin" / "python"
+            py = _python_executable()
             script = APP_DIR / "scripts" / "viztech_sync.py"
             with st.spinner(
                 "Syncing Viztech → FAF (download + import). Leave this tab open…"
             ):
                 proc = subprocess.run(
-                    [str(py), str(script)],
+                    [py, str(script)],
                     cwd=str(APP_DIR),
                     capture_output=True,
                     text=True,
@@ -2461,20 +2474,26 @@ with tab_admin:
                 st.code(proc.stderr[-2000:])
     with vz3:
         if st.button("Install 30-day schedule", use_container_width=True):
-            import subprocess
-
-            install = (
-                Path(__file__).resolve().parent
-                / "scripts"
-                / "install_viztech_monthly_sync.sh"
-            )
-            rc = subprocess.call(["/bin/zsh", str(install)])
-            if rc == 0:
-                st.success("LaunchAgent installed — runs every ~30 days.")
-            else:
-                st.error(
-                    "Install failed — run scripts/install_viztech_monthly_sync.sh in Terminal."
+            if not _is_macos_host():
+                st.warning(
+                    "30-day schedule uses a macOS LaunchAgent — run this on the "
+                    "floor Mac, not on Fly."
                 )
+            else:
+                import subprocess
+
+                install = (
+                    Path(__file__).resolve().parent
+                    / "scripts"
+                    / "install_viztech_monthly_sync.sh"
+                )
+                rc = subprocess.call(["/bin/zsh", str(install)])
+                if rc == 0:
+                    st.success("LaunchAgent installed — runs every ~30 days.")
+                else:
+                    st.error(
+                        "Install failed — run scripts/install_viztech_monthly_sync.sh in Terminal."
+                    )
 
     st.markdown("##### Backup DB")
     st.caption(
@@ -2493,15 +2512,20 @@ with tab_admin:
                 st.error(f"Backup failed: {exc}")
     with b2:
         if st.button("Install weekly backup (Sunday 6 AM)", use_container_width=True):
-            import subprocess
-            import sys
-
-            install = Path(__file__).resolve().parent / "scripts" / "install_weekly_backup.sh"
-            rc = subprocess.call(["/bin/zsh", str(install)])
-            if rc == 0:
-                st.success("Weekly LaunchAgent installed (Sunday 6:00 AM).")
+            if not _is_macos_host():
+                st.warning(
+                    "Weekly backup schedule uses a macOS LaunchAgent — install on the "
+                    "floor Mac, not on Fly."
+                )
             else:
-                st.error("Install failed — run scripts/install_weekly_backup.sh in Terminal.")
+                import subprocess
+
+                install = Path(__file__).resolve().parent / "scripts" / "install_weekly_backup.sh"
+                rc = subprocess.call(["/bin/zsh", str(install)])
+                if rc == 0:
+                    st.success("Weekly LaunchAgent installed (Sunday 6:00 AM).")
+                else:
+                    st.error("Install failed — run scripts/install_weekly_backup.sh in Terminal.")
     try:
         from scripts.backup_db import list_backups, restore_from
 
