@@ -366,6 +366,10 @@ _VENDOR_DEFAULT_COLLECTION = {
     "Genuine Oak": "Casegoods",
 }
 
+# FN Chair Level One matrix: section header = style (Abe), row id = Cat. N,
+# columns = wood groups. Import often leaves Part # / Description as "Cat. 1".
+_FN_CAT_RE = re.compile(r"(?i)^cat\.?\s*(\d+)$")
+
 
 def standardize_collection(val: Any, *, vendor: str = "") -> Optional[str]:
     if val is None:
@@ -602,6 +606,16 @@ def standardize_vendor(val: Any) -> Optional[str]:
 # full row
 # ---------------------------------------------------------------------------
 
+def _fn_chair_cat_token(val: Any) -> Optional[str]:
+    """Return canonical 'Cat. N' if val is an FN fabric/price category token."""
+    if val is None:
+        return None
+    m = _FN_CAT_RE.match(str(val).strip())
+    if not m:
+        return None
+    return f"Cat. {int(m.group(1))}"
+
+
 def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[dict]:
     """
     Return a cleaned copy of a master row dict, or None if the row should be dropped.
@@ -613,6 +627,25 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
     desc = standardize_text(out.get("description"))
     dims = standardize_text(out.get("dimensions"))
     raw_species = out.get("species")
+    raw_collection = out.get("collection")
+    fn_option: Optional[str] = None
+    fn_force_seating = False
+
+    # Drop FN Chair Level Two if it slipped in (policy: Level One only)
+    if vendor == "FN Chair":
+        src = str(out.get("source_file") or "")
+        if re.search(r"level[\s_-]*two|two[\s_-]*orange", src, re.I):
+            return None
+        # Remap Cat. N row ids under a style section → searchable chair name
+        cat = _fn_chair_cat_token(part) or _fn_chair_cat_token(desc)
+        style = standardize_text(raw_collection)
+        if cat and style and not _fn_chair_cat_token(style):
+            if style.lower() not in {"seating", "price", "wholesale", "retail"}:
+                fn_option = cat
+                part = standardize_part(style) or style
+                desc = f"{style} — {cat}"
+                fn_force_seating = True
+                raw_collection = None
 
     # Promote SKU-like description into part_number when id column was missed
     if not part and desc and looks_like_sku(desc):
@@ -661,7 +694,7 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
         finish = "finished"
 
     collection = standardize_collection(
-        out.get("collection"), vendor=vendor or ""
+        None if fn_force_seating else raw_collection, vendor=vendor or ""
     )
     # Drop sheet debris used as collection
     if collection and re.fullmatch(r"(?i)(price|sheet\d*|retail|wholesale)", collection):
@@ -669,7 +702,7 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
     # If still empty, apply vendor default
     if not collection and vendor in _VENDOR_DEFAULT_COLLECTION:
         collection = _VENDOR_DEFAULT_COLLECTION[vendor]
-    option_key = standardize_text(out.get("option_key"))
+    option_key = standardize_text(out.get("option_key")) or fn_option
     notes = standardize_text(out.get("notes"))
     unit = standardize_text(out.get("unit"))
     source = standardize_text(out.get("source_file"))
