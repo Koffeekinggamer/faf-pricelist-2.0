@@ -483,11 +483,6 @@ if SHOW_SIMPLE_UI:
         f"**FAF Price Book** · accuracy mode · "
         f"{stats['rows']:,} rows · {stats['vendors']} builders"
     )
-    st.info(
-        "**Content accuracy mode** — OrderTrac and Viztech sync are hidden. "
-        "Use **Search**, **Drop files** (manual import), and **Vendors** to verify "
-        "and rebuild the catalog."
-    )
     if int(stats.get("rows") or 0) == 0:
         st.error(
             "**This copy has an empty catalog** (0 builders). "
