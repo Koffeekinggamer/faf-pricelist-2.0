@@ -718,6 +718,12 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
     unit = standardize_text(out.get("unit"))
     source = standardize_text(out.get("source_file"))
 
+    # Arista / similar: "... / Premium" on the wood tier is an option, not a wood
+    if species and re.search(r"(?i)\s*/\s*premium\s*$", species):
+        if not option_key:
+            option_key = "Premium"
+        species = re.sub(r"(?i)\s*/\s*premium\s*$", "", species).strip(" /")
+
     # Description fallback
     if not desc and part:
         desc = part

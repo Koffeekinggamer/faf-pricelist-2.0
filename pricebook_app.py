@@ -665,10 +665,9 @@ with tab_search:
                 empty_reason = "error"
                 st.error(f"Search failed: {exc}")
         display = results.copy()
-        # With a wood filter, show that wood (not the full multi-wood tier string)
-        if not display.empty and wf and wf != "All" and "species" in display.columns:
-            display = display.copy()
-            display["species"] = wf
+        # Keep the full wood-tier label when filtering (e.g. Barnwood / Brown Maple
+        # vs Barnwood / Brown Maple / Premium). Overwriting with the filter wood
+        # made different tiers look identical.
 
         # Floor table emphasizes RETAIL
         if display.empty:
@@ -733,7 +732,8 @@ with tab_search:
             )
             if wf and wf != "All":
                 st.caption(
-                    f"Wood filter: **{wf}** · multi-wood price tiers that include this wood use the same retail price."
+                    f"Wood filter: **{wf}** · showing every price tier that includes this wood "
+                    f"(full tier listed under Wood — prices can differ)."
                 )
             # Content-based widths so headers + values fully show (scrolls if needed)
             st.dataframe(
