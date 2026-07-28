@@ -74,6 +74,7 @@ class PriceBookService:
         vendor: Optional[str] = None,
         finish_state: Optional[str] = None,
         species: Optional[str] = None,
+        option_key: Optional[str] = None,
         limit: int = DEFAULT_SEARCH_LIMIT,
     ) -> pd.DataFrame:
         self.ensure_ready()
@@ -83,6 +84,7 @@ class PriceBookService:
             vendor=vendor,
             finish_state=finish_state,
             species=species,
+            option_key=option_key,
             limit=limit,
         )
 
@@ -102,6 +104,11 @@ class PriceBookService:
         """Selectable wood names for the floor Wood dropdown (all builders)."""
         self.ensure_ready()
         return self.repo.list_species(vendor=vendor)
+
+    def list_option_keys(self, vendor: Optional[str] = None) -> list[str]:
+        """Selectable option_key values for the floor Option dropdown (per builder)."""
+        self.ensure_ready()
+        return self.repo.list_option_keys(vendor=vendor)
 
     def list_source_files(self) -> list[str]:
         self.ensure_ready()
