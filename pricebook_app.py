@@ -163,7 +163,7 @@ if _auth_sess.get("must_change_password") and st.session_state.get("auth_user_id
 
 # Bump when PriceBookService gains methods that Admin/OrderTrac need.
 # Stale @st.cache_resource instances omit new methods until cache is cleared.
-_SERVICE_CACHE_VERSION = 5
+_SERVICE_CACHE_VERSION = 6
 
 
 @st.cache_resource

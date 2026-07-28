@@ -139,9 +139,11 @@ class PriceBookRepository:
         r"\bcat\.?\s*[123]\b|"
         r"\bcolor|\bfabric|\bleather|\bpoly\b|\bwoodgrain|\bcom\b|"
         r"\bpremium\b|\bstandard\b|\bultra\b|\bglazed?\b|\bpaint\b|"
-        r"\bbright\b|\btropical\b|\bupholster"
+        r"\bbright\b|\btropical\b|\bupholster|"
+        r"^black$|^white$|^brown$|^grey$|^gray$|^green$|^blue$|^red$"
         r")"
     )
+    _WOOD_TIER_RE = re.compile(r"(?i)^wood\s*tier\s*\d+$")
     _OPTION_CODE_RE = re.compile(
         r"(?i)^("
         r"cat\.?\s*[123]|"
@@ -231,6 +233,10 @@ class PriceBookRepository:
                 # Full label that is an option (poly color tier, leather, …) → Option
                 if self._is_option_dropdown_label(s, from_option_key=False):
                     continue
+                # Keep "Wood Tier N" as one Wood choice (do not split)
+                if self._WOOD_TIER_RE.match(s):
+                    atomic.add(s)
+                    continue
                 # Split multi-wood tiers on " / " or "/"
                 if " / " in s or (s.count("/") >= 1 and not re.search(r"\d/\d", s)):
                     parts = [p.strip() for p in re.split(r"\s*/\s*", s) if p.strip()]
@@ -298,6 +304,9 @@ class PriceBookRepository:
             return False
         if re.search(r"[@$%]|\+\d|option:|stain part", p, re.I):
             return False
+        # Named wood price tiers (Windy / D&N / Farmside, etc.)
+        if self._WOOD_TIER_RE.match(p.strip()):
+            return True
         # Options (poly colors, leather grades) live in Option, not Wood
         if self._is_option_dropdown_label(p, from_option_key=False):
             return False

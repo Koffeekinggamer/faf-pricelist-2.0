@@ -76,6 +76,32 @@ def test_list_option_keys_and_search_filter(tmp_path):
     assert hit.iloc[0]["option_key"] == "Cat. 1"
 
 
+def test_wood_tier_appears_in_wood_menu(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    repo = PriceBookRepository(db)
+    repo.insert_rows(
+        [
+            {
+                "vendor": "Windy Acres Furniture",
+                "collection": "Tables",
+                "part_number": "T1",
+                "description": "Table",
+                "option_key": None,
+                "species": "Wood Tier 2",
+                "finish_state": "finished",
+                "base_price": 100,
+                "multiplier": 2.7,
+                "adjusted_price": 270,
+                "price_basis": "wholesale",
+                "source_file": "windy.xlsx",
+            }
+        ]
+    )
+    assert repo.list_species("Windy Acres Furniture") == ["Wood Tier 2"]
+    assert repo.list_option_keys("Windy Acres Furniture") == []
+
+
 def test_species_tiers_appear_in_option_for_any_builder(tmp_path):
     """Patio Kraft–style color tiers live in species → Option dropdown."""
     db = tmp_path / "t.db"
