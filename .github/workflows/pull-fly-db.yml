@@ -1,0 +1,45 @@
+# Pull live catalog DB from Fly volume into a workflow artifact (not committed).
+# Run: Actions → Pull Fly DB → Run workflow
+# Then: gh run download <id> -n fly-master-pricebook
+
+name: Pull Fly DB
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pull:
+    name: Pull master_pricebook.db from Fly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Download DB from Fly volume
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          flyctl status -a faf-pricebook
+          mkdir -p out
+          flyctl ssh sftp get /data/master_pricebook.db out/master_pricebook.db -a faf-pricebook
+          ls -lh out/master_pricebook.db
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          p = Path("out/master_pricebook.db")
+          con = sqlite3.connect(str(p))
+          rows = con.execute("select count(*) from pricebook").fetchone()[0]
+          vendors = con.execute("select count(distinct vendor) from pricebook").fetchone()[0]
+          print(f"rows={rows} vendors={vendors}")
+          if rows < 1000:
+              raise SystemExit("DB looks empty — aborting artifact upload")
+          PY
+
+      - name: Upload DB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fly-master-pricebook
+          path: out/master_pricebook.db
+          retention-days: 7

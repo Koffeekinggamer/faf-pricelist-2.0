@@ -467,6 +467,13 @@ if SHOW_SIMPLE_UI:
         "**Content accuracy mode** — OrderTrac quoting is hidden. "
         "Use **Search**, **Drop files**, and **Vendors** to verify and rebuild the catalog."
     )
+    if int(stats.get("rows") or 0) == 0:
+        st.error(
+            "**This copy has an empty catalog** (0 builders). "
+            "Live data is on https://faf-pricebook.fly.dev — pull it with "
+            "`./scripts/pull_db_from_fly.sh` (or Actions → **Pull Fly DB**), "
+            "then restart the app. Do not commit `*.db`."
+        )
 else:
     d1, d2, d3 = st.columns([1, 1, 2.2])
     d1.metric("Price rows", f"{stats['rows']:,}")
@@ -2500,7 +2507,7 @@ with tab_admin:
         "Saves a snapshot under **Documents/FAF-pricebook-backups**. "
         "Weekly auto-backup: run `scripts/install_weekly_backup.sh` once on this Mac."
     )
-    b1, b2 = st.columns([1, 1])
+    b1, b2, b3 = st.columns([1, 1, 1])
     with b1:
         if st.button("Backup DB now", type="primary", use_container_width=True):
             try:
@@ -2526,6 +2533,19 @@ with tab_admin:
                     st.success("Weekly LaunchAgent installed (Sunday 6:00 AM).")
                 else:
                     st.error("Install failed — run scripts/install_weekly_backup.sh in Terminal.")
+    with b3:
+        db_path = Path(str(svc.path))
+        if db_path.is_file() and db_path.stat().st_size > 0:
+            st.download_button(
+                "Download master DB",
+                data=db_path.read_bytes(),
+                file_name="master_pricebook.db",
+                mime="application/x-sqlite3",
+                use_container_width=True,
+                help="Copy this file into a local checkout as master_pricebook.db (gitignored).",
+            )
+        else:
+            st.caption("No DB file to download.")
     try:
         from scripts.backup_db import list_backups, restore_from
 
