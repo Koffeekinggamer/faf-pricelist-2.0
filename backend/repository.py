@@ -133,32 +133,79 @@ class PriceBookRepository:
         r")$"
     )
 
+    # Species / option_key labels that belong in Option (not Wood)
+    _OPTION_DROPDOWN_RE = re.compile(
+        r"(?i)("
+        r"\bcat\.?\s*[123]\b|"
+        r"\bcolor|\bfabric|\bleather|\bpoly\b|\bwoodgrain|\bcom\b|"
+        r"\bpremium\b|\bstandard\b|\bultra\b|\bglazed?\b|\bpaint\b|"
+        r"\bbright\b|\btropical\b|\bupholster"
+        r")"
+    )
+    _OPTION_CODE_RE = re.compile(
+        r"(?i)^("
+        r"cat\.?\s*[123]|"
+        r"-?\d{2,3}[A-Z]{0,4}|"  # Hillside -18, -24BC, -30SSS
+        r"-[A-Z]{2,6}"  # -GLD
+        r")$"
+    )
+    _PURE_WOOD_RE = re.compile(
+        r"(?i)\b("
+        r"oak|maple|cherry|walnut|hickory|elm|birch|ash|poplar|pine|alder|"
+        r"beech|mahogany|qswo|pswo|qsw|wormy|rustic|brown\s*maple|hard\s*maple|"
+        r"soft\s*maple|white\s*oak|red\s*oak|sap\s*cherry|quarter\s*sawn|"
+        r"rough\s*sawn|ruff\s*sawn|barnwood|cedar|white\s*maple|grey\s*elm|gray\s*elm"
+        r")\b"
+    )
+
     def list_option_keys(self, vendor: Optional[str] = None) -> list[str]:
         """
-        Distinct option_key values for the floor Option dropdown.
+        Distinct Option dropdown values for one builder.
 
-        Scoped to *vendor* when set (Cat. 1/2/3 for FN Chair, etc.).
-        When vendor is All/None, returns an empty list — options are
-        per-builder only so the UI stays clean.
+        Includes:
+          - every non-empty option_key for that vendor (FN Cat.N, Hillside sizes, …)
+          - species labels that are options (color/fabric/poly/leather tiers),
+            not wood species
+
+        Builder = All/None → empty (options are always per-vendor).
         """
         if not vendor or vendor in ("All", ""):
             return []
+        found: set[str] = set()
         with self._conn() as conn:
-            rows = conn.execute(
+            for (raw,) in conn.execute(
                 "SELECT DISTINCT option_key FROM pricebook "
                 "WHERE option_key IS NOT NULL AND TRIM(option_key) != '' "
-                "AND vendor = ? "
-                "ORDER BY option_key",
+                "AND vendor = ?",
                 (vendor,),
-            ).fetchall()
-        return [str(r[0]).strip() for r in rows if r[0] and str(r[0]).strip()]
+            ):
+                s = str(raw).strip()
+                if s and self._is_option_dropdown_label(s, from_option_key=True):
+                    found.add(s)
+            for (raw,) in conn.execute(
+                "SELECT DISTINCT species FROM pricebook "
+                "WHERE species IS NOT NULL AND TRIM(species) != '' "
+                "AND vendor = ?",
+                (vendor,),
+            ):
+                s = str(raw).strip()
+                if s and self._is_option_dropdown_label(s, from_option_key=False):
+                    found.add(s)
+        by_low: dict[str, str] = {}
+        for p in found:
+            k = p.lower()
+            if k not in by_low or (p[:1].isupper() and not by_low[k][:1].isupper()):
+                by_low[k] = p
+        return sorted(by_low.values(), key=lambda x: x.lower())
 
     def list_species(self, vendor: Optional[str] = None) -> list[str]:
         """
-        Distinct wood / option labels for the floor Wood dropdown.
+        Distinct wood labels for the floor Wood dropdown.
 
         When *vendor* is set, only woods that appear in that builder's
         catalog are returned (multi-wood tiers are split into atoms).
+        Option-like species (colors, fabrics, poly tiers) are excluded —
+        those belong in the Option dropdown.
         When vendor is All/None, woods are collected across all builders.
         """
         scoped = bool(vendor and vendor not in ("All", "", None))
@@ -181,12 +228,17 @@ class PriceBookRepository:
                 s = str(raw).strip()
                 if not s:
                     continue
+                # Full label that is an option (poly color tier, leather, …) → Option
+                if self._is_option_dropdown_label(s, from_option_key=False):
+                    continue
                 # Split multi-wood tiers on " / " or "/"
                 if " / " in s or (s.count("/") >= 1 and not re.search(r"\d/\d", s)):
                     parts = [p.strip() for p in re.split(r"\s*/\s*", s) if p.strip()]
                 else:
                     parts = [s]
                 for p in parts:
+                    if self._is_option_dropdown_label(p, from_option_key=False):
+                        continue
                     if self._is_wood_dropdown_label(p):
                         atomic.add(p)
         except Exception:
@@ -205,6 +257,38 @@ class PriceBookRepository:
                 by_low[k] = p
         return sorted(by_low.values(), key=lambda x: x.lower())
 
+    def _is_option_dropdown_label(
+        self, p: str, *, from_option_key: bool = False
+    ) -> bool:
+        """True if label belongs in the per-builder Option dropdown."""
+        if not p:
+            return False
+        s = str(p).strip()
+        if len(s) < 1 or len(s) > 48:
+            return False
+        if re.fullmatch(r"(?i)finished|unfinished|finshed|none|null|nan|n/?a", s):
+            return False
+        if re.search(r"[@$%]|\+\d|option:|stain part|electrical control", s, re.I):
+            return False
+        # Anything stored in option_key is an option (size codes, Cat.N, …)
+        if from_option_key:
+            # Keep -18 / -24BC / Cat. 1; drop empty-ish punctuation only
+            if re.fullmatch(r"[\s.\-_/'\"]+", s):
+                return False
+            return True
+        if self._OPTION_CODE_RE.match(s):
+            return True
+        # Color / fabric / poly / leather tiers (not wood species)
+        if self._OPTION_DROPDOWN_RE.search(s):
+            # "Rustic Cherry" is wood; "Ultra Leather" / "Bright Colors" are options
+            if self._PURE_WOOD_RE.search(s) and not re.search(
+                r"(?i)color|fabric|leather|poly|woodgrain|premium|standard|cat\.?",
+                s,
+            ):
+                return False
+            return True
+        return False
+
     def _is_wood_dropdown_label(self, p: str) -> bool:
         if not p or len(p) < 2 or len(p) > 48:
             return False
@@ -214,7 +298,16 @@ class PriceBookRepository:
             return False
         if re.search(r"[@$%]|\+\d|option:|stain part", p, re.I):
             return False
-        if self._WOOD_DROPDOWN_RE.search(p):
+        # Options (poly colors, leather grades) live in Option, not Wood
+        if self._is_option_dropdown_label(p, from_option_key=False):
+            return False
+        if self._PURE_WOOD_RE.search(p):
+            return True
+        # Legacy: keep wood-tier atoms that still match the broader wood RE
+        # but exclude poly/fabric/leather/paint/black which are options now
+        if self._WOOD_DROPDOWN_RE.search(p) and not re.search(
+            r"(?i)\b(poly|woodgrain|fabric|leather|paint|black|color)\b", p
+        ):
             return True
         return False
 
@@ -493,8 +586,16 @@ class PriceBookRepository:
                 ]
             )
         if option_key and option_key != "All":
-            clauses.append("trim(coalesce(option_key,'')) = ?")
-            params.append(option_key.strip())
+            # Match option_key column OR species stored as an option tier
+            # (Patio Kraft colors, LuxHome leather, etc.)
+            opt = option_key.strip()
+            clauses.append(
+                "("
+                "trim(coalesce(option_key,'')) = ? OR "
+                "trim(coalesce(species,'')) = ?"
+                ")"
+            )
+            params.extend([opt, opt])
 
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         cols = ", ".join(SELECT_COLS)

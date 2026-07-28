@@ -163,7 +163,7 @@ if _auth_sess.get("must_change_password") and st.session_state.get("auth_user_id
 
 # Bump when PriceBookService gains methods that Admin/OrderTrac need.
 # Stale @st.cache_resource instances omit new methods until cache is cleared.
-_SERVICE_CACHE_VERSION = 4
+_SERVICE_CACHE_VERSION = 5
 
 
 @st.cache_resource
@@ -203,10 +203,11 @@ def _wood_dropdown_options(vendor_key: str) -> list:
 @st.cache_data(ttl=60, show_spinner=False)
 def _option_dropdown_options(vendor_key: str) -> list:
     """
-    Option keys for the Search dropdown — only for the selected builder.
+    Options for the Search dropdown — only for the selected builder.
 
     Builder = All → empty (no cross-vendor option soup).
-    Specific builder → that builder's option_key values (e.g. FN Cat. 1/2/3).
+    Specific builder → that builder's options (option_key + option-like
+    species: FN Cat.N, Hillside sizes, Patio Kraft colors, leather tiers, …).
     """
     if not vendor_key or vendor_key == "All":
         return []
@@ -622,8 +623,9 @@ with tab_search:
                 "Option",
                 options=opt_opts,
                 key="so",
-                help="Builder-specific options (e.g. FN Chair finish Cat. 1/2/3). "
-                "Empty until you pick a builder that has options.",
+                help="All options for the selected builder — finish Cat.N, "
+                "size codes, color/fabric/poly/leather tiers, etc. "
+                "Disabled when Builder is All or that builder has no options.",
                 disabled=(vf == "All" or len(opt_opts) <= 1),
             )
         if f5 is not None:
