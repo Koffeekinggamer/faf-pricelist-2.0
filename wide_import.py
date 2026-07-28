@@ -3037,6 +3037,18 @@ def import_workbook(
     """
     names = list_excel_sheets(data)
 
+    # FN Chair Level One Blue — PL Print matrix (style × chair × Unf/Cat × wood)
+    from backend.fn_chair_import import looks_like_fn_level_one, import_fn_chair_workbook
+
+    if looks_like_fn_level_one(filename, names):
+        return import_fn_chair_workbook(
+            data,
+            vendor=vendor or "FN Chair",
+            default_collection=default_collection,
+            sheet_filter=sheet_filter,
+            filename=filename,
+        )
+
     # Specialized outdoor poly layout (multi-section color tiers)
     if looks_like_patio_kraft(filename, names, data):
         return import_patio_kraft_workbook(

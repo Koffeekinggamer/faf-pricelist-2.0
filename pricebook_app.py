@@ -163,7 +163,7 @@ if _auth_sess.get("must_change_password") and st.session_state.get("auth_user_id
 
 # Bump when PriceBookService gains methods that Admin/OrderTrac need.
 # Stale @st.cache_resource instances omit new methods until cache is cleared.
-_SERVICE_CACHE_VERSION = 3
+_SERVICE_CACHE_VERSION = 4
 
 
 @st.cache_resource
@@ -198,6 +198,23 @@ def _wood_dropdown_options(vendor_key: str) -> list:
     except Exception:
         woods = []
     return woods
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _option_dropdown_options(vendor_key: str) -> list:
+    """
+    Option keys for the Search dropdown — only for the selected builder.
+
+    Builder = All → empty (no cross-vendor option soup).
+    Specific builder → that builder's option_key values (e.g. FN Cat. 1/2/3).
+    """
+    if not vendor_key or vendor_key == "All":
+        return []
+    svc = _svc()
+    try:
+        return list(svc.list_option_keys(vendor=vendor_key) or [])
+    except Exception:
+        return []
 
 
 svc = _svc()
@@ -524,6 +541,7 @@ with tab_search:
         st.session_state["sq"] = ""
         st.session_state["sv"] = _pending_pin
         st.session_state["sf"] = "finished"
+        st.session_state["so"] = "All"
 
     all_vendors = svc.list_vendors()
     favorites = [v for v in _load_favorites() if v in all_vendors]
@@ -567,7 +585,11 @@ with tab_search:
             rest = [v for v in all_vendors if v not in favorites]
             vendors = ["All"] + favorites + rest
 
-        f1, f2, f3, f4 = st.columns([1.45, 1.25, 0.95, 0.85])
+        if SHOW_SIMPLE_UI:
+            f1, f2, f3, f4 = st.columns([1.35, 1.2, 0.9, 1.0])
+            f5 = None
+        else:
+            f1, f2, f3, f4, f5 = st.columns([1.25, 1.1, 0.85, 0.95, 0.75])
         with f1:
             vf = st.selectbox("Builder", vendors, key="sv")
         with f2:
@@ -591,7 +613,21 @@ with tab_search:
             finish_opts = ["finished", "All", "unfinished"]
             ff = st.selectbox("Finish", finish_opts, index=0, key="sf")
         with f4:
-            if not SHOW_SIMPLE_UI:
+            # Option — per builder only (FN Cat. 1/2/3, etc.)
+            opt_list = _option_dropdown_options(vf if vf else "All")
+            opt_opts = ["All"] + [o for o in opt_list if o and o != "All"]
+            if "so" in st.session_state and st.session_state["so"] not in opt_opts:
+                st.session_state["so"] = "All"
+            of = st.selectbox(
+                "Option",
+                options=opt_opts,
+                key="so",
+                help="Builder-specific options (e.g. FN Chair finish Cat. 1/2/3). "
+                "Empty until you pick a builder that has options.",
+                disabled=(vf == "All" or len(opt_opts) <= 1),
+            )
+        if f5 is not None:
+            with f5:
                 st.write("")  # align with selectboxes
                 st.write("")
                 if vf != "All":
@@ -620,6 +656,7 @@ with tab_search:
                     collection=None,  # Collection filter hidden on floor UI
                     finish_state=None if ff == "All" else ff,
                     species=None if wf == "All" else wf,
+                    option_key=None if of == "All" else of,
                     limit=DEFAULT_SEARCH_LIMIT,
                 )
                 empty_reason = "none" if results.empty else ""
@@ -651,7 +688,7 @@ with tab_search:
                 else:
                     st.info(
                         "No hits — try fewer words, Boolean **OR**, or check "
-                        "**Builder** / **Finish** filters."
+                        "**Builder** / **Finish** / **Option** filters."
                     )
         else:
             hit_note = f"**{len(display):,}** hits"
@@ -670,18 +707,25 @@ with tab_search:
                     "part_number",
                     "description",
                     "vendor",
+                    "option_key",
                     "species",
                     "finish_state",
                     "adjusted_price",
                 ]
                 if c in display.columns
             ]
+            if (
+                "option_key" in show_cols
+                and display["option_key"].fillna("").astype(str).str.strip().eq("").all()
+            ):
+                show_cols = [c for c in show_cols if c != "option_key"]
             view = display[show_cols].rename(
                 columns={
                     "part_number": "Part #",
                     "description": "Description",
                     "vendor": "Builder",
                     "collection": "Collection",
+                    "option_key": "Option",
                     "species": "Wood",
                     "finish_state": "Finish",
                     "adjusted_price": "RETAIL",
@@ -689,7 +733,7 @@ with tab_search:
             )
             if wf and wf != "All":
                 st.caption(
-                    f"Wood filter: **{wf}** · multi-wood tiers that include this wood use the same retail price."
+                    f"Wood filter: **{wf}** · multi-wood price tiers that include this wood use the same retail price."
                 )
             # Content-based widths so headers + values fully show (scrolls if needed)
             st.dataframe(
@@ -703,9 +747,11 @@ with tab_search:
                     help_text={
                         "RETAIL": "Customer price — wholesale × mult, rolled up to next even dollar",
                         "Wood": "Wood species / option — use the Wood dropdown above to pick one",
+                        "Option": "Builder option (FN finish Cat. 1/2/3, etc.)",
                     },
                     overrides={
                         "Part #": 110,
+                        "Option": 90,
                         "Wood": 160,
                         "Finish": 100,
                         "RETAIL": 100,

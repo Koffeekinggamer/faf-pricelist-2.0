@@ -133,6 +133,26 @@ class PriceBookRepository:
         r")$"
     )
 
+    def list_option_keys(self, vendor: Optional[str] = None) -> list[str]:
+        """
+        Distinct option_key values for the floor Option dropdown.
+
+        Scoped to *vendor* when set (Cat. 1/2/3 for FN Chair, etc.).
+        When vendor is All/None, returns an empty list — options are
+        per-builder only so the UI stays clean.
+        """
+        if not vendor or vendor in ("All", ""):
+            return []
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT option_key FROM pricebook "
+                "WHERE option_key IS NOT NULL AND TRIM(option_key) != '' "
+                "AND vendor = ? "
+                "ORDER BY option_key",
+                (vendor,),
+            ).fetchall()
+        return [str(r[0]).strip() for r in rows if r[0] and str(r[0]).strip()]
+
     def list_species(self, vendor: Optional[str] = None) -> list[str]:
         """
         Distinct wood / option labels for the floor Wood dropdown.
@@ -405,6 +425,7 @@ class PriceBookRepository:
         vendor: Optional[str] = None,
         finish_state: Optional[str] = None,
         species: Optional[str] = None,
+        option_key: Optional[str] = None,
         limit: int = DEFAULT_SEARCH_LIMIT,
     ) -> pd.DataFrame:
         """
@@ -471,6 +492,9 @@ class PriceBookRepository:
                     "% / " + esc,  # "… / Cherry"
                 ]
             )
+        if option_key and option_key != "All":
+            clauses.append("trim(coalesce(option_key,'')) = ?")
+            params.append(option_key.strip())
 
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         cols = ", ".join(SELECT_COLS)

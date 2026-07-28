@@ -366,8 +366,9 @@ _VENDOR_DEFAULT_COLLECTION = {
     "Genuine Oak": "Casegoods",
 }
 
-# FN Chair Level One matrix: section header = style (Abe), row id = Cat. N,
-# columns = wood groups. Import often leaves Part # / Description as "Cat. 1".
+# FN Chair Level One: Cat. N = finish/stain tier under a chair type.
+# Proper import (backend.fn_chair_import) yields Part # = "Abe Side Chair".
+# Legacy imports left Part # = "Cat. 1" with style in collection — heal below.
 _FN_CAT_RE = re.compile(r"(?i)^cat\.?\s*(\d+)$")
 
 
@@ -636,7 +637,8 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
         src = str(out.get("source_file") or "")
         if re.search(r"level[\s_-]*two|two[\s_-]*orange", src, re.I):
             return None
-        # Remap Cat. N row ids under a style section → searchable chair name
+        # Legacy heal: Cat. N as Part # + style in collection → style Part #
+        # (chair type cannot be recovered without the workbook; re-import PL Print)
         cat = _fn_chair_cat_token(part) or _fn_chair_cat_token(desc)
         style = standardize_text(raw_collection)
         if cat and style and not _fn_chair_cat_token(style):
@@ -644,6 +646,15 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
                 fn_option = cat
                 part = standardize_part(style) or style
                 desc = f"{style} — {cat}"
+                fn_force_seating = True
+                raw_collection = None
+        # Already-good rows: keep Cat. N on option_key; ensure description
+        elif cat is None and part:
+            existing_opt = _fn_chair_cat_token(out.get("option_key"))
+            if existing_opt:
+                fn_option = existing_opt
+                if not desc or _fn_chair_cat_token(desc):
+                    desc = f"{part} — {existing_opt}"
                 fn_force_seating = True
                 raw_collection = None
 
