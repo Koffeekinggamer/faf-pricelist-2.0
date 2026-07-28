@@ -160,7 +160,7 @@ Many local changes **not pushed** (and DB never goes to GitHub):
 5. **Quick Cloudflare URL** is ephemeral; re-run tunnel if dead: `scripts/public_tunnel.sh` or cloudflared quick tunnel → update `CURRENT_PUBLIC_URL.txt`.
 
 ### Data quality (ongoing)
-- Some builders still have noisy collections / option sheets (e.g. large FN Chair matrix, category-like part numbers).
+- **FN Chair (2026-07-28):** Level One matrix remap in `standardize_row` — style section (Abe) → Part #, `Cat. N` → `option_key`, collection → Seating. Level Two sources dropped. Re-run **Admin → Re-standardize master** on Fly/Mac to fix existing rows; new Drop/Viztech imports get the fix automatically.
 - Meadow Wood reduced but not necessarily perfect.
 - Boolean search is powerful but floor staff may need a one-line tip only (caption already there).
 
