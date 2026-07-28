@@ -165,7 +165,7 @@ if _auth_sess.get("must_change_password") and st.session_state.get("auth_user_id
 
 # Bump when PriceBookService gains methods that Admin/OrderTrac need.
 # Stale @st.cache_resource instances omit new methods until cache is cleared.
-_SERVICE_CACHE_VERSION = 6
+_SERVICE_CACHE_VERSION = 7
 
 
 @st.cache_resource
@@ -665,9 +665,11 @@ with tab_search:
                 empty_reason = "error"
                 st.error(f"Search failed: {exc}")
         display = results.copy()
-        # Keep the full wood-tier label when filtering (e.g. Barnwood / Brown Maple
-        # vs Barnwood / Brown Maple / Premium). Overwriting with the filter wood
-        # made different tiers look identical.
+        # When a wood is selected, show only that wood in the Wood column —
+        # hide the rest of the multi-wood tier (e.g. Barnwood / Brown Maple → Barnwood).
+        if not display.empty and wf and wf != "All" and "species" in display.columns:
+            display = display.copy()
+            display["species"] = wf
 
         # Floor table emphasizes RETAIL
         if display.empty:
@@ -732,8 +734,8 @@ with tab_search:
             )
             if wf and wf != "All":
                 st.caption(
-                    f"Wood filter: **{wf}** · showing every price tier that includes this wood "
-                    f"(full tier listed under Wood — prices can differ)."
+                    f"Wood filter: **{wf}** · Wood column shows only this selection "
+                    f"(other woods in the builder’s price tier are hidden)."
                 )
             # Content-based widths so headers + values fully show (scrolls if needed)
             st.dataframe(
