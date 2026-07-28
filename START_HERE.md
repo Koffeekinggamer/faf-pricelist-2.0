@@ -11,7 +11,11 @@
 | Tabs | Search · Drop files · Vendors · Admin |
 
 ```bash
+git pull origin main
+./scripts/pull_db_from_fly.sh   # copy live catalog (gitignored)
 ./run.sh
 ```
 
-Focus: verify builder catalogs and retail prices. Details: [HANDOFF.md](HANDOFF.md).
+Or: GitHub Actions → **Pull Fly DB** → download artifact `fly-master-pricebook` → save as `master_pricebook.db`.
+
+Never commit `*.db` / secrets. Details: [HANDOFF.md](HANDOFF.md).
