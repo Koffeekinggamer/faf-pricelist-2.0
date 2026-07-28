@@ -34,8 +34,10 @@ _LOGO = APP_DIR / "assets" / "logo.png"
 SHOW_ORDERTRAC_QUOTE = False  # quote tab + search cart + sidebar badge
 SHOW_ORDERTRAC_ADMIN = False  # Admin: OrderTrac connection, user sync, push tools
 SHOW_SIMPLE_UI = True  # lean Search/Drop/Vendors; hide pins & bulk tools
-SHOW_ADMIN_ADVANCED = True  # Viztech / cleanup / deploy / CLI under Admin (accuracy tools)
+SHOW_ADMIN_ADVANCED = True  # cleanup / deploy / CLI under Admin (accuracy tools)
+SHOW_VIZTECH = False  # hide Viztech sync UI — manual Drop only while verifying data
 # TRACE restore quoting: SHOW_ORDERTRAC_* = True
+# TRACE Viztech: SHOW_VIZTECH = True
 # TRACE full UI: SHOW_SIMPLE_UI = False; SHOW_ADMIN_ADVANCED = True
 
 st.set_page_config(
@@ -2225,7 +2227,12 @@ with tab_admin:
     s2.metric("Builders", stats["vendors"])
     st.caption(f"Database: `{svc.path}`")
     st.caption(f"Last backup: {_last_backup_hint()}")
-    st.caption(f"Viztech sync: {_viztech_sync_hint()}")
+    if SHOW_VIZTECH:
+        st.caption(f"Viztech sync: {_viztech_sync_hint()}")
+    else:
+        st.caption(
+            "Accuracy mode · **manual Drop import only** · Viztech sync hidden"
+        )
 
     # TRACE: Admin OrderTrac block — set SHOW_ORDERTRAC_ADMIN = True to restore
     # (connection, sync users, FAF users, create/reset user, push FAF→OrderTrac)
@@ -2464,91 +2471,95 @@ with tab_admin:
                 st.caption(f"Staff login handoff file: `{handoff}`")
 
 
-    st.markdown("##### Viztech monthly update")
-    st.caption(
-        "Downloads builder pricelists from **viztechfurniture.com** and updates the book "
-        "(keeps builders Viztech doesn’t have · FN Chair = Level One only). "
-        "Scheduled LaunchAgents are **Mac-only**; Run/Check work on Fly when Viztech "
-        "secrets are configured."
-    )
-    st.info(_viztech_sync_hint())
-    vz1, vz2, vz3 = st.columns(3)
-    with vz1:
-        if st.button("Check Viztech login", use_container_width=True):
-            import subprocess
-
-            py = _python_executable()
-            script = APP_DIR / "scripts" / "viztech_sync.py"
-            with st.spinner("Logging into Viztech…"):
-                proc = subprocess.run(
-                    [py, str(script), "--dry-run"],
-                    cwd=str(APP_DIR),
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                )
-            if proc.returncode == 0:
-                st.success("Viztech login OK — builders listed.")
-                get_service.clear()
-            else:
-                st.error("Check failed — see logs below.")
-            if proc.stdout:
-                st.code(proc.stdout[-2500:])
-            if proc.stderr:
-                st.code(proc.stderr[-1500:])
-    with vz2:
-        if st.button(
-            "Run full Viztech sync now",
-            type="primary",
-            use_container_width=True,
-            help="Downloads all pricelists and re-imports (can take 10–30+ minutes)",
-        ):
-            import subprocess
-
-            py = _python_executable()
-            script = APP_DIR / "scripts" / "viztech_sync.py"
-            with st.spinner(
-                "Syncing Viztech → FAF (download + import). Leave this tab open…"
-            ):
-                proc = subprocess.run(
-                    [py, str(script)],
-                    cwd=str(APP_DIR),
-                    capture_output=True,
-                    text=True,
-                    timeout=14400,
-                )
-            if proc.returncode == 0:
-                get_service.clear()
-                st.success("Viztech sync finished. Reloading stats…")
-                st.rerun()
-            else:
-                st.error("Sync failed — check output / viztech-sync.err")
-            if proc.stdout:
-                st.code(proc.stdout[-4000:])
-            if proc.stderr:
-                st.code(proc.stderr[-2000:])
-    with vz3:
-        if st.button("Install 30-day schedule", use_container_width=True):
-            if not _is_macos_host():
-                st.warning(
-                    "30-day schedule uses a macOS LaunchAgent — run this on the "
-                    "floor Mac, not on Fly."
-                )
-            else:
+    # TRACE: Viztech block — set SHOW_VIZTECH = True to restore
+    # (check login / full sync / 30-day LaunchAgent). Hidden while verifying
+    # catalog accuracy via manual Drop imports.
+    if SHOW_VIZTECH:
+        st.markdown("##### Viztech monthly update")
+        st.caption(
+            "Downloads builder pricelists from **viztechfurniture.com** and updates the book "
+            "(keeps builders Viztech doesn’t have · FN Chair = Level One only). "
+            "Scheduled LaunchAgents are **Mac-only**; Run/Check work on Fly when Viztech "
+            "secrets are configured."
+        )
+        st.info(_viztech_sync_hint())
+        vz1, vz2, vz3 = st.columns(3)
+        with vz1:
+            if st.button("Check Viztech login", use_container_width=True):
                 import subprocess
 
-                install = (
-                    Path(__file__).resolve().parent
-                    / "scripts"
-                    / "install_viztech_monthly_sync.sh"
-                )
-                rc = subprocess.call(["/bin/zsh", str(install)])
-                if rc == 0:
-                    st.success("LaunchAgent installed — runs every ~30 days.")
-                else:
-                    st.error(
-                        "Install failed — run scripts/install_viztech_monthly_sync.sh in Terminal."
+                py = _python_executable()
+                script = APP_DIR / "scripts" / "viztech_sync.py"
+                with st.spinner("Logging into Viztech…"):
+                    proc = subprocess.run(
+                        [py, str(script), "--dry-run"],
+                        cwd=str(APP_DIR),
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
                     )
+                if proc.returncode == 0:
+                    st.success("Viztech login OK — builders listed.")
+                    get_service.clear()
+                else:
+                    st.error("Check failed — see logs below.")
+                if proc.stdout:
+                    st.code(proc.stdout[-2500:])
+                if proc.stderr:
+                    st.code(proc.stderr[-1500:])
+        with vz2:
+            if st.button(
+                "Run full Viztech sync now",
+                type="primary",
+                use_container_width=True,
+                help="Downloads all pricelists and re-imports (can take 10–30+ minutes)",
+            ):
+                import subprocess
+
+                py = _python_executable()
+                script = APP_DIR / "scripts" / "viztech_sync.py"
+                with st.spinner(
+                    "Syncing Viztech → FAF (download + import). Leave this tab open…"
+                ):
+                    proc = subprocess.run(
+                        [py, str(script)],
+                        cwd=str(APP_DIR),
+                        capture_output=True,
+                        text=True,
+                        timeout=14400,
+                    )
+                if proc.returncode == 0:
+                    get_service.clear()
+                    st.success("Viztech sync finished. Reloading stats…")
+                    st.rerun()
+                else:
+                    st.error("Sync failed — check output / viztech-sync.err")
+                if proc.stdout:
+                    st.code(proc.stdout[-4000:])
+                if proc.stderr:
+                    st.code(proc.stderr[-2000:])
+        with vz3:
+            if st.button("Install 30-day schedule", use_container_width=True):
+                if not _is_macos_host():
+                    st.warning(
+                        "30-day schedule uses a macOS LaunchAgent — run this on the "
+                        "floor Mac, not on Fly."
+                    )
+                else:
+                    import subprocess
+
+                    install = (
+                        Path(__file__).resolve().parent
+                        / "scripts"
+                        / "install_viztech_monthly_sync.sh"
+                    )
+                    rc = subprocess.call(["/bin/zsh", str(install)])
+                    if rc == 0:
+                        st.success("LaunchAgent installed — runs every ~30 days.")
+                    else:
+                        st.error(
+                            "Install failed — run scripts/install_viztech_monthly_sync.sh in Terminal."
+                        )
 
     st.markdown("##### Backup DB")
     st.caption(
@@ -2671,20 +2682,26 @@ with tab_admin:
     )
 
     st.markdown("##### CLI")
-    st.code(
-        """
+    _cli = """
 source ~/FAF-pricebook/.venv/bin/activate
 python -m backend.cli stats
 python -m backend.cli search "oak nightstand"
 python scripts/backup_db.py backup
 python scripts/backup_db.py list
 python scripts/backup_db.py restore --file master_pricebook-YYYYMMDD-HHMMSS.db
+""".strip()
+    if SHOW_VIZTECH:
+        _cli += """
 python scripts/viztech_sync.py --dry-run
 python scripts/viztech_sync.py
-        """.strip()
-    )
+""".rstrip()
+    st.code(_cli)
 
 st.caption(
     "FAF Price Book · Search · Drop files · Vendors · Admin · "
-    "one builder = one catalog · Viztech sync every ~30 days"
+    + (
+        "one builder = one catalog · Viztech sync every ~30 days"
+        if SHOW_VIZTECH
+        else "one builder = one catalog · manual Drop while verifying accuracy"
+    )
 )
