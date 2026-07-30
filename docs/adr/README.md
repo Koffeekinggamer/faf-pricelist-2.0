@@ -10,5 +10,6 @@ Locked product/architecture decisions. Skills (`/grill-with-docs`, `/domain-mode
 | [0004](./0004-thin-ui-pricebook-service.md)                | Thin Streamlit; logic in PriceBookService                        |
 | [0005](./0005-master-db-never-in-git.md)                   | Master DB / secrets never committed                              |
 | [0006](./0006-agent-skills-seeds-own-config.md)            | Setup-skill seeds own FAF agent config; `docs/agents/` is mirror |
+| [0007](./0007-thin-catalogs-triage.md)                     | Thin = &lt;150 rows; Judson keep/replace/ignore; Admin+CLI       |
 
 New ADRs: next number, short slug, see `.agents/skills/domain-modeling/ADR-FORMAT.md`.
