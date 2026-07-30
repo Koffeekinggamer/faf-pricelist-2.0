@@ -2,17 +2,18 @@
 
 **Main app · content accuracy mode** (OrderTrac UI hidden).
 
-| | |
-|--|--|
-| App | `pricebook_app.py` |
-| Port | **8501** (`./run.sh`) |
-| Live | https://faf-pricebook.fly.dev |
-| Login | **Foothills** / **Amish** |
-| Tabs | Search · Drop files · Vendors · Admin |
+|       |                                       |
+| ----- | ------------------------------------- |
+| App   | `pricebook_app.py`                    |
+| Port  | **8501** (`./run.sh`)                 |
+| Live  | https://faf-pricebook.fly.dev         |
+| Login | **Foothills** / **Amish**             |
+| Tabs  | Search · Drop files · Vendors · Admin |
 
 ```bash
+cd /FAF-pricelist-2.0
 git pull origin main
-./scripts/pull_db_from_fly.sh   # copy live catalog (gitignored)
+./scripts/ready_catalog.sh   # Fly pull + stats + thin catalogs (ADR-0007)
 ./run.sh
 ```
 

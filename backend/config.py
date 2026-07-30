@@ -16,6 +16,8 @@ DB_PATH = Path(_env_db) if _env_db else (APP_DIR / "master_pricebook.db")
 DEFAULT_MULTIPLIER = 2.7
 DEFAULT_PRICE_BASIS = "wholesale"
 DEFAULT_SEARCH_LIMIT = 150
+# ADR-0007: builders below this sellable-row count are thin catalogs
+THIN_CATALOG_MAX_ROWS = 150
 
 # Shown on customer quote PDFs (edit to match the store)
 STORE = {

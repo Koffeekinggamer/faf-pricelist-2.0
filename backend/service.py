@@ -12,7 +12,12 @@ from typing import Any, Callable, Optional, Union
 import pandas as pd
 
 from backend.batch import BatchImporter, BatchResult
-from backend.config import DB_PATH, DEFAULT_MULTIPLIER, DEFAULT_SEARCH_LIMIT
+from backend.config import (
+    DB_PATH,
+    DEFAULT_MULTIPLIER,
+    DEFAULT_SEARCH_LIMIT,
+    THIN_CATALOG_MAX_ROWS,
+)
 from backend.db import init_db
 from backend.export import to_csv_bytes, to_excel_bytes, to_pdf_bytes
 from backend.import_service import ExcelImportPreview, ImportService, PdfImportPreview
@@ -118,6 +123,18 @@ class PriceBookService:
         self.ensure_ready()
         return self.repo.vendor_summary()
 
+    def list_thin_catalogs(self, *, max_rows: int = THIN_CATALOG_MAX_ROWS) -> pd.DataFrame:
+        """Builders with fewer than max_rows sellable rows (ADR-0007).
+
+        Read-only. Sorted ascending by row count. Does not mutate IGNORE_BUILDERS.
+        """
+        self.ensure_ready()
+        summary = self.repo.vendor_summary()
+        if summary.empty:
+            return summary
+        thin = summary[summary["rows"] < int(max_rows)].copy()
+        return thin.sort_values("rows", ascending=True).reset_index(drop=True)
+
     def find_duplicates(self, limit: int = 100) -> pd.DataFrame:
         self.ensure_ready()
         return self.repo.find_duplicate_groups(limit=limit)
@@ -189,15 +206,11 @@ class PriceBookService:
         return self.repo.delete_by_vendor(vendor)
 
     # ------------------------------------------------------------------ pricing
-    def get_vendor_multiplier(
-        self, vendor: str, default: float = DEFAULT_MULTIPLIER
-    ) -> float:
+    def get_vendor_multiplier(self, vendor: str, default: float = DEFAULT_MULTIPLIER) -> float:
         self.ensure_ready()
         return self.repo.get_vendor_multiplier(vendor, default=default)
 
-    def set_vendor_multiplier(
-        self, vendor: str, multiplier: float, notes: str = ""
-    ) -> None:
+    def set_vendor_multiplier(self, vendor: str, multiplier: float, notes: str = "") -> None:
         self.ensure_ready()
         self.repo.set_vendor_multiplier(vendor, multiplier, notes=notes)
 
@@ -213,9 +226,7 @@ class PriceBookService:
         self.ensure_ready()
         return self.repo.list_vendor_settings()
 
-    def reapply_multiplier(
-        self, new_mult: float, *, vendor: Optional[str] = None
-    ) -> int:
+    def reapply_multiplier(self, new_mult: float, *, vendor: Optional[str] = None) -> int:
         self.ensure_ready()
         return self.repo.reapply_multiplier(new_mult, vendor=vendor)
 
@@ -358,9 +369,7 @@ class PriceBookService:
                 mult = self.resolve_multiplier(
                     vend,
                     sidebar_mult=DEFAULT_MULTIPLIER,
-                    detected_markup=out.get("detected_markup")
-                    if use_workbook_markup
-                    else None,
+                    detected_markup=out.get("detected_markup") if use_workbook_markup else None,
                     prefer_workbook=use_workbook_markup,
                     prefer_saved_vendor=True,
                 )
@@ -431,9 +440,7 @@ class PriceBookService:
             progress=progress,
         )
 
-    def discover_batch_files(
-        self, folder: str | Path, recursive: bool = False
-    ) -> list[Path]:
+    def discover_batch_files(self, folder: str | Path, recursive: bool = False) -> list[Path]:
         return self.batch.discover(folder, recursive=recursive)
 
     # ------------------------------------------------------------------ quotes
@@ -496,13 +503,9 @@ class PriceBookService:
             notes=" · ".join(note_bits) if note_bits else "",
         )
 
-    def add_quote_line_from_row(
-        self, quote_id: int, pricebook_row: dict, **kwargs
-    ) -> int:
+    def add_quote_line_from_row(self, quote_id: int, pricebook_row: dict, **kwargs) -> int:
         self.ensure_ready()
-        return self.quotes.add_line_from_pricebook(
-            quote_id, pricebook_row, **kwargs
-        )
+        return self.quotes.add_line_from_pricebook(quote_id, pricebook_row, **kwargs)
 
     def add_custom_quote_line(self, quote_id: int, **kwargs) -> int:
         self.ensure_ready()
@@ -565,9 +568,7 @@ class PriceBookService:
         from backend.ordertrac_connect import sync_users_to_faf
 
         self.ensure_ready()
-        return sync_users_to_faf(
-            self.db_path, headless=True, default_role=default_role
-        )
+        return sync_users_to_faf(self.db_path, headless=True, default_role=default_role)
 
     def push_quote_to_ordertrac(
         self,
@@ -642,9 +643,7 @@ class PriceBookService:
             self.quotes.update_quote(
                 quote_id,
                 ordertrac_guid=result.get("guid") or existing_guid,
-                ordertrac_so_id=str(
-                    result.get("sales_order_id") or q.get("ordertrac_so_id") or ""
-                )
+                ordertrac_so_id=str(result.get("sales_order_id") or q.get("ordertrac_so_id") or "")
                 or None,
                 ordertrac_url=result.get("url") or q.get("ordertrac_url"),
                 ordertrac_pushed_at=datetime.now().isoformat(timespec="seconds"),
@@ -687,11 +686,7 @@ class PriceBookService:
         lines = []
         for i, row in enumerate(rows):
             q = qtys[i] if i < len(qtys) else 1.0
-            lines.append(
-                line_from_pricebook_row(
-                    row, qty=q, wood=wood, stain=stain, finish=finish
-                )
-            )
+            lines.append(line_from_pricebook_row(row, qty=q, wood=wood, stain=stain, finish=finish))
         payload = {
             "type": "QUOTE",
             "customer_name": customer_name,

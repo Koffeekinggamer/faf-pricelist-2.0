@@ -1,12 +1,23 @@
 # Agent instructions — FAF Price Book (main)
 
 1. Read in order: **AGENTS.md** (this file) → **CONTEXT.md** → **HANDOFF.md** → **STANDARDS.md**. Consult **`docs/adr/`** as needed.
-2. **This repo is the main FAF Price Book.** Current focus: **catalog accuracy** (Search · Drop files · Vendors · Admin).
+2. **This repo is the main FAF Price Book.** Mac/project path: **`/FAF-pricelist-2.0`**. Current focus: **catalog accuracy** (Search · Drop files · Vendors · Admin).
 3. Default entry: `pricebook_app.py`. OrderTrac UI flags are **off** — do not re-enable unless Judson asks.
 4. Never commit `*.db`, `.env`, or `.streamlit/secrets.toml`.
 5. Local port **8501** (Fly: https://faf-pricebook.fly.dev).
 6. Slim Drop→PDF-only experiment: branch `backup/phase1-slim-2026-07-26` / `pricebook_app_slim.py`.
 7. Thin UI; put logic in `backend.PriceBookService`. One builder = one vendor; retail = wholesale × mult (2.7 default, Genuine Oak 1.7).
+
+## Fast ops (Mac)
+
+```bash
+cd /FAF-pricelist-2.0
+./scripts/ready_catalog.sh          # pull Fly DB → stats → thin catalogs
+./scripts/ready_catalog.sh --no-pull   # local DB only
+.venv/bin/python -m backend.cli thin-catalogs
+```
+
+Thin = rows &lt; 150 (ADR-0007). Then triage → grill Judson keep/replace/ignore. Never commit the DB.
 
 ## Agent skills
 

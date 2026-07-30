@@ -41,7 +41,6 @@ SHOW_VIZTECH = False  # hide Viztech sync UI — manual Drop only while verifyin
 # TRACE full UI: SHOW_SIMPLE_UI = False; SHOW_ADMIN_ADVANCED = True
 
 st.set_page_config(
-
     page_title="FAF Price Book",
     page_icon=str(_FAVICON) if _FAVICON.is_file() else "🪵",
     layout="wide",
@@ -85,6 +84,7 @@ def _favorites_path() -> Path:
     home.mkdir(parents=True, exist_ok=True)
     return home / "floor_favorites.json"
 
+
 # ---------------------------------------------------------------------------
 # Login gate
 # ---------------------------------------------------------------------------
@@ -112,12 +112,8 @@ def _require_login() -> bool:
     with col_c:
         with st.form("login_form", clear_on_submit=False):
             user = st.text_input("Username", autocomplete="username")
-            pw = st.text_input(
-                "Password", type="password", autocomplete="current-password"
-            )
-            submitted = st.form_submit_button(
-                "Sign in", type="primary", use_container_width=True
-            )
+            pw = st.text_input("Password", type="password", autocomplete="current-password")
+            submitted = st.form_submit_button("Sign in", type="primary", use_container_width=True)
             if submitted:
                 session = login_user(user, pw)
                 if session:
@@ -413,6 +409,7 @@ def _save_favorites(names: list[str]) -> None:
 # Sidebar
 # ---------------------------------------------------------------------------
 
+
 def _ensure_active_quote() -> int:
     """Return active quote id; create a draft if none."""
     qid = st.session_state.get("active_quote_id")
@@ -437,9 +434,7 @@ def _quote_sidebar_badge() -> None:
         q = svc.get_quote(int(qid)) or {}
         st.sidebar.markdown("---")
         st.sidebar.markdown("##### FAF → OrderTrac quote")
-        st.sidebar.caption(
-            f"**{q.get('quote_number') or qid}** · {t.get('line_count', 0)} lines"
-        )
+        st.sidebar.caption(f"**{q.get('quote_number') or qid}** · {t.get('line_count', 0)} lines")
         st.sidebar.metric("Quote total", f"${t.get('grand_total', 0):,.2f}")
         if q.get("ordertrac_so_id"):
             st.sidebar.caption(f"OrderTrac QUOTE **#{q.get('ordertrac_so_id')}**")
@@ -467,9 +462,7 @@ if st.sidebar.button("Sign out"):
 
 stats = svc.stats()
 st.sidebar.metric("Master rows", f"{stats['rows']:,}")
-st.sidebar.caption(
-    f"{stats['vendors']} vendors · {stats['collections']} collections"
-)
+st.sidebar.caption(f"{stats['vendors']} vendors · {stats['collections']} collections")
 if SHOW_ORDERTRAC_QUOTE:
     _quote_sidebar_badge()
 # Viztech sync status lives under Admin only (hidden from floor sidebar)
@@ -480,8 +473,7 @@ if SHOW_ORDERTRAC_QUOTE:
 
 if SHOW_SIMPLE_UI:
     st.caption(
-        f"**FAF Price Book** · accuracy mode · "
-        f"{stats['rows']:,} rows · {stats['vendors']} builders"
+        f"**FAF Price Book** · accuracy mode · {stats['rows']:,} rows · {stats['vendors']} builders"
     )
     if int(stats.get("rows") or 0) == 0:
         st.error(
@@ -632,15 +624,11 @@ with tab_search:
                 st.write("")
                 if vf != "All":
                     if vf in favorites:
-                        if st.button(
-                            "Unpin", key="unpin_builder", use_container_width=True
-                        ):
+                        if st.button("Unpin", key="unpin_builder", use_container_width=True):
                             _save_favorites([x for x in favorites if x != vf])
                             st.rerun()
                     else:
-                        if st.button(
-                            "Pin builder", key="pin_builder", use_container_width=True
-                        ):
+                        if st.button("Pin builder", key="pin_builder", use_container_width=True):
                             _save_favorites(favorites + [vf])
                             st.rerun()
 
@@ -816,14 +804,10 @@ with tab_search:
                                 qid = _ensure_active_quote()
                                 rid = id_by_label[pick]
                                 # Prefer Search wood filter; else quote default wood
-                                wood_sel = (
-                                    None
-                                    if wf == "All"
-                                    else wf
-                                ) or st.session_state.get("quote_wood_default")
-                                finish_sel = (
-                                    None if ff == "All" else ff
-                                ) or st.session_state.get(
+                                wood_sel = (None if wf == "All" else wf) or st.session_state.get(
+                                    "quote_wood_default"
+                                )
+                                finish_sel = (None if ff == "All" else ff) or st.session_state.get(
                                     "quote_finish_default", "finished"
                                 )
                                 stain_sel = (add_stain or "").strip() or st.session_state.get(
@@ -978,9 +962,7 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
                         f"pushed {quote.get('ordertrac_pushed_at') or '—'}"
                     )
                     if quote.get("ordertrac_url"):
-                        st.markdown(
-                            f"[Open this quote in OrderTrac]({quote['ordertrac_url']})"
-                        )
+                        st.markdown(f"[Open this quote in OrderTrac]({quote['ordertrac_url']})")
 
                 # ---- Customer / header ----
                 st.markdown(
@@ -1135,8 +1117,7 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
                     "Finish",
                     ["finished", "unfinished"],
                     index=0
-                    if st.session_state.get("quote_finish_default", "finished")
-                    == "finished"
+                    if st.session_state.get("quote_finish_default", "finished") == "finished"
                     else 1,
                     key=f"q_finish_{qid}",
                 )
@@ -1149,15 +1130,9 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
                         # Replace existing Wood/Stain lines or append
                         import re as _re
 
-                        note_out = _re.sub(
-                            r"(?im)^Wood:.*$", "", note_out
-                        ).strip()
-                        note_out = _re.sub(
-                            r"(?im)^Stain:.*$", "", note_out
-                        ).strip()
-                        note_out = _re.sub(
-                            r"(?im)^Finish:.*$", "", note_out
-                        ).strip()
+                        note_out = _re.sub(r"(?im)^Wood:.*$", "", note_out).strip()
+                        note_out = _re.sub(r"(?im)^Stain:.*$", "", note_out).strip()
+                        note_out = _re.sub(r"(?im)^Finish:.*$", "", note_out).strip()
                         spec_lines = []
                         if wood_default:
                             spec_lines.append(f"Wood: {wood_default}")
@@ -1193,23 +1168,18 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
                             for _, lr in _lines.iterrows():
                                 lid = int(lr["id"])
                                 old_notes = str(lr.get("notes") or "")
-                                cleaned = _re.sub(
-                                    r"(?i)\s*Stain:\s*[^·|\n]*", "", old_notes
-                                ).strip(" ·|\n")
+                                cleaned = _re.sub(r"(?i)\s*Stain:\s*[^·|\n]*", "", old_notes).strip(
+                                    " ·|\n"
+                                )
                                 new_notes = (
                                     f"{cleaned} · Stain: {stain_default}".strip(" ·")
                                     if stain_default and cleaned
-                                    else (
-                                        f"Stain: {stain_default}"
-                                        if stain_default
-                                        else cleaned
-                                    )
+                                    else (f"Stain: {stain_default}" if stain_default else cleaned)
                                 )
                                 svc.update_quote_line(
                                     lid,
                                     species=wood_default or lr.get("species"),
-                                    finish_state=finish_default
-                                    or lr.get("finish_state"),
+                                    finish_state=finish_default or lr.get("finish_state"),
                                     notes=new_notes,
                                 )
                                 n_upd += 1
@@ -1375,8 +1345,7 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
                                 "Finish",
                                 ["finished", "unfinished"],
                                 index=0
-                                if str(erow.get("finish_state") or "finished")
-                                == "finished"
+                                if str(erow.get("finish_state") or "finished") == "finished"
                                 else 1,
                                 key=f"q_efin_{qid}",
                             )
@@ -1384,9 +1353,9 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
                         with b1:
                             if st.button("Update line", key=f"q_upd_line_{qid}"):
                                 nnotes = str(erow.get("notes") or "")
-                                nnotes = _re.sub(
-                                    r"(?i)\s*Stain:\s*[^·|\n]*", "", nnotes
-                                ).strip(" ·")
+                                nnotes = _re.sub(r"(?i)\s*Stain:\s*[^·|\n]*", "", nnotes).strip(
+                                    " ·"
+                                )
                                 if (estain or "").strip():
                                     nnotes = (
                                         f"{nnotes} · Stain: {estain.strip()}".strip(" ·")
@@ -1467,9 +1436,7 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
                 default_ot = sess.get("ordertrac_display_name") or ot_user_opts[0]
                 if default_ot not in ot_user_opts:
                     ot_user_opts = [default_ot] + ot_user_opts
-                ot_ix = (
-                    ot_user_opts.index(default_ot) if default_ot in ot_user_opts else 0
-                )
+                ot_ix = ot_user_opts.index(default_ot) if default_ot in ot_user_opts else 0
 
                 otu1, otu2 = st.columns([2, 1])
                 with otu1:
@@ -1516,9 +1483,7 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
                         key=f"q_create_ot_{qid}",
                         help="New OrderTrac QUOTE with all FAF cart lines",
                     ):
-                        with st.spinner(
-                            "Creating OrderTrac QUOTE from FAF pricelist lines…"
-                        ):
+                        with st.spinner("Creating OrderTrac QUOTE from FAF pricelist lines…"):
                             try:
                                 result = _save_header_and_push("create")
                                 if result.get("ok"):
@@ -1528,9 +1493,7 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
                                         f"({result.get('lines_added', '?')} lines)."
                                     )
                                     if result.get("url"):
-                                        st.markdown(
-                                            f"[Open OrderTrac quote]({result['url']})"
-                                        )
+                                        st.markdown(f"[Open OrderTrac quote]({result['url']})")
                                     st.rerun()
                                 else:
                                     st.error(
@@ -1548,9 +1511,7 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
                         key=f"q_append_ot_{qid}",
                         help="Open the linked OrderTrac quote and add any new FAF lines not already there",
                     ):
-                        with st.spinner(
-                            "Adding new FAF lines onto linked OrderTrac quote…"
-                        ):
+                        with st.spinner("Adding new FAF lines onto linked OrderTrac quote…"):
                             try:
                                 result = _save_header_and_push("append")
                                 if result.get("ok"):
@@ -1560,9 +1521,7 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
                                         f"already present {result.get('lines_skipped', 0)}."
                                     )
                                     if result.get("url"):
-                                        st.markdown(
-                                            f"[Open OrderTrac quote]({result['url']})"
-                                        )
+                                        st.markdown(f"[Open OrderTrac quote]({result['url']})")
                                     st.rerun()
                                 else:
                                     st.error(
@@ -1628,8 +1587,7 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
                         ["draft", "sent", "won", "lost", "archived"],
                         index=["draft", "sent", "won", "lost", "archived"].index(
                             quote.get("status")
-                            if quote.get("status")
-                            in ("draft", "sent", "won", "lost", "archived")
+                            if quote.get("status") in ("draft", "sent", "won", "lost", "archived")
                             else "draft"
                         ),
                         key=f"q_status_{qid}",
@@ -1758,18 +1716,14 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                         "notes": "",
                         "error": f"Parse failed: {exc}"[:400],
                         "row_count": 0,
-                        "kind": "pdf"
-                        if up.name.lower().endswith(".pdf")
-                        else "excel",
+                        "kind": "pdf" if up.name.lower().endswith(".pdf") else "excel",
                     }
                 # Keep only what we need; never store raw bytes in session
                 parsed.append(
                     {
                         "filename": up.name,
                         "vendor": prepared.get("vendor") or Path(up.name).stem,
-                        "multiplier": float(
-                            prepared.get("multiplier") or DEFAULT_MULTIPLIER
-                        ),
+                        "multiplier": float(prepared.get("multiplier") or DEFAULT_MULTIPLIER),
                         "detected_markup": prepared.get("detected_markup"),
                         "rows": list(prepared.get("rows") or []),
                         "notes": prepared.get("notes") or "",
@@ -1802,12 +1756,8 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
             prep = parsed_list[i] if i < len(parsed_list) else {}
             name = up.name
             default_vend = (prep.get("vendor") or Path(name).stem).strip()
-            saved = svc.get_vendor_multiplier(
-                default_vend, default=float(DEFAULT_MULTIPLIER)
-            )
-            default_mult = float(
-                prep.get("multiplier") or saved or DEFAULT_MULTIPLIER
-            )
+            saved = svc.get_vendor_multiplier(default_vend, default=float(DEFAULT_MULTIPLIER))
+            default_mult = float(prep.get("multiplier") or saved or DEFAULT_MULTIPLIER)
 
             vend_key = f"drop_vend_{i}"
             mult_key = f"drop_mult_{i}"
@@ -1827,9 +1777,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                         st.caption(str(prep.get("notes", ""))[:200])
                 with h2:
                     kind = (prep.get("kind") or "excel").upper()
-                    st.metric(
-                        "Parsed rows", f"{int(prep.get('row_count') or 0):,}"
-                    )
+                    st.metric("Parsed rows", f"{int(prep.get('row_count') or 0):,}")
                     st.caption(kind)
 
                 c1, c2, c3 = st.columns([1.6, 1.0, 1.0])
@@ -1885,9 +1833,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                 vend_final = (vend_edit or default_vend).strip()
                 mult_final = float(mult_edit)
                 cached_rows = list(prep.get("rows") or [])
-                rows = _apply_vendor_mult(
-                    cached_rows, vend_final, mult_final, name
-                )
+                rows = _apply_vendor_mult(cached_rows, vend_final, mult_final, name)
 
                 if rows:
                     sample = pd.DataFrame(rows[:6])
@@ -1918,9 +1864,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                         use_container_width=True,
                         hide_index=True,
                         column_config={
-                            "Wholesale": st.column_config.NumberColumn(
-                                format="$%.2f"
-                            ),
+                            "Wholesale": st.column_config.NumberColumn(format="$%.2f"),
                             "RETAIL": st.column_config.NumberColumn(
                                 format="$%.0f",
                                 help="Rolled up to next even dollar",
@@ -1952,9 +1896,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                         }
                     )
                 elif prep.get("error"):
-                    st.warning(
-                        "This file will be skipped until it parses cleanly."
-                    )
+                    st.warning("This file will be skipped until it parses cleanly.")
 
         st.divider()
         st.markdown("### Load into master price book")
@@ -1981,8 +1923,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                 for p in by_vendor.values()
             ]
             st.caption(
-                "Loading **replaces each builder’s whole catalog** "
-                "(one builder = one book)."
+                "Loading **replaces each builder’s whole catalog** (one builder = one book)."
             )
             st.dataframe(
                 pd.DataFrame(summary_rows),
@@ -2015,9 +1956,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                             float(p["multiplier"]),
                             notes=f"Set from drop import of {p['filename']}",
                         )
-                        svc.reapply_multiplier(
-                            float(p["multiplier"]), vendor=p["vendor"]
-                        )
+                        svc.reapply_multiplier(float(p["multiplier"]), vendor=p["vendor"])
                         results_log.append(
                             {
                                 "Builder": p["vendor"],
@@ -2082,9 +2021,7 @@ with tab_vendors:
         ].copy()
         if "phone" not in edit_df.columns:
             edit_df["phone"] = ""
-        edit_df["phone"] = (
-            edit_df["phone"].fillna("").astype(str).replace({"nan": "", "None": ""})
-        )
+        edit_df["phone"] = edit_df["phone"].fillna("").astype(str).replace({"nan": "", "None": ""})
         # Prefer saved_mult; fall back to avg_mult
         edit_df["Multiplier"] = edit_df.apply(
             lambda r: float(
@@ -2129,9 +2066,7 @@ with tab_vendors:
                     max_chars=40,
                 ),
                 "Items": st.column_config.NumberColumn(format="%d", disabled=True),
-                "Collections": st.column_config.NumberColumn(
-                    format="%d", disabled=True
-                ),
+                "Collections": st.column_config.NumberColumn(format="%d", disabled=True),
                 "Multiplier": st.column_config.NumberColumn(
                     "Multiplier",
                     min_value=0.1,
@@ -2228,9 +2163,7 @@ with tab_admin:
     if SHOW_VIZTECH:
         st.caption(f"Viztech sync: {_viztech_sync_hint()}")
     else:
-        st.caption(
-            "Accuracy mode · **manual Drop import only** · Viztech sync hidden"
-        )
+        st.caption("Accuracy mode · **manual Drop import only** · Viztech sync hidden")
 
     # TRACE: Admin OrderTrac block — set SHOW_ORDERTRAC_ADMIN = True to restore
     # (connection, sync users, FAF users, create/reset user, push FAF→OrderTrac)
@@ -2301,9 +2234,7 @@ with tab_admin:
                                     language=None,
                                 )
                         if sync_result.get("skipped"):
-                            st.caption(
-                                "Skipped: " + ", ".join(sync_result["skipped"][:12])
-                            )
+                            st.caption("Skipped: " + ", ".join(sync_result["skipped"][:12]))
                     else:
                         st.error(sync_result.get("error") or "Sync failed")
                         st.info("Need live session: `python scripts/ordertrac_login.py`")
@@ -2334,9 +2265,7 @@ with tab_admin:
                     )
                     if c in users_df.columns
                 ]
-                st.dataframe(
-                    users_df[show_cols], use_container_width=True, hide_index=True
-                )
+                st.dataframe(users_df[show_cols], use_container_width=True, hide_index=True)
             else:
                 st.info(
                     "No users yet — seed admin is created on first login, or run OrderTrac sync."
@@ -2347,9 +2276,7 @@ with tab_admin:
                 with cu1:
                     nu = st.text_input("Username", key="new_user_name")
                     nd = st.text_input("Display name", key="new_user_disp")
-                    nr = st.selectbox(
-                        "Role", ["sales", "floor", "admin"], key="new_user_role"
-                    )
+                    nr = st.selectbox("Role", ["sales", "floor", "admin"], key="new_user_role")
                 with cu2:
                     npw = st.text_input("Password", type="password", key="new_user_pw")
                     if st.button("Create user", key="btn_create_user"):
@@ -2373,17 +2300,11 @@ with tab_admin:
                 if users_df is not None and not users_df.empty:
                     unames = users_df["username"].tolist()
                     ru = st.selectbox("User", unames, key="reset_user_sel")
-                    rpw = st.text_input(
-                        "New password", type="password", key="reset_user_pw"
-                    )
+                    rpw = st.text_input("New password", type="password", key="reset_user_pw")
                     if st.button("Reset password", key="btn_reset_pw"):
                         row = users_df[users_df["username"] == ru].iloc[0]
-                        _ot_svc.set_app_user_password(
-                            int(row["id"]), rpw, must_change=True
-                        )
-                        st.success(
-                            f"Password reset for {ru} (must change on next login)."
-                        )
+                        _ot_svc.set_app_user_password(int(row["id"]), rpw, must_change=True)
+                        st.success(f"Password reset for {ru} (must change on next login).")
 
             st.markdown("##### Push FAF lines → OrderTrac QUOTE")
             st.caption(
@@ -2410,9 +2331,7 @@ with tab_admin:
                 udf = _ot_svc.list_app_users(active_only=True)
                 if not udf.empty and "ordertrac_display_name" in udf.columns:
                     ot_user_opts = [
-                        x
-                        for x in udf["ordertrac_display_name"].dropna().tolist()
-                        if str(x).strip()
+                        x for x in udf["ordertrac_display_name"].dropna().tolist() if str(x).strip()
                     ]
             except Exception:
                 pass
@@ -2453,9 +2372,7 @@ with tab_admin:
                                 customer_name="FAF Floor Quote",
                             )
                         if result.get("ok"):
-                            st.success(
-                                f"OrderTrac QUOTE {result.get('sales_order_id')} created."
-                            )
+                            st.success(f"OrderTrac QUOTE {result.get('sales_order_id')} created.")
                             if result.get("url"):
                                 st.markdown(f"[Open in OrderTrac]({result['url']})")
                         else:
@@ -2467,7 +2384,6 @@ with tab_admin:
             handoff = Path.home() / "Documents" / "ordertrac-session" / "faf-login-handoff.txt"
             if handoff.is_file():
                 st.caption(f"Staff login handoff file: `{handoff}`")
-
 
     # TRACE: Viztech block — set SHOW_VIZTECH = True to restore
     # (check login / full sync / 30-day LaunchAgent). Hidden while verifying
@@ -2516,9 +2432,7 @@ with tab_admin:
 
                 py = _python_executable()
                 script = APP_DIR / "scripts" / "viztech_sync.py"
-                with st.spinner(
-                    "Syncing Viztech → FAF (download + import). Leave this tab open…"
-                ):
+                with st.spinner("Syncing Viztech → FAF (download + import). Leave this tab open…"):
                     proc = subprocess.run(
                         [py, str(script)],
                         cwd=str(APP_DIR),
@@ -2630,10 +2544,7 @@ with tab_admin:
                     live = restore_from(backups[idx], also_backup_current=True)
                     # Clear cached service so next load reopens DB connection state
                     get_service.clear()
-                    st.success(
-                        f"Restored `{backups[idx].name}` → `{live.name}`. "
-                        "Reloading…"
-                    )
+                    st.success(f"Restored `{backups[idx].name}` → `{live.name}`. Reloading…")
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Restore failed: {exc}")
@@ -2681,7 +2592,7 @@ with tab_admin:
 
     st.markdown("##### CLI")
     _cli = """
-source ~/FAF-pricebook/.venv/bin/activate
+source /FAF-pricelist-2.0/.venv/bin/activate
 python -m backend.cli stats
 python -m backend.cli search "oak nightstand"
 python scripts/backup_db.py backup

@@ -7,8 +7,9 @@ Copy any block below into chat. Fill in the `[brackets]` when you see them.
 ## Everyday ops
 
 ### Run / fix the app
+
 ```
-FAF Pricebook is at ~/FAF-pricebook.
+FAF Pricebook is at /FAF-pricelist-2.0.
 [I can't run it / it crashed / import failed / search is empty.]
 Here's what I did and any error text:
 [paste error or screenshot description]
@@ -16,6 +17,7 @@ Fix it and tell me the exact commands to run.
 ```
 
 ### Import a builder file
+
 ```
 Import this builder price list into the master price book:
 Path: [full path to .xlsx or .pdf]
@@ -27,6 +29,7 @@ Report row counts and spot-check 3 sample SKUs.
 ```
 
 ### Batch import a folder
+
 ```
 Import all Excel price lists from:
 [folder path]
@@ -37,6 +40,7 @@ Print a table: file → rows inserted/updated → errors.
 ```
 
 ### Search like the floor would
+
 ```
 Search the master price book as if I'm on the sales floor:
 Query: [oak queen nightstand / A591 / Ashton dresser]
@@ -49,8 +53,9 @@ Show top 15 with base, mult, retail. If nothing hits, suggest better search term
 ## Build features
 
 ### Next feature (default phrasing)
+
 ```
-Continue FAF Pricebook at ~/FAF-pricebook.
+Continue FAF Pricebook at /FAF-pricelist-2.0.
 Next feature: [duplicate cleanup UI / quote builder / batch folder import / OCR / …]
 Use the existing backend.PriceBookService — don't put logic only in Streamlit.
 Keep long-form master storage. Match LAYOUT_SYSTEM.md.
@@ -58,6 +63,7 @@ When done: smoke-test and give me run commands.
 ```
 
 ### Quote builder
+
 ```
 Add a Quote Builder to the price book app:
 - Search/add lines from master (part, desc, species, qty, base, retail)
@@ -69,8 +75,9 @@ Backend methods on PriceBookService; thin Streamlit tab.
 ```
 
 ### Per-vendor multipliers UI
+
 ```
-Improve vendor multipliers in ~/FAF-pricebook:
+Improve vendor multipliers in /FAF-pricelist-2.0:
 - List all vendors with saved mult and row counts
 - Edit mult and recompute that vendor only
 - Default 2.7 if unset
@@ -78,6 +85,7 @@ Improve vendor multipliers in ~/FAF-pricebook:
 ```
 
 ### Fix bad import for one builder
+
 ```
 This builder file imports wrong:
 Path: [path]
@@ -91,6 +99,7 @@ re-test on that file only, show before/after sample rows.
 ## Data quality
 
 ### Find and clean duplicates
+
 ```
 Scan master_pricebook.db for duplicate identity groups
 (vendor + part + species + finish + collection).
@@ -99,6 +108,7 @@ Don't delete without summarizing what would go.
 ```
 
 ### Compare two price list versions
+
 ```
 Compare two versions of the same builder:
 Old: [path]
@@ -112,11 +122,13 @@ Report: new SKUs, dropped SKUs, price changes > [5]%.
 ## How to talk to me (meta)
 
 ### Keep building (short)
+
 ```
 Keep building the next part of the price book. You pick the highest-value next step from LAYOUT_SYSTEM.md / PROMPTS.md and ship it. Don't ask unless blocked.
 ```
 
 ### Plan only (no code yet)
+
 ```
 Don't write code yet. Propose a plan for [feature] with:
 - files you'll touch
@@ -126,14 +138,16 @@ Wait for my OK.
 ```
 
 ### Check your work
+
 ```
-Verify the last changes on ~/FAF-pricebook:
+Verify the last changes on /FAF-pricelist-2.0:
 - run backend CLI stats/search
 - import one real Excel with upsert twice (must not double rows)
 - note any failures and fix them
 ```
 
 ### Explain like I'm on the floor
+
 ```
 Explain [feature / how multipliers work / how to import Schrock's]
 in plain language for a furniture store owner — short steps, no jargon.
@@ -146,7 +160,7 @@ in plain language for a furniture store owner — short steps, no jargon.
 ```
 I'm building Sir's Private Multiplier Engine — a Streamlit + SQLite price book for Amish furniture builders.
 
-Repo: ~/FAF-pricebook
+Repo: /FAF-pricelist-2.0
 - UI: pricebook_app.py (thin)
 - Backend: backend.PriceBookService (all real logic)
 - Parsers: wide_import.py (Excel matrices), pdf_import.py

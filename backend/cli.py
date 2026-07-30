@@ -7,6 +7,7 @@ Price Book backend CLI.
   python -m backend.cli batch /path/to/folder --excel-only
   python -m backend.cli dups
   python -m backend.cli cleanup-dups --execute
+  python -m backend.cli thin-catalogs
 """
 
 from __future__ import annotations
@@ -87,6 +88,18 @@ def main(argv: list[str] | None = None) -> int:
     vp = sub.add_parser("vendors", help="Vendor summary table")
     add_db(vp)
 
+    tp = sub.add_parser(
+        "thin-catalogs",
+        help="List builders under the thin-catalog row threshold (ADR-0007)",
+    )
+    add_db(tp)
+    tp.add_argument(
+        "--max-rows",
+        type=int,
+        default=None,
+        help="Row ceiling (default: THIN_CATALOG_MAX_ROWS=150)",
+    )
+
     sp_std = sub.add_parser(
         "standardize",
         help="Rewrite master rows to canonical vendor/species/finish/collection shape",
@@ -134,9 +147,9 @@ def main(argv: list[str] | None = None) -> int:
 
         path = Path(args.path)
         data = path.read_bytes()
-        vendor = resolve_builder_vendor(
-            args.vendor or path.stem, filename=path.name
-        ) or (args.vendor or path.stem)
+        vendor = resolve_builder_vendor(args.vendor or path.stem, filename=path.name) or (
+            args.vendor or path.stem
+        )
         preview = svc.preview_excel(
             data,
             filename=path.name,
@@ -203,6 +216,23 @@ def main(argv: list[str] | None = None) -> int:
             print("(no vendors)")
         else:
             print(df.to_string(index=False))
+        return 0
+
+    if args.cmd == "thin-catalogs":
+        from backend.config import THIN_CATALOG_MAX_ROWS
+
+        max_rows = args.max_rows if args.max_rows is not None else THIN_CATALOG_MAX_ROWS
+        df = svc.list_thin_catalogs(max_rows=max_rows)
+        if df.empty:
+            print(f"(no thin catalogs under {max_rows} rows)")
+        else:
+            cols = [
+                c
+                for c in ["vendor", "rows", "collections", "source_files", "phone"]
+                if c in df.columns
+            ]
+            print(df[cols].to_string(index=False))
+            print(f"\n{len(df)} thin builders (rows < {max_rows})")
         return 0
 
     if args.cmd == "standardize":

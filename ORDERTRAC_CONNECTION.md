@@ -5,12 +5,12 @@ book with accounts derived from OrderTrac sales users.
 
 ## What this does
 
-| Piece | Purpose |
-|-------|---------|
-| `[ordertrac]` in secrets | Company login (email/password) for automation |
-| Playwright session | Survives reCAPTCHA (`~/Documents/ordertrac-session/`) |
-| `app_users` table | Multi-user FAF logins (admin / sales / floor) |
-| Sync from OrderTrac | Reads OT **UserGUID** list → creates FAF users |
+| Piece                    | Purpose                                               |
+| ------------------------ | ----------------------------------------------------- |
+| `[ordertrac]` in secrets | Company login (email/password) for automation         |
+| Playwright session       | Survives reCAPTCHA (`~/Documents/ordertrac-session/`) |
+| `app_users` table        | Multi-user FAF logins (admin / sales / floor)         |
+| Sync from OrderTrac      | Reads OT **UserGUID** list → creates FAF users        |
 
 OrderTrac remains the sales system. FAF remains the price engine. The bridge
 stores **who** can use FAF and links them to OT display names / GUIDs for future
@@ -38,7 +38,7 @@ Copy from `secrets.toml.example` if needed.
 ### 2. OrderTrac browser session
 
 ```bash
-cd ~/FAF-pricebook
+cd /FAF-pricelist-2.0
 source .venv/bin/activate
 python scripts/ordertrac_login.py
 ```
@@ -67,16 +67,16 @@ From OrderTrac display name `Miller, Judson` → FAF username `judson.miller`.
 
 Linked fields on each user:
 
-- `ordertrac_user_guid` — OT UserGUID when available  
-- `ordertrac_display_name` — e.g. `Miller, Judson`  
+- `ordertrac_user_guid` — OT UserGUID when available
+- `ordertrac_display_name` — e.g. `Miller, Judson`
 - `source` = `ordertrac`
 
 ## Roles
 
-| Role | Access |
-|------|--------|
-| `admin` | Full app + OrderTrac connection + user management |
-| `sales` | Floor price book (default for OT-synced users) |
+| Role    | Access                                                    |
+| ------- | --------------------------------------------------------- |
+| `admin` | Full app + OrderTrac connection + user management         |
+| `sales` | Floor price book (default for OT-synced users)            |
 | `floor` | Same as sales for now (reserved for tighter limits later) |
 
 Seed admin (if no users yet) comes from `[auth]` or defaults **Foothills / Amish**.
@@ -100,12 +100,15 @@ python scripts/ordertrac_sync_users.py --check
 ## Push FAF prices → OrderTrac QUOTE
 
 ### Admin UI
+
 **Admin → Push FAF lines → OrderTrac QUOTE**
+
 - Enter FAF pricebook IDs + qtys + wood/stain
 - Pick OrderTrac sales user (from synced staff)
 - Creates a **Quote** (not a sale) with custom lines + Manufacture Vendor
 
 ### CLI
+
 ```bash
 # By FAF row ids
 python scripts/ordertrac_push_quote.py --faf-ids 479060,482875 --qtys 1,4
@@ -115,9 +118,11 @@ python scripts/ordertrac_push_quote.py --quote-id 1
 ```
 
 ### Vendor map
+
 `config/ordertrac_vendor_map.json` — FAF vendor name → OrderTrac Manufacture Vendor label.
 
 ### Login handoff
+
 After user sync / password re-issue:
 `~/Documents/ordertrac-session/faf-login-handoff.txt` (gitignored machine folder)
 

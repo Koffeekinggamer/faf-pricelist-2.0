@@ -2,11 +2,11 @@
 
 ## Source of truth
 
-| Asset | Location | Notes |
-|-------|----------|--------|
-| **Authoritative catalog** | `~/FAF-pricebook/master_pricebook.db` on the store Mac | **Never** committed to GitHub |
-| **App code** | `origin` → `Koffeekinggamer/pricebook-system` | Safe to deploy |
-| **Backups** | `~/Documents/FAF-pricebook-backups/` | Local only |
+| Asset                     | Location                                                  | Notes                         |
+| ------------------------- | --------------------------------------------------------- | ----------------------------- |
+| **Authoritative catalog** | `/FAF-pricelist-2.0/master_pricebook.db` on the store Mac | **Never** committed to GitHub |
+| **App code**              | `origin` → `Koffeekinggamer/pricebook-system`             | Safe to deploy                |
+| **Backups**               | `~/Documents/FAF-pricebook-backups/`                      | Local only                    |
 
 **Important:** Streamlit Cloud / Fly deploy the **code**, not the private ~500k-row DB (gitignored).  
 Floor staff should use **local** or the **Mac public tunnel** for current prices.
@@ -17,16 +17,16 @@ Floor staff should use **local** or the **Mac public tunnel** for current prices
 
 While this Mac is on (LaunchAgents keep Streamlit up):
 
-| | |
-|--|--|
-| **Local** | http://127.0.0.1:8501 |
+|            |                                                                |
+| ---------- | -------------------------------------------------------------- |
+| **Local**  | http://127.0.0.1:8501                                          |
 | **Public** | See `~/Documents/FAF-pricebook-backups/CURRENT_PUBLIC_URL.txt` |
-| **Login** | Foothills / Amish |
+| **Login**  | Foothills / Amish                                              |
 
 Refresh the public URL anytime:
 
 ```bash
-~/FAF-pricebook/scripts/public_tunnel.sh
+/FAF-pricelist-2.0/scripts/public_tunnel.sh
 # writes CURRENT_PUBLIC_URL.txt when successful
 ```
 
@@ -41,9 +41,9 @@ cloudflared tunnel --url http://127.0.0.1:8501 --no-autoupdate
 **Autostart (this Mac):**
 
 ```bash
-~/FAF-pricebook/scripts/install_autostart.sh   # Streamlit + tunnel agents
-~/FAF-pricebook/scripts/install_weekly_backup.sh
-~/FAF-pricebook/scripts/install_viztech_monthly_sync.sh
+/FAF-pricelist-2.0/scripts/install_autostart.sh   # Streamlit + tunnel agents
+/FAF-pricelist-2.0/scripts/install_weekly_backup.sh
+/FAF-pricelist-2.0/scripts/install_viztech_monthly_sync.sh
 ```
 
 ---
@@ -52,8 +52,8 @@ cloudflared tunnel --url http://127.0.0.1:8501 --no-autoupdate
 
 Repo: https://github.com/Koffeekinggamer/pricebook-system
 
-1. https://share.streamlit.io/deploy  
-2. Repository `Koffeekinggamer/pricebook-system` · branch `main` · main file `pricebook_app.py`  
+1. https://share.streamlit.io/deploy
+2. Repository `Koffeekinggamer/pricebook-system` · branch `main` · main file `pricebook_app.py`
 3. Secrets (optional):
 
 ```toml
@@ -75,13 +75,13 @@ password = "Amish"
 **GitHub source (main):** https://github.com/Koffeekinggamer/faf-pricelist-2.0  
 **Current UI mode:** content accuracy (Search · Drop · Vendors · Admin; OrderTrac hidden)
 
-| Piece | Detail |
-|-------|--------|
-| App | `faf-pricebook` · region `iad` |
-| Volume | `pricebook_data` → `/data` (3 GB) |
-| DB path | `/data/master_pricebook.db` (`FAF_DB_PATH`) |
+| Piece           | Detail                                                     |
+| --------------- | ---------------------------------------------------------- |
+| App             | `faf-pricebook` · region `iad`                             |
+| Volume          | `pricebook_data` → `/data` (3 GB)                          |
+| DB path         | `/data/master_pricebook.db` (`FAF_DB_PATH`)                |
 | Source of truth | Still the **Mac** DB; push a copy to Fly after big updates |
-| Auto-deploy | `.github/workflows/fly-deploy.yml` on push to `main` |
+| Auto-deploy     | `.github/workflows/fly-deploy.yml` on push to `main`       |
 
 ### GitHub Actions token (required once)
 
@@ -100,7 +100,7 @@ Without `FLY_API_TOKEN`, the Fly Deploy Action fails (empty token). Redeploy fro
 
 ```bash
 export PATH="$HOME/.fly/bin:$PATH"
-cd ~/FAF-pricelist-2.0   # or this checkout
+cd /FAF-pricelist-2.0   # or this checkout
 fly auth login   # if needed
 
 # Volume (once): created automatically on deploy if missing, or:
@@ -137,8 +137,8 @@ Credentials: `.streamlit/secrets.toml` `[viztech]` (gitignored).
 
 ## Decision matrix
 
-| Need | Use |
-|------|-----|
-| Floor sales today, full book | **Local 8501** or **quick tunnel** |
+| Need                            | Use                                                           |
+| ------------------------------- | ------------------------------------------------------------- |
+| Floor sales today, full book    | **Local 8501** or **quick tunnel**                            |
 | Permanent public marketing demo | Cloud/Fly with a **sanitized sample DB** (not full wholesale) |
-| Keep prices private | Never commit `*.db`; use Mac tunnel only for staff |
+| Keep prices private             | Never commit `*.db`; use Mac tunnel only for staff            |
