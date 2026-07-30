@@ -16,14 +16,21 @@ primary_region = 'iad'
   STREAMLIT_BROWSER_GATHER_USAGE_STATS = 'false'
   STREAMLIT_SERVER_PORT = '8501'
   STREAMLIT_SERVER_ADDRESS = '0.0.0.0'
+  # Keep WebSocket alive through Fly proxy (Streamlit 1.60 / Starlette)
+  STREAMLIT_SERVER_WEBSOCKET_PING_INTERVAL = '15'
+  STREAMLIT_SERVER_FILE_WATCHER_TYPE = 'none'
+  STREAMLIT_SERVER_MAX_MESSAGE_SIZE = '500'
+  STREAMLIT_SERVER_MAX_UPLOAD_SIZE = '400'
+  STREAMLIT_SERVER_DISCONNECTED_SESSION_TTL = '3600'
   # Login via FAF_APP_USER / FAF_APP_PASSWORD secrets (or built-in defaults)
 
 [http_service]
   internal_port = 8501
   force_https = true
-  auto_stop_machines = 'stop'
+  # Streamlit needs a persistent WebSocket. auto_stop='stop' soft-cordons /
+  # GoAway's WS clients → browser "Connecting…" reconnect loop on the floor.
+  auto_stop_machines = 'off'
   auto_start_machines = true
-  # Keep one machine warm so first visitor after Mac-off isn't too slow
   min_machines_running = 1
   processes = ['app']
 
