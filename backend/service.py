@@ -111,9 +111,47 @@ class PriceBookService:
         return self.repo.list_species(vendor=vendor)
 
     def list_option_keys(self, vendor: Optional[str] = None) -> list[str]:
-        """Selectable option_key values for the floor Option dropdown (per builder)."""
+        """Selectable Option values for a builder — addon charges + finish codes (ADR-0008)."""
         self.ensure_ready()
         return self.repo.list_option_keys(vendor=vendor)
+
+    def add_addon_charge(
+        self,
+        *,
+        vendor: str,
+        label: str,
+        flat_wholesale: Optional[float] = None,
+        addon_pct: Optional[float] = None,
+        species: Optional[str] = None,
+        notes: Optional[str] = None,
+        source_file: Optional[str] = None,
+    ) -> dict:
+        """Insert one addon charge row (not sellable Search retail)."""
+        self.ensure_ready()
+        label = (label or "").strip()
+        if not vendor or not label:
+            raise ValueError("vendor and label are required for addon charges")
+        if flat_wholesale is None and addon_pct is None:
+            raise ValueError("provide flat_wholesale and/or addon_pct")
+        row = {
+            "vendor": vendor,
+            "collection": "Addons",
+            "part_number": label,
+            "description": label,
+            "option_key": label,
+            "species": species,
+            "finish_state": None,
+            "base_price": flat_wholesale,
+            "price_basis": "wholesale",
+            "multiplier": None,
+            "adjusted_price": None,
+            "line_kind": "addon",
+            "addon_pct": addon_pct,
+            "notes": notes,
+            "source_file": source_file or "addon",
+        }
+        n = self.repo.insert_rows([row])
+        return {"inserted": n, "label": label, "vendor": vendor}
 
     def list_source_files(self) -> list[str]:
         self.ensure_ready()

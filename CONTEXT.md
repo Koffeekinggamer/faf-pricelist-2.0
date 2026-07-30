@@ -31,8 +31,8 @@ Wood tier **or** color/fabric option on the row (slash-separated woods, Title Ca
 _Avoid_: `col_N`, bare `FINISHED`, raw column headers
 
 **Option** / **addon charge**:
-A builder upcharge or specialty adder — e.g. +% over base for certain woods, or a listed specialty change that is not the main SKU×wood×finish sellable row. Floor **Option** dropdown should surface these when present.
-_Avoid_: treating finish Cat.N / fabric _tier labels_ as the only meaning of Option; treating raw adder dollars as full chair retail (FN fabric adder columns are skipped on purpose)
+A builder upcharge or specialty adder — e.g. +% over base for certain woods, or a listed specialty change that is not the main SKU×wood×finish sellable row. Stored as `line_kind=addon` (ADR-0008). Floor **Option** dropdown surfaces these when present; Search hides them unless Option is filtered to that adder.
+_Avoid_: treating finish Cat.N / fabric _tier labels_ as the only meaning of Option; treating raw adder dollars as full chair retail
 
 **Finish state**:
 Only `finished` or `unfinished` (default `finished` for floor search).

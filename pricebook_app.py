@@ -209,8 +209,8 @@ def _option_dropdown_options(vendor_key: str) -> list:
     Options for the Search dropdown — only for the selected builder.
 
     Builder = All → empty (no cross-vendor option soup).
-    Specific builder → that builder's options (option_key + option-like
-    species: FN Cat.N, Hillside sizes, Patio Kraft colors, leather tiers, …).
+    Specific builder → that builder's options (addon charges + option_key /
+    option-like species: FN Cat.N, fabric adders, Hillside sizes, …).
     """
     if not vendor_key or vendor_key == "All":
         return []
@@ -609,7 +609,7 @@ with tab_search:
             finish_opts = ["finished", "All", "unfinished"]
             ff = st.selectbox("Finish", finish_opts, index=0, key="sf")
         with f4:
-            # Option — per builder only (FN Cat. 1/2/3, etc.)
+            # Option — per builder (addon charges + finish Cat.N, etc.)
             opt_list = _option_dropdown_options(vf if vf else "All")
             opt_opts = ["All"] + [o for o in opt_list if o and o != "All"]
             if "so" in st.session_state and st.session_state["so"] not in opt_opts:
@@ -618,8 +618,8 @@ with tab_search:
                 "Option",
                 options=opt_opts,
                 key="so",
-                help="All options for the selected builder — finish Cat.N, "
-                "size codes, color/fabric/poly/leather tiers, etc. "
+                help="Addon charges and finish/size/color options for this "
+                "builder (ADR-0008). Pick an adder to see its $ / % charge. "
                 "Disabled when Builder is All or that builder has no options.",
                 disabled=(vf == "All" or len(opt_opts) <= 1),
             )
@@ -742,7 +742,7 @@ with tab_search:
                     help_text={
                         "RETAIL": "Customer price — wholesale × mult, rolled up to next even dollar",
                         "Wood": "Wood species / option — use the Wood dropdown above to pick one",
-                        "Option": "Builder option (FN finish Cat. 1/2/3, etc.)",
+                        "Option": "Addon charge or finish/size option",
                     },
                     overrides={
                         "Part #": 110,

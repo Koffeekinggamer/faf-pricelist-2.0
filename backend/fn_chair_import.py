@@ -10,8 +10,8 @@ Workbook shape (per style block):
   Arm Chair  | Unf | ...
 
 Cat. 1/2/3 are finish/stain tiers (see PCL Color List), not fabric grades.
-Unf = unfinished wood chair. Fabric columns on Unf rows are upcharge adders
-and are skipped here so Search never shows a $23 adder as a chair retail.
+Unf = unfinished wood chair. Fabric columns on Unf rows are flat $ upcharge
+adders — imported as ``line_kind='addon'`` (ADR-0008), not sellable retail.
 """
 
 from __future__ import annotations
@@ -37,9 +37,7 @@ _CHAIR_TYPE_RE = re.compile(
     r"seat\s+only(?:\s+.*)?)$"
 )
 
-_WOODISH_RE = re.compile(
-    r"(?i)oak|maple|cherry|walnut|hickory|qs|qtrsawn|rough\s*sawn|wormy"
-)
+_WOODISH_RE = re.compile(r"(?i)oak|maple|cherry|walnut|hickory|qs|qtrsawn|rough\s*sawn|wormy")
 
 
 def _norm_quotes(s: str) -> str:
@@ -85,8 +83,7 @@ def looks_like_fn_level_one(
     names = [str(n) for n in (sheet_names or [])]
     has_pl_print = any(n.strip().lower() == "pl print" for n in names)
     if has_pl_print and any(
-        re.search(r"(?i)pcl\s*color|pl\s*to\s*export|pl\s*with\s*markup", n)
-        for n in names
+        re.search(r"(?i)pcl\s*color|pl\s*to\s*export|pl\s*with\s*markup", n) for n in names
     ):
         return True
     if re.search(r"(?i)\bfnc?\b|\bfn[\s_]*chair", fn) and has_pl_print:
@@ -104,11 +101,7 @@ def _is_style_header(row: list[Any]) -> bool:
         return False
     if _CHAIR_TYPE_RE.match(label) or _CAT_RE.match(label) or _UNF_RE.match(label):
         return False
-    wood_hits = sum(
-        1
-        for v in row[2:9]
-        if _cell(v) and _WOODISH_RE.search(_cell(v))
-    )
+    wood_hits = sum(1 for v in row[2:9] if _cell(v) and _WOODISH_RE.search(_cell(v)))
     return wood_hits >= 2
 
 
@@ -140,6 +133,7 @@ def parse_fn_pl_print_rows(
     out: list[dict] = []
     style: Optional[str] = None
     woods: list[tuple[int, str]] = []
+    fabrics: list[tuple[int, str]] = []
     chair: Optional[str] = None
 
     for i in range(len(df)):
@@ -151,6 +145,12 @@ def parse_fn_pl_print_rows(
                 lab = _cell(row[j])
                 if lab and _WOODISH_RE.search(lab):
                     woods.append((j, lab))
+            fabrics = []
+            max_wood_j = max((j for j, _ in woods), default=1)
+            for j in range(max_wood_j + 1, len(row)):
+                lab = _cell(row[j])
+                if lab and not _WOODISH_RE.search(lab):
+                    fabrics.append((j, lab))
             chair = None
             continue
 
@@ -190,6 +190,33 @@ def parse_fn_pl_print_rows(
                     "price_basis": "wholesale",
                     "unit": None,
                     "notes": None,
+                    "line_kind": "item",
+                }
+            )
+
+        # Fabric columns = flat $ addon charges (ADR-0008), not chair retail
+        for j, fabric in fabrics:
+            adder = _to_price(row[j] if j < len(row) else None)
+            if adder is None:
+                continue
+            out.append(
+                {
+                    "vendor": vendor,
+                    "collection": "Addons",
+                    "part_number": f"{part} — {fabric}",
+                    "description": f"{fabric} adder ({part})",
+                    "dimensions": None,
+                    "option_key": fabric,
+                    "species": None,
+                    "species_tier": None,
+                    # Floor Finish defaults to finished; addons are not Unf chairs
+                    "finish_state": "finished",
+                    "base_price": adder,
+                    "price_basis": "wholesale",
+                    "unit": None,
+                    "notes": "fabric adder",
+                    "line_kind": "addon",
+                    "addon_pct": None,
                 }
             )
     return out
@@ -221,8 +248,7 @@ def import_fn_chair_workbook(
         targets = [
             n
             for n in names
-            if not _FN_SKIP_SHEETS.search(str(n))
-            and re.search(r"(?i)\bpl\b|price", str(n))
+            if not _FN_SKIP_SHEETS.search(str(n)) and re.search(r"(?i)\bpl\b|price", str(n))
         ]
 
     for name in names:
@@ -240,9 +266,7 @@ def import_fn_chair_workbook(
             bio = io.BytesIO(data)
             raw = pd.read_excel(bio, sheet_name=name, header=None, engine="openpyxl")
         except Exception as e:
-            tried.append(
-                {"sheet": name, "layout": "error", "rows": 0, "note": str(e)}
-            )
+            tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)})
             continue
         rows = parse_fn_pl_print_rows(raw, vendor=vendor_name)
         if default_collection:
@@ -274,7 +298,7 @@ def import_fn_chair_workbook(
         notes=(
             f"{filename + ': ' if filename else ''}"
             f"FN Chair Level One PL Print · "
-            f"{0 if out.empty else len(out)} wood price rows "
-            f"(fabric adders skipped)"
+            f"{0 if out.empty else len(out)} rows "
+            f"(wood prices + fabric adders as line_kind=addon)"
         ),
     )

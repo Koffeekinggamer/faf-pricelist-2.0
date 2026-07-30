@@ -162,10 +162,11 @@ class PriceBookRepository:
 
     def list_option_keys(self, vendor: Optional[str] = None) -> list[str]:
         """
-        Distinct Option dropdown values for one builder.
+        Distinct Option dropdown values for one builder (ADR-0008).
 
         Includes:
-          - every non-empty option_key for that vendor (FN Cat.N, Hillside sizes, …)
+          - addon charge labels (`line_kind = 'addon'`) — primary meaning of Option
+          - non-empty option_key on item rows (FN Cat.N, Hillside sizes, …)
           - species labels that are options (color/fabric/poly/leather tiers),
             not wood species
 
@@ -175,10 +176,30 @@ class PriceBookRepository:
             return []
         found: set[str] = set()
         with self._conn() as conn:
+            # Addon charges (flat $ or +%) — preferred Option meaning
+            for (raw,) in conn.execute(
+                """
+                SELECT DISTINCT
+                    COALESCE(
+                        NULLIF(TRIM(option_key), ''),
+                        NULLIF(TRIM(description), ''),
+                        NULLIF(TRIM(part_number), '')
+                    )
+                FROM pricebook
+                WHERE vendor = ?
+                  AND lower(COALESCE(line_kind, 'item')) = 'addon'
+                """,
+                (vendor,),
+            ):
+                if raw:
+                    s = str(raw).strip()
+                    if s:
+                        found.add(s)
             for (raw,) in conn.execute(
                 "SELECT DISTINCT option_key FROM pricebook "
                 "WHERE option_key IS NOT NULL AND TRIM(option_key) != '' "
-                "AND vendor = ?",
+                "AND vendor = ? "
+                "AND lower(COALESCE(line_kind, 'item')) != 'addon'",
                 (vendor,),
             ):
                 s = str(raw).strip()
@@ -187,7 +208,8 @@ class PriceBookRepository:
             for (raw,) in conn.execute(
                 "SELECT DISTINCT species FROM pricebook "
                 "WHERE species IS NOT NULL AND TRIM(species) != '' "
-                "AND vendor = ?",
+                "AND vendor = ? "
+                "AND lower(COALESCE(line_kind, 'item')) != 'addon'",
                 (vendor,),
             ):
                 s = str(raw).strip()
@@ -263,9 +285,7 @@ class PriceBookRepository:
                 by_low[k] = p
         return sorted(by_low.values(), key=lambda x: x.lower())
 
-    def _is_option_dropdown_label(
-        self, p: str, *, from_option_key: bool = False
-    ) -> bool:
+    def _is_option_dropdown_label(self, p: str, *, from_option_key: bool = False) -> bool:
         """True if label belongs in the per-builder Option dropdown."""
         if not p:
             return False
@@ -348,12 +368,7 @@ class PriceBookRepository:
     @staticmethod
     def _like_escape(term: str) -> str:
         """Escape LIKE wildcards so user input is literal (%, _, \\)."""
-        return (
-            (term or "")
-            .replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-        )
+        return (term or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     def _term_match_sql(self, term: str) -> tuple[str, list]:
         """One term → SQL that matches if the term appears in ANY pricelist field."""
@@ -361,14 +376,12 @@ class PriceBookRepository:
         if not term:
             return "1=1", []
         like = f"%{self._like_escape(term)}%"
-        parts = [
-            f"lower(coalesce({col},'')) LIKE ? ESCAPE '\\'"
-            for col in self._SEARCH_FIELDS
-        ]
+        parts = [f"lower(coalesce({col},'')) LIKE ? ESCAPE '\\'" for col in self._SEARCH_FIELDS]
         # Also match cast of base_price as text (e.g. "1250")
         parts.append("cast(base_price as text) LIKE ? ESCAPE '\\'")
         parts.append("cast(adjusted_price as text) LIKE ? ESCAPE '\\'")
         return "(" + " OR ".join(parts) + ")", [like] * (len(self._SEARCH_FIELDS) + 2)
+
     @staticmethod
     def _tokenize_boolean(query: str) -> list:
         """
@@ -510,9 +523,7 @@ class PriceBookRepository:
                 right_c, right_p = sql_stack.pop()
                 left_c, left_p = sql_stack.pop()
                 op = " AND " if typ == "AND" else " OR "
-                sql_stack.append(
-                    (f"({left_c}{op}{right_c})", left_p + right_p)
-                )
+                sql_stack.append((f"({left_c}{op}{right_c})", left_p + right_p))
 
         if not sql_stack:
             return "", [], bare_terms
@@ -554,6 +565,11 @@ class PriceBookRepository:
         q = (query or "").strip()
         q_lower = q.lower()
 
+        # ADR-0008: hide addon charges unless Option filter targets them
+        opt_filter = option_key.strip() if option_key and option_key != "All" else None
+        if not opt_filter:
+            clauses.append("lower(COALESCE(line_kind, 'item')) != 'addon'")
+
         bare_terms: list[str] = []
         if q:
             bool_sql, bool_params, bare_terms = self._boolean_to_sql(q)
@@ -594,18 +610,11 @@ class PriceBookRepository:
                     "% / " + esc,  # "… / Cherry"
                 ]
             )
-        if option_key and option_key != "All":
+        if opt_filter:
             # Match option_key column OR species stored as an option tier
             # (Patio Kraft colors, LuxHome leather, etc.)
-            opt = option_key.strip()
-            clauses.append(
-                "("
-                "trim(coalesce(option_key,'')) = ? OR "
-                "trim(coalesce(species,'')) = ?"
-                ")"
-            )
-            params.extend([opt, opt])
-
+            clauses.append("(trim(coalesce(option_key,'')) = ? OR trim(coalesce(species,'')) = ?)")
+            params.extend([opt_filter, opt_filter])
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         cols = ", ".join(SELECT_COLS)
 
@@ -673,11 +682,10 @@ class PriceBookRepository:
     def insert_rows(self, rows: list[dict]) -> int:
         if not rows:
             return 0
+        for r in rows:
+            r.setdefault("line_kind", "item")
         placeholders = ",".join("?" * len(PRICEBOOK_COLS))
-        sql = (
-            f"INSERT INTO pricebook ({','.join(PRICEBOOK_COLS)}) "
-            f"VALUES ({placeholders})"
-        )
+        sql = f"INSERT INTO pricebook ({','.join(PRICEBOOK_COLS)}) VALUES ({placeholders})"
         values = [tuple(r.get(c) for c in PRICEBOOK_COLS) for r in rows]
         with self._conn() as conn:
             conn.executemany(sql, values)
@@ -686,9 +694,7 @@ class PriceBookRepository:
 
     def delete_by_source(self, source_file: str) -> int:
         with self._conn() as conn:
-            cur = conn.execute(
-                "DELETE FROM pricebook WHERE source_file = ?", (source_file,)
-            )
+            cur = conn.execute("DELETE FROM pricebook WHERE source_file = ?", (source_file,))
             conn.commit()
             return cur.rowcount
 
@@ -717,16 +723,11 @@ class PriceBookRepository:
         for r in rows:
             r["vendor"] = vendor
         placeholders = ",".join("?" * len(PRICEBOOK_COLS))
-        insert_sql = (
-            f"INSERT INTO pricebook ({','.join(PRICEBOOK_COLS)}) "
-            f"VALUES ({placeholders})"
-        )
+        insert_sql = f"INSERT INTO pricebook ({','.join(PRICEBOOK_COLS)}) VALUES ({placeholders})"
         values = [tuple(r.get(c) for c in PRICEBOOK_COLS) for r in rows]
         now = datetime.now().isoformat(timespec="seconds")
         with self._conn() as conn:
-            cur = conn.execute(
-                "DELETE FROM pricebook WHERE vendor = ?", (vendor,)
-            )
+            cur = conn.execute("DELETE FROM pricebook WHERE vendor = ?", (vendor,))
             deleted = cur.rowcount
             if values:
                 conn.executemany(insert_sql, values)
@@ -750,15 +751,10 @@ class PriceBookRepository:
         if not source_file:
             raise ValueError("source_file is required for replace_source_rows")
         placeholders = ",".join("?" * len(PRICEBOOK_COLS))
-        insert_sql = (
-            f"INSERT INTO pricebook ({','.join(PRICEBOOK_COLS)}) "
-            f"VALUES ({placeholders})"
-        )
+        insert_sql = f"INSERT INTO pricebook ({','.join(PRICEBOOK_COLS)}) VALUES ({placeholders})"
         values = [tuple(r.get(c) for c in PRICEBOOK_COLS) for r in rows]
         with self._conn() as conn:
-            cur = conn.execute(
-                "DELETE FROM pricebook WHERE source_file = ?", (source_file,)
-            )
+            cur = conn.execute("DELETE FROM pricebook WHERE source_file = ?", (source_file,))
             deleted = cur.rowcount
             if values:
                 conn.executemany(insert_sql, values)
@@ -784,8 +780,7 @@ class PriceBookRepository:
             if vendors:
                 for vend in vendors:
                     cur = conn.execute(
-                        f"SELECT id, {', '.join(IDENTITY_FIELDS)} FROM pricebook "
-                        "WHERE vendor = ?",
+                        f"SELECT id, {', '.join(IDENTITY_FIELDS)} FROM pricebook WHERE vendor = ?",
                         (vend,),
                     )
                     for row in cur.fetchall():
@@ -793,9 +788,7 @@ class PriceBookRepository:
                         d["id"] = row["id"]
                         existing[identity_key(d)] = row["id"]
             else:
-                cur = conn.execute(
-                    f"SELECT id, {', '.join(IDENTITY_FIELDS)} FROM pricebook"
-                )
+                cur = conn.execute(f"SELECT id, {', '.join(IDENTITY_FIELDS)} FROM pricebook")
                 for row in cur.fetchall():
                     d = {f: row[f] for f in IDENTITY_FIELDS}
                     existing[identity_key(d)] = row["id"]
@@ -856,10 +849,7 @@ class PriceBookRepository:
             inserted = 0
             if to_insert:
                 placeholders = ",".join("?" * len(PRICEBOOK_COLS))
-                sql = (
-                    f"INSERT INTO pricebook ({','.join(PRICEBOOK_COLS)}) "
-                    f"VALUES ({placeholders})"
-                )
+                sql = f"INSERT INTO pricebook ({','.join(PRICEBOOK_COLS)}) VALUES ({placeholders})"
                 values = [tuple(r.get(c) for c in PRICEBOOK_COLS) for r in to_insert]
                 conn.executemany(sql, values)
                 inserted = len(values)
@@ -876,9 +866,7 @@ class PriceBookRepository:
     def find_duplicate_groups(self, limit: int = 100) -> pd.DataFrame:
         """Groups sharing the same identity key with count > 1."""
         fields = ", ".join(IDENTITY_FIELDS)
-        coalesce_parts = [
-            f"COALESCE(LOWER(TRIM({f})), '')" for f in IDENTITY_FIELDS
-        ]
+        coalesce_parts = [f"COALESCE(LOWER(TRIM({f})), '')" for f in IDENTITY_FIELDS]
         group_expr = " || '|' || ".join(coalesce_parts)
         sql = f"""
             SELECT {fields}, COUNT(*) AS dup_count
@@ -897,10 +885,7 @@ class PriceBookRepository:
 
         Returns counts and optional sample of deleted ids when dry_run.
         """
-        fields = ", ".join(IDENTITY_FIELDS)
-        coalesce_parts = [
-            f"COALESCE(LOWER(TRIM({f})), '')" for f in IDENTITY_FIELDS
-        ]
+        coalesce_parts = [f"COALESCE(LOWER(TRIM({f})), '')" for f in IDENTITY_FIELDS]
         group_expr = " || '|' || ".join(coalesce_parts)
 
         with self._conn() as conn:
@@ -947,9 +932,7 @@ class PriceBookRepository:
             for i in range(0, len(to_delete), chunk):
                 batch = to_delete[i : i + chunk]
                 placeholders = ",".join("?" * len(batch))
-                cur = conn.execute(
-                    f"DELETE FROM pricebook WHERE id IN ({placeholders})", batch
-                )
+                cur = conn.execute(f"DELETE FROM pricebook WHERE id IN ({placeholders})", batch)
                 deleted += cur.rowcount
             conn.commit()
             return {
@@ -984,6 +967,7 @@ class PriceBookRepository:
                 FROM pricebook p
                 LEFT JOIN vendors v ON v.name = p.vendor
                 WHERE p.vendor IS NOT NULL AND p.vendor != ''
+                  AND lower(COALESCE(p.line_kind, 'item')) != 'addon'
                 GROUP BY p.vendor
                 ORDER BY rows DESC
                 """,
@@ -1050,9 +1034,7 @@ class PriceBookRepository:
             return cur.rowcount
 
     # ------------------------------------------------------------------ vendors table
-    def get_vendor_multiplier(
-        self, vendor: str, default: float = DEFAULT_MULTIPLIER
-    ) -> float:
+    def get_vendor_multiplier(self, vendor: str, default: float = DEFAULT_MULTIPLIER) -> float:
         with self._conn() as conn:
             row = conn.execute(
                 "SELECT multiplier FROM vendors WHERE name = ?", (vendor,)
@@ -1061,9 +1043,7 @@ class PriceBookRepository:
             return float(row[0])
         return default
 
-    def set_vendor_multiplier(
-        self, vendor: str, multiplier: float, notes: str = ""
-    ) -> None:
+    def set_vendor_multiplier(self, vendor: str, multiplier: float, notes: str = "") -> None:
         now = datetime.now().isoformat(timespec="seconds")
         with self._conn() as conn:
             conn.execute(
@@ -1098,9 +1078,7 @@ class PriceBookRepository:
 
     def get_vendor_phone(self, vendor: str) -> str:
         with self._conn() as conn:
-            row = conn.execute(
-                "SELECT phone FROM vendors WHERE name = ?", (vendor,)
-            ).fetchone()
+            row = conn.execute("SELECT phone FROM vendors WHERE name = ?", (vendor,)).fetchone()
         if row and row[0]:
             return str(row[0])
         return ""
@@ -1117,7 +1095,7 @@ class PriceBookRepository:
         Rewrite every pricebook row through backend.standardize rules.
         Drops unrecoverable junk rows. Recomputes adjusted_price.
         """
-        from backend.standardize import standardize_row, VENDOR_CANON
+        from backend.standardize import VENDOR_CANON, standardize_row
 
         with self._conn() as conn:
             cur = conn.execute(f"SELECT {', '.join(SELECT_COLS)} FROM pricebook")
@@ -1144,21 +1122,21 @@ class PriceBookRepository:
                 changed = False
                 for k in PRICEBOOK_COLS:
                     old, new = r.get(k), cleaned.get(k)
-                    if old != new and not (
-                        old is None and new is None
-                    ) and not (
-                        isinstance(old, float)
-                        and isinstance(new, float)
-                        and abs(old - new) < 1e-9
+                    if (
+                        old != new
+                        and not (old is None and new is None)
+                        and not (
+                            isinstance(old, float)
+                            and isinstance(new, float)
+                            and abs(old - new) < 1e-9
+                        )
                     ):
                         # string normalize compare
                         if str(old or "") != str(new or ""):
                             changed = True
                             break
                 if changed and rid is not None:
-                    updates.append(
-                        tuple(cleaned.get(c) for c in PRICEBOOK_COLS) + (int(rid),)
-                    )
+                    updates.append(tuple(cleaned.get(c) for c in PRICEBOOK_COLS) + (int(rid),))
                     updated += 1
 
             if to_delete:
@@ -1166,9 +1144,7 @@ class PriceBookRepository:
                 for i in range(0, len(to_delete), 400):
                     chunk = to_delete[i : i + 400]
                     placeholders = ",".join("?" * len(chunk))
-                    conn.execute(
-                        f"DELETE FROM pricebook WHERE id IN ({placeholders})", chunk
-                    )
+                    conn.execute(f"DELETE FROM pricebook WHERE id IN ({placeholders})", chunk)
 
             if updates:
                 set_clause = ", ".join(f"{c}=?" for c in PRICEBOOK_COLS)

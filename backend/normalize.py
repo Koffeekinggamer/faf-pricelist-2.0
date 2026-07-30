@@ -62,9 +62,21 @@ def normalize_dataframe(
 
     mapping = column_map or map_columns(df)
     for canon in (
-        "part_number", "description", "base_price", "species", "collection",
-        "unit", "notes", "dimensions", "vendor", "finish_state", "species_tier",
-        "option_key", "price_basis",
+        "part_number",
+        "description",
+        "base_price",
+        "species",
+        "collection",
+        "unit",
+        "notes",
+        "dimensions",
+        "vendor",
+        "finish_state",
+        "species_tier",
+        "option_key",
+        "price_basis",
+        "line_kind",
+        "addon_pct",
     ):
         if canon in df.columns:
             mapping.setdefault(canon, canon)
@@ -73,6 +85,7 @@ def normalize_dataframe(
     rows: list[dict] = []
 
     for _, raw in df.iterrows():
+
         def get(field: str, default=None):
             col = mapping.get(field)
             if col and col in raw.index:
@@ -111,29 +124,40 @@ def normalize_dataframe(
         basis = _s(get("price_basis")) or price_basis or DEFAULT_PRICE_BASIS
         from backend.pricing import retail_from_wholesale
 
-        adj = (
-            retail_from_wholesale(base, multiplier) if base is not None else None
-        )
+        adj = retail_from_wholesale(base, multiplier) if base is not None else None
 
-        rows.append({
-            "vendor": vend,
-            "collection": collection,
-            "part_number": _s(part),
-            "description": _s(desc),
-            "dimensions": _s(get("dimensions")),
-            "option_key": _s(get("option_key")),
-            "species": _s(get("species")),
-            "species_tier": tier_i,
-            "finish_state": _s(get("finish_state")),
-            "base_price": base,
-            "price_basis": basis,
-            "multiplier": multiplier,
-            "adjusted_price": adj,
-            "unit": _s(get("unit")),
-            "notes": _s(get("notes")),
-            "source_file": source_file,
-            "imported_at": now,
-        })
+        kind = _s(get("line_kind")) or "item"
+        addon_raw = get("addon_pct")
+        try:
+            addon_pct = (
+                float(addon_raw) if addon_raw is not None and str(addon_raw).strip() != "" else None
+            )
+        except (TypeError, ValueError):
+            addon_pct = None
+
+        rows.append(
+            {
+                "vendor": vend,
+                "collection": collection,
+                "part_number": _s(part),
+                "description": _s(desc),
+                "dimensions": _s(get("dimensions")),
+                "option_key": _s(get("option_key")),
+                "species": _s(get("species")),
+                "species_tier": tier_i,
+                "finish_state": _s(get("finish_state")),
+                "base_price": base,
+                "price_basis": basis,
+                "multiplier": multiplier,
+                "adjusted_price": adj,
+                "unit": _s(get("unit")),
+                "notes": _s(get("notes")),
+                "source_file": source_file,
+                "imported_at": now,
+                "line_kind": kind.lower() if kind else "item",
+                "addon_pct": addon_pct,
+            }
+        )
 
     # Canonical shape for every import path
     return standardize_rows(rows, default_multiplier=multiplier)

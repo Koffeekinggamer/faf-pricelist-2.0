@@ -170,7 +170,7 @@ Many local changes **not pushed** (and DB never goes to GitHub):
 
 ### Data quality (ongoing)
 
-- **FN Chair (2026-07-28):** Authoritative import is **PL Print** via `backend/fn_chair_import.py` — Part # = `{Style} {Chair type}`, `option_key` = Cat. 1/2/3 (finish/stain tier), Unf → unfinished. Fabric adder columns skipped. Legacy Cat-only rows still healed in `standardize_row`. Search has a per-builder **Option** dropdown. Re-Drop the Level One Blue `.xlsm` (replace builder) on Fly/Mac to refresh the catalog.
+- **FN Chair (2026-07-28):** Authoritative import is **PL Print** via `backend/fn_chair_import.py` — Part # = `{Style} {Chair type}`, `option_key` = Cat. 1/2/3 (finish/stain tier), Unf → unfinished. Fabric adder columns → `line_kind=addon` (ADR-0008; not sellable retail). Legacy Cat-only rows still healed in `standardize_row`. Search **Option** lists addon charges + Cat.N. Re-Drop the Level One Blue `.xlsm` (replace builder) on Fly/Mac to refresh the catalog.
 - Meadow Wood reduced but not necessarily perfect.
 - Boolean search is powerful but floor staff may need a one-line tip only (caption already there).
 

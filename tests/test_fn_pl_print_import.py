@@ -43,21 +43,26 @@ def _mini_pl_print_df() -> pd.DataFrame:
 def test_parse_pl_print_style_chair_cat():
     rows = parse_fn_pl_print_rows(_mini_pl_print_df(), vendor="FN Chair")
     assert rows
-    parts = {r["part_number"] for r in rows}
+    items = [r for r in rows if r.get("line_kind", "item") != "addon"]
+    addons = [r for r in rows if r.get("line_kind") == "addon"]
+    parts = {r["part_number"] for r in items}
     assert parts == {"Abe Side Chair", "Abe Arm Chair"}
     side_cat1 = [
-        r
-        for r in rows
-        if r["part_number"] == "Abe Side Chair" and r["option_key"] == "Cat. 1"
+        r for r in items if r["part_number"] == "Abe Side Chair" and r["option_key"] == "Cat. 1"
     ]
     assert len(side_cat1) == 3  # three woods
     assert all(r["finish_state"] == "finished" for r in side_cat1)
-    assert all(r["collection"] == "Seating" for r in rows)
-    unf = [r for r in rows if r["part_number"] == "Abe Side Chair" and not r["option_key"]]
+    assert all(r["collection"] == "Seating" for r in items)
+    unf = [r for r in items if r["part_number"] == "Abe Side Chair" and not r["option_key"]]
     assert unf
     assert all(r["finish_state"] == "unfinished" for r in unf)
-    # Fabric adder column must not become a wood price row
-    assert all(r["base_price"] != 23 for r in rows)
+    # Fabric adder column must not become a wood price item row
+    assert all(r["base_price"] != 23 for r in items)
+    # Fabric adder → addon rows (ADR-0008)
+    assert addons
+    assert all(r["base_price"] == 23 for r in addons)
+    assert all(r["option_key"] == "Solid Fabrics / COM" for r in addons)
+    assert all(r["line_kind"] == "addon" for r in addons)
 
 
 def test_looks_like_fn_level_one():
@@ -83,8 +88,15 @@ def test_import_workbook_routes_fn_level_one(tmp_path: Path):
     result = import_workbook(data, vendor="FN Chair", filename=path.name)
     assert "PL Print" in " ".join(result.notes) or "fn" in result.notes.lower()
     assert not result.long_df.empty
-    assert set(result.long_df["part_number"]) == {"Abe Side Chair", "Abe Arm Chair"}
+    if "line_kind" in result.long_df.columns:
+        items = result.long_df[
+            result.long_df["line_kind"].fillna("item").astype(str).str.lower() != "addon"
+        ]
+    else:
+        items = result.long_df
+    assert set(items["part_number"]) == {"Abe Side Chair", "Abe Arm Chair"}
     assert "Cat. 1" in set(result.long_df["option_key"].dropna())
+    assert "Solid Fabrics / COM" in set(result.long_df["option_key"].dropna())
     # PL To Export must not double-count
     assert len(result.long_df) == len(
         parse_fn_pl_print_rows(_mini_pl_print_df(), vendor="FN Chair")
@@ -107,7 +119,5 @@ def test_uploaded_fn_workbook_if_present():
         & (result.long_df["option_key"] == "Cat. 1")
     ]
     assert not abe_side.empty
-    red = abe_side[
-        abe_side["species"].astype(str).str.contains("Red Oak", case=False, na=False)
-    ]
+    red = abe_side[abe_side["species"].astype(str).str.contains("Red Oak", case=False, na=False)]
     assert float(red.iloc[0]["base_price"]) == 147.0

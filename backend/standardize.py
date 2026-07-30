@@ -16,7 +16,6 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-
 # ---------------------------------------------------------------------------
 # finish_state
 # ---------------------------------------------------------------------------
@@ -70,17 +69,50 @@ _JUNK_SPECIES_RE = re.compile(
 # Longest-first wood phrases for splitting ALL-CAPS multi-wood headers
 # e.g. "OAK BR. MAPLE SAP CHERRY" → Oak / Brown Maple / Sap Cherry
 _WOOD_PHRASES = [
-    "Brown Soft Maple", "Rustic Brown Maple", "Rustic Hard Maple",
-    "Rustic White Oak", "Rustic Red Oak", "Rustic QSWO", "Rustic Cherry",
-    "Rustic Walnut", "Rustic Hickory", "Rustic Maple",
-    "Character White Oak", "Character Hickory", "Character Cherry",
-    "Character Walnut", "Character QSWO", "Character Maple",
-    "Plain White Oak", "QS White Oak", "White Qtrsawn", "Quarter Sawn White Oak",
-    "Rough Sawn Wormy Maple", "Rough Sawn White Oak", "Rough Sawn Maple",
-    "Wormy Maple", "Soft Maple", "Hard Maple", "Brown Maple", "Sap Cherry",
-    "Red Oak", "White Oak", "QSWO", "PSWO",
-    "Cherry", "Hickory", "Walnut", "Maple", "Oak", "Elm", "Ash",
-    "Mahogany", "Pine", "Birch", "Alder", "Beech",
+    "Brown Soft Maple",
+    "Rustic Brown Maple",
+    "Rustic Hard Maple",
+    "Rustic White Oak",
+    "Rustic Red Oak",
+    "Rustic QSWO",
+    "Rustic Cherry",
+    "Rustic Walnut",
+    "Rustic Hickory",
+    "Rustic Maple",
+    "Character White Oak",
+    "Character Hickory",
+    "Character Cherry",
+    "Character Walnut",
+    "Character QSWO",
+    "Character Maple",
+    "Plain White Oak",
+    "QS White Oak",
+    "White Qtrsawn",
+    "Quarter Sawn White Oak",
+    "Rough Sawn Wormy Maple",
+    "Rough Sawn White Oak",
+    "Rough Sawn Maple",
+    "Wormy Maple",
+    "Soft Maple",
+    "Hard Maple",
+    "Brown Maple",
+    "Sap Cherry",
+    "Red Oak",
+    "White Oak",
+    "QSWO",
+    "PSWO",
+    "Cherry",
+    "Hickory",
+    "Walnut",
+    "Maple",
+    "Oak",
+    "Elm",
+    "Ash",
+    "Mahogany",
+    "Pine",
+    "Birch",
+    "Alder",
+    "Beech",
 ]
 
 # Abbreviation → phrase (applied before phrase split)
@@ -178,6 +210,7 @@ def _extract_wood_list_flat(s: str) -> list[str]:
             found.append(tok)
             remaining = remaining[m.end() :]
     return found
+
 
 # Full-string aliases (after collapse)
 _SPECIES_ALIASES = {
@@ -281,7 +314,8 @@ def standardize_species(val: Any) -> Optional[str]:
     if woods:
         # Drop useless leftover tokens
         woods = [
-            w for w in woods
+            w
+            for w in woods
             if w.lower() not in {"and", "or", "also", "the", "with", "(", ")"}
             and not re.match(r"^\W+$", w)
         ]
@@ -429,6 +463,7 @@ def standardize_collection(val: Any, *, vendor: str = "") -> Optional[str]:
 # ---------------------------------------------------------------------------
 # text fields
 # ---------------------------------------------------------------------------
+
 
 def standardize_text(val: Any) -> Optional[str]:
     if val is None:
@@ -607,6 +642,7 @@ def standardize_vendor(val: Any) -> Optional[str]:
 # full row
 # ---------------------------------------------------------------------------
 
+
 def _fn_chair_cat_token(val: Any) -> Optional[str]:
     """Return canonical 'Cat. N' if val is an FN fabric/price category token."""
     if val is None:
@@ -682,7 +718,11 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
     # If finish embedded in old species label and finish empty
     if finish is None and raw_species and re.search(r"(?i)unfinished|unf\b", str(raw_species)):
         finish = "unfinished"
-    elif finish is None and raw_species and re.search(r"(?i)\bfinished\b|\bfinshed\b", str(raw_species)):
+    elif (
+        finish is None
+        and raw_species
+        and re.search(r"(?i)\bfinished\b|\bfinshed\b", str(raw_species))
+    ):
         # only if not "Wood Tier" path — those already remapped
         if species and species.startswith("Wood Tier"):
             # Windy: FINISHED → finished, UNFINISHED → unfinished
@@ -767,24 +807,44 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
         if m:
             tier_i = int(m.group(1))
 
-    out.update({
-        "vendor": vendor,
-        "collection": collection,
-        "part_number": part,
-        "description": desc,
-        "dimensions": dims,
-        "option_key": option_key,
-        "species": species,
-        "species_tier": tier_i,
-        "finish_state": finish,
-        "base_price": round(base_f, 4) if base_f != int(base_f) else float(int(base_f)) if abs(base_f - int(base_f)) < 1e-9 else round(base_f, 2),
-        "price_basis": "wholesale",
-        "multiplier": mult_f,
-        "adjusted_price": None,  # set below via even-dollar rule
-        "unit": unit,
-        "notes": notes,
-        "source_file": source,
-    })
+    kind_raw = standardize_text(out.get("line_kind")) or "item"
+    line_kind = kind_raw.lower() if kind_raw else "item"
+    if line_kind not in {"item", "addon"}:
+        line_kind = "item"
+    addon_raw = out.get("addon_pct")
+    try:
+        addon_pct = (
+            float(addon_raw) if addon_raw is not None and str(addon_raw).strip() != "" else None
+        )
+    except (TypeError, ValueError):
+        addon_pct = None
+
+    out.update(
+        {
+            "vendor": vendor,
+            "collection": collection,
+            "part_number": part,
+            "description": desc,
+            "dimensions": dims,
+            "option_key": option_key,
+            "species": species,
+            "species_tier": tier_i,
+            "finish_state": finish,
+            "base_price": round(base_f, 4)
+            if base_f != int(base_f)
+            else float(int(base_f))
+            if abs(base_f - int(base_f)) < 1e-9
+            else round(base_f, 2),
+            "price_basis": "wholesale",
+            "multiplier": mult_f,
+            "adjusted_price": None,  # set below via even-dollar rule
+            "unit": unit,
+            "notes": notes,
+            "source_file": source,
+            "line_kind": line_kind,
+            "addon_pct": addon_pct,
+        }
+    )
     # nicer base_price: 2 decimal for money; retail = even whole dollars
     from backend.pricing import retail_from_wholesale
 
