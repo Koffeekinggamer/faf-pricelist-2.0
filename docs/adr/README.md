@@ -1,3 +1,13 @@
-# Architecture Decision Records
+# Architecture Decision Records — FAF Price Book
 
-ADRs live here. Created by `/grill-with-docs` / `/domain-modeling` when decisions are resolved.
+Locked product/architecture decisions. Skills (`/grill-with-docs`, `/domain-modeling`, `/code-review`) must respect these; reopen only with an explicit ADR update.
+
+| ADR | Decision |
+|-----|----------|
+| [0001](./0001-one-builder-one-vendor.md) | One builder = one vendor; replace_vendor on re-import |
+| [0002](./0002-retail-equals-wholesale-times-multiplier.md) | Retail = wholesale × multiplier (2.7 / Genuine Oak 1.7) |
+| [0003](./0003-accuracy-mode-ordertrac-ui-off.md) | Accuracy mode; OrderTrac UI off |
+| [0004](./0004-thin-ui-pricebook-service.md) | Thin Streamlit; logic in PriceBookService |
+| [0005](./0005-master-db-never-in-git.md) | Master DB / secrets never committed |
+
+New ADRs: next number, short slug, see `.agents/skills/domain-modeling/ADR-FORMAT.md`.

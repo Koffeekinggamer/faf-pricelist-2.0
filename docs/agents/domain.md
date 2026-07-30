@@ -1,51 +1,46 @@
-# Domain Docs
+# Domain Docs — FAF Price Book
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+How Matt Pocock engineering skills should consume this repo’s domain documentation.
 
-## Before exploring, read these
+## Before exploring, read these (in order)
 
-- **`CONTEXT.md`** at the repo root, or
-- **`CONTEXT-MAP.md`** at the repo root if it exists — it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
-- **`docs/adr/`** — read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
+1. **`AGENTS.md`** — hard product rules for agents
+2. **`CONTEXT.md`** — FAF ubiquitous language (builder, retail, replace vendor, …)
+3. **`HANDOFF.md`** — current ops state, known issues, do/don’t
+4. **`STANDARDS.md`** — master row shape (vendor / collection / species / finish / prices)
+5. **`docs/adr/`** — locked decisions that must not be “fixed” casually
+6. **`FLOOR_CHEAT_SHEET.md`** — when the change affects floor Search behavior
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
+If a file is missing mid-task, proceed — but **do not invent synonyms** that contradict `CONTEXT.md` / `STANDARDS.md`. Prefer `/domain-modeling` or `/grill-with-docs` to add terms or ADRs.
 
 ## File structure
 
-Single-context repo (most repos):
+Single-context repo:
 
 ```
 /
-├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
-└── src/
-```
-
-Multi-context repo (presence of `CONTEXT-MAP.md` at the root):
-
-```
-/
-├── CONTEXT-MAP.md
-├── docs/adr/                          ← system-wide decisions
-└── src/
-    ├── ordering/
-    │   ├── CONTEXT.md
-    │   └── docs/adr/                  ← context-specific decisions
-    └── billing/
-        ├── CONTEXT.md
-        └── docs/adr/
+├── CONTEXT.md                 ← FAF glossary (required for skill vocabulary)
+├── HANDOFF.md / STANDARDS.md  ← ops + row canon (FAF-specific; always respect)
+├── docs/adr/                  ← locked product/architecture decisions
+├── docs/agents/               ← skill config (tracker, labels, this file)
+├── pricebook_app.py           ← thin UI
+└── backend/                   ← PriceBookService + import/search/standardize
 ```
 
 ## Use the glossary's vocabulary
 
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
+When naming concepts in issues, PR titles, specs, tickets, or code:
 
-If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
+- Say **builder** / **vendor** (one identity), not “manufacturer entry”
+- Say **retail** / **adjusted price** for customer price; **wholesale** / **base price** for builder list
+- Say **replace vendor** for re-import, not “merge catalog”
+- Say **accuracy mode** for the live UI; do not treat OrderTrac as current floor UX
+- Prefer terms from `CONTEXT.md`; if missing, note the gap for `/domain-modeling`
 
 ## Flag ADR conflicts
 
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
+If a proposal contradicts an ADR under `docs/adr/`, surface it explicitly:
 
-> _Contradicts ADR-0007 (event-sourced orders) — but worth reopening because…_
+> _Contradicts ADR-0001 (one builder = one vendor) — but worth reopening because…_
+
+Do not silently re-enable OrderTrac UI (ADR-0003), commit the master DB (ADR-0005), or put business logic only in Streamlit (ADR-0004).
