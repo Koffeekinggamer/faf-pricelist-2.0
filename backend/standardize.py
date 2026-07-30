@@ -385,6 +385,8 @@ _JUNK_COLLECTION_RE = re.compile(
     markup|
     subject\s+to\s+change|
     please\s+note|
+    available\s+in\s+(crypton|leather|fabric)|
+    we\s*carry\s+heartland|
     ^price$|
     ^description$|
     ^options?$
@@ -559,6 +561,10 @@ VENDOR_CANON = {
     "gvwi": "GVWI",
     "gable valley": "GVWI",
     "lamb": "LAMB",
+    "j & m woodworking": "J & M Woodworking",
+    "j&m woodworking": "J & M Woodworking",
+    "j and m woodworking": "J & M Woodworking",
+    "jmw": "J & M Woodworking",
 }
 
 # Substring matchers for messy filenames (order: more specific first)
@@ -575,6 +581,10 @@ _VENDOR_FILENAME_HINTS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"(?i)beaverdam"), "Beaverdam"),
     (re.compile(r"(?i)\bgvwi\b|gable\s*valley"), "GVWI"),
     (re.compile(r"(?i)\blamb\b"), "LAMB"),
+    (
+        re.compile(r"(?i)\bjmw\b|j\s*&\s*m\s*woodworking|j\s*and\s*m\s*woodworking"),
+        "J & M Woodworking",
+    ),
     (re.compile(r"(?i)hope\s*wood|hopewood|\bhw_2025\b|\bhw_"), "Hope Wood"),
 ]
 
