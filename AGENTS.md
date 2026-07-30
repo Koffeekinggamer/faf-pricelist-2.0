@@ -14,15 +14,19 @@ Matt Pocock skills are installed under `.agents/skills/` from [mattpocock/skills
 
 Recommended FAF flows:
 
-| Goal | Skill |
-|------|--------|
-| Sharpen a catalog/import/Search change + grow glossary/ADRs | `/grill-with-docs` |
-| Unsure which skill fits | `/ask-matt` |
-| Spec → GitHub Issues | `/to-spec` then `/to-tickets` |
-| Implement a ticket test-first | `/implement` or `/tdd` |
-| Hard bug / bad import / wrong retail | `/diagnosing-bugs` |
-| Review a PR against standards + spec | `/code-review` |
-| Multi-session roadmap | `/wayfinder` |
+| Goal                                                        | Skill                         |
+| ----------------------------------------------------------- | ----------------------------- |
+| Sharpen a catalog/import/Search change + grow glossary/ADRs | `/grill-with-docs`            |
+| Unsure which skill fits                                     | `/ask-matt`                   |
+| Spec → GitHub Issues                                        | `/to-spec` then `/to-tickets` |
+| Implement a ticket test-first                               | `/implement` or `/tdd`        |
+| Hard bug / bad import / wrong retail                        | `/diagnosing-bugs`            |
+| Review a PR against standards + spec                        | `/code-review`                |
+| Multi-session roadmap                                       | `/wayfinder`                  |
+
+### Pre-commit hooks
+
+Husky runs on every commit: **lint-staged** (Ruff on `*.py`, Prettier on other text) then **`npm test`** → pytest. App remains Python — `package.json` is hooks-only. After clone: `npm install` (installs Husky) and ensure `.venv` has `ruff` / `pytest`.
 
 ### Issue tracker
 

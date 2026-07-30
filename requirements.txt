@@ -6,3 +6,4 @@ fpdf2>=2.7.0
 pdfplumber>=0.11.0
 pypdf>=4.0.0
 pytest>=8.0.0
+ruff>=0.8.0

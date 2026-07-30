@@ -12,6 +12,9 @@ build/
 .mypy_cache/
 .ruff_cache/
 
+# Node (Husky / lint-staged / Prettier — commit hooks only)
+node_modules/
+
 # Local data — keep price book DB private (not on GitHub)
 *.db
 *.db-journal

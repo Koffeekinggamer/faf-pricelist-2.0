@@ -1,0 +1,14 @@
+{
+  "name": "faf-pricebook",
+  "private": true,
+  "description": "FAF Price Book — commit hooks only (app is Python/Streamlit)",
+  "scripts": {
+    "prepare": "husky",
+    "test": ".venv/bin/python -m pytest -q"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.9.6"
+  }
+}
