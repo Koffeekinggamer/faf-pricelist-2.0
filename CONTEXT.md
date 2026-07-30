@@ -72,6 +72,10 @@ _Avoid_: putting business logic only in Streamlit widgets
 Manager import path for Excel/PDF builder books into the master price book.
 _Avoid_: floor staff using Drop for day-to-day lookups
 
+**Drop parse session**:
+One parse of a Drop batch: post-standardize wholesale rows on disk behind an opaque session id; UI keeps only the id plus per-file builder/multiplier widget defaults. Multiplier and builder bind at commit (via the write path), not by rewriting the session. Invalidated by new upload set, markup-preference toggle, explicit Re-parse, successful Load/Clear, or TTL (~24h).
+_Avoid_: holding full row lists in Streamlit session state; re-parsing when builder/mult widgets change; baking retail into the parse cache; a separate write path that only Drop uses
+
 **Vendors tab**:
 Edit per-builder multiplier and phone; items/collections counts are informational.
 _Avoid_: creating a second vendor for a renamed file
