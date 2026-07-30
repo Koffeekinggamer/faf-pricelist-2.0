@@ -50,6 +50,10 @@ _Avoid_: calling wholesale “price” in floor-facing copy
 Default re-import mode: delete that builder’s rows, then load the new book. One builder = one catalog.
 _Avoid_: append (creates duplicates), upsert as the everyday default
 
+**Thin catalog**:
+A builder with fewer than **150** sellable rows in the master price book (after standardize). Candidates for keep / replace / ignore decisions.
+_Avoid_: treating every small specialty line as broken; conflating with IGNORE_BUILDERS (PDF-only / deliberate skip)
+
 ### Product surfaces
 
 **Accuracy mode**:
