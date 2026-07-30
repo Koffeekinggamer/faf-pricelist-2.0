@@ -7,7 +7,7 @@ UI and scripts should prefer this over touching repository/importers directly.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Sequence, Union
 
 import pandas as pd
 
@@ -38,6 +38,8 @@ class PriceBookService:
         self.imports = ImportService()
         self.batch = BatchImporter(self.repo, self.imports)
         self._ready = False
+        # Injectable Drop parse session store root (tests / Fly temp).
+        self._drop_parse_root: Optional[Path] = None
 
     # ------------------------------------------------------------------ lifecycle
     def init(self) -> Path:
@@ -293,7 +295,212 @@ class PriceBookService:
                 return float(saved)
         return float(sidebar_mult)
 
-    # ------------------------------------------------------------------ import
+    # ------------------------------------------------------------------ Drop parse session
+    def _drop_parse_store(self):
+        from backend.drop_parse_session import DiskDropParseStore
+
+        return DiskDropParseStore(self._drop_parse_root)
+
+    def _parse_drop_file_wholesale(
+        self,
+        data: bytes,
+        *,
+        filename: str,
+        prefer_workbook_markup: bool = False,
+        default_collection: str = "",
+        pdf_max_pages: Optional[int] = None,
+        pdf_strategy_index: int = 0,
+    ) -> dict:
+        """Single-pass parse → post-Standardize wholesale rows + suggested mult metadata."""
+        from backend.drop_parse_session import _wholesale_row
+        from backend.standardize import resolve_builder_vendor
+
+        name = filename or "upload"
+        vend = resolve_builder_vendor(name, filename=name) or Path(name).stem
+        kind = "pdf" if name.lower().endswith(".pdf") else "excel"
+        out: dict = {
+            "filename": name,
+            "kind": kind,
+            "suggested_builder": vend,
+            "suggested_mult": float(DEFAULT_MULTIPLIER),
+            "detected_markup": None,
+            "rows": [],
+            "notes": "",
+            "error": "",
+            "row_count": 0,
+        }
+        try:
+            if kind == "pdf":
+                mult_hint = self.get_vendor_multiplier(vend, default=DEFAULT_MULTIPLIER)
+                prev = self.imports.preview_pdf(
+                    data,
+                    filename=name,
+                    vendor=vend,
+                    default_collection=default_collection,
+                    multiplier=float(mult_hint),
+                    max_pages=pdf_max_pages,
+                    strategy_index=pdf_strategy_index,
+                )
+                if prev.stats.get("likely_scanned"):
+                    out["error"] = "Scanned PDF — little extractable text. Prefer Excel."
+                    out["notes"] = str(prev.stats)
+                    return out
+                if not prev.results and not prev.rows:
+                    out["error"] = "No prices found in PDF."
+                    out["notes"] = str(prev.stats)
+                    return out
+                rows = [_wholesale_row(r) for r in (prev.rows or [])]
+                for r in rows:
+                    r["vendor"] = vend
+                    r["source_file"] = name
+                    r["price_basis"] = r.get("price_basis") or "wholesale"
+                out["rows"] = rows
+                out["row_count"] = len(rows)
+                out["notes"] = f"PDF strategy · {len(rows)} rows"
+                out["suggested_mult"] = float(mult_hint)
+            else:
+                # One Excel pass — markup detection piggybacks; no second parse.
+                prev = self.imports.preview_excel(
+                    data,
+                    filename=name,
+                    vendor=vend,
+                    default_collection=default_collection,
+                    multiplier=DEFAULT_MULTIPLIER,
+                    use_workbook_markup=False,
+                )
+                detected = prev.detected_markup
+                out["detected_markup"] = detected
+                out["notes"] = prev.notes or ""
+                suggested = self.resolve_multiplier(
+                    vend,
+                    sidebar_mult=DEFAULT_MULTIPLIER,
+                    detected_markup=detected if prefer_workbook_markup else None,
+                    prefer_workbook=prefer_workbook_markup,
+                    prefer_saved_vendor=True,
+                )
+                out["suggested_mult"] = float(suggested)
+                rows = [_wholesale_row(r) for r in (prev.rows or [])]
+                for r in rows:
+                    r["vendor"] = vend
+                    r["source_file"] = name
+                    r["price_basis"] = r.get("price_basis") or "wholesale"
+                out["rows"] = rows
+                out["row_count"] = len(rows)
+                if not rows:
+                    out["error"] = "0 rows parsed — check file layout."
+        except Exception as e:
+            out["error"] = str(e)[:400]
+        return out
+
+    def ensure_drop_parse_session(
+        self,
+        uploads: Sequence[Any],
+        *,
+        session_id: Optional[str] = None,
+        prefer_workbook_markup: bool = False,
+        force: bool = False,
+        reparse: bool = False,
+        progress: Optional[Callable[[float, str], None]] = None,
+    ):
+        """
+        Create or reuse a Drop parse session for one upload batch.
+
+        Returns DropParseSessionView (opaque id + per-file preview metadata).
+        Full rows stay on disk; UI must not hold them.
+        """
+        from backend.drop_parse_session import (
+            DropUpload,
+            batch_key,
+            new_session_id,
+            view_from_payload,
+        )
+
+        self.ensure_ready()
+        force = bool(force or reparse)
+        upload_list: list[DropUpload] = []
+        for u in uploads:
+            if isinstance(u, DropUpload):
+                upload_list.append(u)
+            else:
+                raise TypeError("uploads must be DropUpload instances")
+        if not upload_list:
+            raise ValueError("uploads must not be empty")
+
+        key = batch_key(upload_list, prefer_workbook_markup=prefer_workbook_markup)
+        store = self._drop_parse_store()
+        store.purge_expired()
+
+        if session_id and not force:
+            payload = store.load(session_id)
+            if payload and store.is_fresh(payload, batch=key):
+                return view_from_payload(payload)
+            if payload:
+                store.delete(session_id)
+
+        # Build new session — need file bytes (UI may probe with empty data for reuse).
+        if any(not up.data for up in upload_list):
+            raise ValueError("upload data required to parse Drop session")
+
+        if session_id and force:
+            store.delete(session_id)
+        sid = new_session_id()
+        files_payload: list[dict] = []
+        n = max(len(upload_list), 1)
+        for i, up in enumerate(upload_list):
+            if progress:
+                try:
+                    progress(i / n, f"Parsing {up.filename}…")
+                except Exception:
+                    pass
+            parsed = self._parse_drop_file_wholesale(
+                up.data,
+                filename=up.filename,
+                prefer_workbook_markup=prefer_workbook_markup,
+            )
+            files_payload.append(parsed)
+        if progress:
+            try:
+                progress(1.0, "Done parsing")
+            except Exception:
+                pass
+
+        import time
+
+        payload = {
+            "session_id": sid,
+            "batch_key": key,
+            "prefer_workbook_markup": bool(prefer_workbook_markup),
+            "saved_at": time.time(),
+            "files": files_payload,
+        }
+        store.save(sid, payload)
+        return view_from_payload(payload)
+
+    def clear_drop_parse_session(self, session_id: Optional[str]) -> None:
+        """Discard a Drop parse session (Load / Clear). Idempotent."""
+        if not session_id:
+            return
+        self._drop_parse_store().delete(session_id)
+
+    def wholesale_from_drop_parse_session(self, session_id: str):
+        """Read post-Standardize wholesale rows for commit binding (outside this module)."""
+        from backend.drop_parse_session import (
+            DropSessionGone,
+            wholesale_from_payload,
+        )
+
+        if not session_id:
+            raise DropSessionGone("missing session_id")
+        store = self._drop_parse_store()
+        payload = store.load(session_id)
+        if not payload:
+            raise DropSessionGone(session_id)
+        if not store.is_fresh(payload, batch=str(payload.get("batch_key") or "")):
+            # TTL — treat as gone (caller should ensure again)
+            store.delete(session_id)
+            raise DropSessionGone(session_id)
+        return wholesale_from_payload(payload)
+
     def prepare_drop_file(
         self,
         data: bytes,
