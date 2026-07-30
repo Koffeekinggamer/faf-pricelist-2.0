@@ -1691,24 +1691,34 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
             st.dataframe(pd.DataFrame(log), use_container_width=True, hide_index=True)
 
     if not uploads:
+        # Clear Drop parse session when the uploader is emptied (CONTEXT: Clear).
+        sid = st.session_state.pop("drop_session_id", None)
+        if sid:
+            svc.clear_drop_parse_session(sid)
+            _clear_drop_widget_state()
         st.info("Drop one or more builder price files above to begin.")
     else:
         force_reparse = bool(st.session_state.pop("drop_force_reparse", False))
         prior_sid = st.session_state.get("drop_session_id")
 
+        def _upload_size(up) -> int | None:
+            s = int(getattr(up, "size", 0) or 0)
+            return s if s > 0 else None
+
         def _drop_idents(with_bytes: bool) -> list:
             out = []
             for up in uploads:
-                size = int(getattr(up, "size", 0) or 0) or None
+                size = _upload_size(up)
                 data = _bytes(up) if with_bytes else b""
                 if with_bytes and size is None:
                     size = len(data)
                 out.append(DropUpload(up.name, data, size=size))
             return out
 
+        sizes_ok = all(_upload_size(up) is not None for up in uploads)
         session = None
-        # Reuse path: identity only (no byte read) when session is still fresh.
-        if prior_sid and not force_reparse:
+        # Reuse path: identity only (no byte read) when sizes known and session fresh.
+        if prior_sid and not force_reparse and sizes_ok:
             try:
                 session = svc.ensure_drop_parse_session(
                     _drop_idents(False),
@@ -1717,8 +1727,6 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                     force=False,
                 )
             except ValueError:
-                session = None
-            except Exception:
                 session = None
 
         if session is None:
@@ -2004,9 +2012,11 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                             )
                     bar.progress(1.0, text="Done")
                     ok_n = sum(1 for r in results_log if r.get("Status") == "ok")
-                    sid = st.session_state.pop("drop_session_id", None)
-                    svc.clear_drop_parse_session(sid)
-                    _clear_drop_widget_state()
+                    # Successful Load clears the Drop parse session (keep on total failure).
+                    if ok_n > 0:
+                        sid = st.session_state.pop("drop_session_id", None)
+                        svc.clear_drop_parse_session(sid)
+                        _clear_drop_widget_state()
                     st.session_state["drop_load_msg"] = (
                         f"Loaded **{ok_n}** of **{len(items)}** builder(s). "
                         f"Master now has **{svc.row_count():,}** rows."

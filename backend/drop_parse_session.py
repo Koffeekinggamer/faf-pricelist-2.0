@@ -76,13 +76,17 @@ def batch_key(
     return hashlib.sha256(raw).hexdigest()[:32]
 
 
-def _wholesale_row(src: dict) -> dict:
+def wholesale_row(src: dict) -> dict:
     """Strip authoritative retail/mult bind; keep post-Standardize wholesale."""
     r = dict(src)
     r.pop("adjusted_price", None)
     # Keep multiplier if present as hint only — commit rebinds. Prefer clear.
     r.pop("multiplier", None)
     return r
+
+
+# Back-compat alias for early call sites / tests
+_wholesale_row = wholesale_row
 
 
 def view_from_payload(payload: dict) -> DropParseSessionView:
@@ -96,7 +100,7 @@ def view_from_payload(payload: dict) -> DropParseSessionView:
                 filename=str(f.get("filename") or ""),
                 kind=str(f.get("kind") or "excel"),
                 suggested_builder=str(f.get("suggested_builder") or ""),
-                suggested_mult=float(f.get("suggested_mult") or 2.7),
+                suggested_mult=float(f.get("suggested_mult") or _default_mult()),
                 detected_markup=f.get("detected_markup"),
                 row_count=int(f.get("row_count") or len(rows)),
                 sample=sample,
@@ -111,6 +115,15 @@ def view_from_payload(payload: dict) -> DropParseSessionView:
     )
 
 
+def _default_mult() -> float:
+    try:
+        from backend.config import DEFAULT_MULTIPLIER
+
+        return float(DEFAULT_MULTIPLIER)
+    except Exception:
+        return 2.7
+
+
 def wholesale_from_payload(payload: dict) -> list[DropFileWholesale]:
     out: list[DropFileWholesale] = []
     for i, f in enumerate(payload.get("files") or []):
@@ -120,7 +133,7 @@ def wholesale_from_payload(payload: dict) -> list[DropFileWholesale]:
                 file_index=i,
                 filename=str(f.get("filename") or ""),
                 suggested_builder=str(f.get("suggested_builder") or ""),
-                suggested_mult=float(f.get("suggested_mult") or 2.7),
+                suggested_mult=float(f.get("suggested_mult") or _default_mult()),
                 detected_markup=f.get("detected_markup"),
                 rows=rows,
                 error=str(f.get("error") or ""),

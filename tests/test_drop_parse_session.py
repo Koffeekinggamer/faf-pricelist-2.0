@@ -114,8 +114,8 @@ def test_markup_preference_change_invalidates(svc):
         session_id=v1.session_id,
         prefer_workbook_markup=True,
     )
-    # New batch identity → new session (or at least re-parse path)
-    assert v2.session_id
+    # New batch identity → new session
+    assert v2.session_id != v1.session_id
     assert v2.files[0].row_count >= 2
 
 

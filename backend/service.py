@@ -312,7 +312,7 @@ class PriceBookService:
         pdf_strategy_index: int = 0,
     ) -> dict:
         """Single-pass parse → post-Standardize wholesale rows + suggested mult metadata."""
-        from backend.drop_parse_session import _wholesale_row
+        from backend.drop_parse_session import wholesale_row
         from backend.standardize import resolve_builder_vendor
 
         name = filename or "upload"
@@ -349,7 +349,7 @@ class PriceBookService:
                     out["error"] = "No prices found in PDF."
                     out["notes"] = str(prev.stats)
                     return out
-                rows = [_wholesale_row(r) for r in (prev.rows or [])]
+                rows = [wholesale_row(r) for r in (prev.rows or [])]
                 for r in rows:
                     r["vendor"] = vend
                     r["source_file"] = name
@@ -379,7 +379,7 @@ class PriceBookService:
                     prefer_saved_vendor=True,
                 )
                 out["suggested_mult"] = float(suggested)
-                rows = [_wholesale_row(r) for r in (prev.rows or [])]
+                rows = [wholesale_row(r) for r in (prev.rows or [])]
                 for r in rows:
                     r["vendor"] = vend
                     r["source_file"] = name
@@ -399,7 +399,6 @@ class PriceBookService:
         session_id: Optional[str] = None,
         prefer_workbook_markup: bool = False,
         force: bool = False,
-        reparse: bool = False,
         progress: Optional[Callable[[float, str], None]] = None,
     ):
         """
@@ -416,7 +415,7 @@ class PriceBookService:
         )
 
         self.ensure_ready()
-        force = bool(force or reparse)
+        force = bool(force)
         upload_list: list[DropUpload] = []
         for u in uploads:
             if isinstance(u, DropUpload):
@@ -495,8 +494,13 @@ class PriceBookService:
         payload = store.load(session_id)
         if not payload:
             raise DropSessionGone(session_id)
-        if not store.is_fresh(payload, batch=str(payload.get("batch_key") or "")):
-            # TTL — treat as gone (caller should ensure again)
+        # TTL-only check (batch already bound to this session_id).
+        saved = float(payload.get("saved_at") or 0)
+        import time as _time
+
+        from backend.drop_parse_session import DEFAULT_TTL_SECONDS
+
+        if _time.time() - saved > DEFAULT_TTL_SECONDS:
             store.delete(session_id)
             raise DropSessionGone(session_id)
         return wholesale_from_payload(payload)
