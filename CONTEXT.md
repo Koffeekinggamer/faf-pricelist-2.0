@@ -98,9 +98,22 @@ _Avoid_: leaving raw builder column junk in the master DB
 FAF overlays for installed agent skills — canonical under `.agents/skills/setup-matt-pocock-skills/`, mirrored to `docs/agents/` (ADR-0006).
 _Avoid_: editing only `docs/agents/` and letting seeds drift; treating upstream generic seed examples as live FAF rules
 
+**User-invoked skill**:
+Typed by Judson / the human as a primary flow step (`/grill-with-docs`, `/implement`, …). See `docs/agents/skill-process.md`.
+_Avoid_: typing model-invoked skills (`/tdd`, `/code-review`, `/domain-modeling`) as the main entry
+
+**Model-invoked skill**:
+Reached by an orchestrator skill or the agent (`/tdd` from `/implement`, `/domain-modeling` from `/grill-with-docs`).
+_Avoid_: treating these as the preferred typed chain
+
+**Tracer-bullet ticket**:
+Vertical slice with one-sentence user-observable behavior + recorded blockers (binary kill test).
+_Avoid_: horizontal tickets (“fix all importers”) with no observable floor outcome
+
 ## Locked vocabulary pointers
 
 - Row shape rules: `STANDARDS.md`
 - Operator / agent handoff: `HANDOFF.md`
 - Floor staff: `FLOOR_CHEAT_SHEET.md`
 - Architecture decisions: `docs/adr/`
+- Skill operating process: `docs/agents/skill-process.md`

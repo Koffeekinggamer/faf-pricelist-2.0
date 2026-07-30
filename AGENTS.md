@@ -23,20 +23,28 @@ Thin = rows < 150 (ADR-0007). Triage → grill Judson keep/replace/ignore. Never
 
 ## Agent skills
 
-Skills live under `.agents/skills/` ([mattpocock/skills](https://github.com/mattpocock/skills) + [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman)). Configured for **this** price book (ADR-0006). Update with `npx skills update`, then re-apply FAF overlays on setup-skill seeds and run `scripts/sync_agent_docs.sh`.
+**Packages:** `.agents/skills/` = [mattpocock/skills](https://github.com/mattpocock/skills) + [caveman](https://github.com/juliusbrussee/caveman) (ADR-0006).  
+**Process:** [Practical-Office/Cursor-AI-dev](https://github.com/Practical-Office/Cursor-AI-dev) living process adapted in `docs/agents/skill-process.md` (ADR-0009). That repo teaches the chain — it does **not** replace the skill packages.
 
-Recommended FAF flows (full pack stays installed; these are reach-for-first):
+Update packages with `npx skills update`, then re-apply FAF overlays on setup-skill seeds and run `scripts/sync_agent_docs.sh`.
 
-| Goal                                                        | Skill                         |
-| ----------------------------------------------------------- | ----------------------------- |
-| Sharpen a catalog/import/Search change + grow glossary/ADRs | `/grill-with-docs`            |
-| Unsure which skill fits                                     | `/ask-matt`                   |
-| Spec → GitHub Issues                                        | `/to-spec` then `/to-tickets` |
-| Implement a ticket test-first                               | `/implement` or `/tdd`        |
-| Hard bug / bad import / wrong retail                        | `/diagnosing-bugs`            |
-| Review a PR against standards + spec                        | `/code-review`                |
-| Multi-session roadmap                                       | `/wayfinder`                  |
-| Terse replies (less fluff)                                  | `/caveman`                    |
+### Preferred chain
+
+`setup` → **triage** (`/wayfinder` if foggy / multi-session, else `/grill-with-docs`) → `/to-spec` → `/to-tickets` → `/implement` (Red→Green; reaches `/tdd` + `/code-review`). Unsure? `/ask-matt`.
+
+**User-invoked** (type these): `/ask-matt` · `/grill-with-docs` · `/wayfinder` · `/triage` · `/to-spec` · `/to-tickets` · `/implement` · `/caveman` · setup / architecture skills.  
+**Model-invoked** (do not type as primary step): `/tdd` · `/code-review` · `/diagnosing-bugs` · `/domain-modeling` · `/prototype` · …
+
+| Goal                                                        | Skill                      |
+| ----------------------------------------------------------- | -------------------------- |
+| Sharpen a catalog/import/Search change + grow glossary/ADRs | `/grill-with-docs`         |
+| Foggy / multi-session roadmap                               | `/wayfinder`               |
+| Unsure which skill fits                                     | `/ask-matt`                |
+| Spec → GitHub Issues                                        | `/to-spec` → `/to-tickets` |
+| Implement a ticket (test-first)                             | `/implement`               |
+| Terse replies (less fluff)                                  | `/caveman`                 |
+
+Full non-negotiables (spec gates, ticket kill test, no refactor inside implement): `docs/agents/skill-process.md`.
 
 ### Pre-commit hooks
 
