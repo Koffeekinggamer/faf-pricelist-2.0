@@ -1,7 +1,7 @@
 # FAF Pricebook — LIVE
 
 **Updated:** 2026-07-18  
-**Folder:** `/FAF-pricelist-2.0`  
+**Folder:** `~/FAF-pricelist-2.0`  
 **GitHub:** https://github.com/Koffeekinggamer/pricebook-system (`origin`)  
 **Status:** LIVE · Viztech-backed catalog · boolean search · monthly sync  
 **Book size:** **~476,824 rows · 155 vendors · 3,104 collections**
@@ -11,7 +11,7 @@
 ## Run
 
 ```bash
-cd /FAF-pricelist-2.0
+cd ~/FAF-pricelist-2.0
 source .venv/bin/activate
 streamlit run pricebook_app.py --server.port 8501
 # http://127.0.0.1:8501
@@ -59,7 +59,7 @@ Public tunnel (ephemeral): `~/Documents/FAF-pricebook-backups/CURRENT_PUBLIC_URL
 ## Next prompt (copy-paste)
 
 ```
-Continue FAF Price Book at /FAF-pricelist-2.0.
+Continue FAF Price Book at ~/FAF-pricelist-2.0.
 Read HANDOFF.md first.
 Next: [failed Viztech parsers / git commit / phones / deploy / user request]
 ```

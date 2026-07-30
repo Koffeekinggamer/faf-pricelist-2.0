@@ -2592,7 +2592,7 @@ with tab_admin:
 
     st.markdown("##### CLI")
     _cli = """
-source /FAF-pricelist-2.0/.venv/bin/activate
+source ~/FAF-pricelist-2.0/.venv/bin/activate
 python -m backend.cli stats
 python -m backend.cli search "oak nightstand"
 python scripts/backup_db.py backup

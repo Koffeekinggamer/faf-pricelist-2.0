@@ -38,7 +38,7 @@ Copy from `secrets.toml.example` if needed.
 ### 2. OrderTrac browser session
 
 ```bash
-cd /FAF-pricelist-2.0
+cd ~/FAF-pricelist-2.0
 source .venv/bin/activate
 python scripts/ordertrac_login.py
 ```

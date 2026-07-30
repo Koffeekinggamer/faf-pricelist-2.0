@@ -1,7 +1,7 @@
 # Agent instructions — FAF Price Book (main)
 
 1. Read in order: **AGENTS.md** (this file) → **CONTEXT.md** → **HANDOFF.md** → **STANDARDS.md**. Consult **`docs/adr/`** as needed.
-2. **This repo is the main FAF Price Book.** Mac/project path: **`/FAF-pricelist-2.0`**. Current focus: **catalog accuracy** (Search · Drop files · Vendors · Admin).
+2. **This repo is the main FAF Price Book.** Mac/project path: **`~/FAF-pricelist-2.0`**. Current focus: **catalog accuracy** (Search · Drop files · Vendors · Admin).
 3. Default entry: `pricebook_app.py`. OrderTrac UI flags are **off** — do not re-enable unless Judson asks.
 4. Never commit `*.db`, `.env`, or `.streamlit/secrets.toml`.
 5. Local port **8501** (Fly: https://faf-pricebook.fly.dev).
@@ -11,13 +11,15 @@
 ## Fast ops (Mac)
 
 ```bash
-cd /FAF-pricelist-2.0
-./scripts/ready_catalog.sh          # pull Fly DB → stats → thin catalogs
-./scripts/ready_catalog.sh --no-pull   # local DB only
-.venv/bin/python -m backend.cli thin-catalogs
+cd ~/FAF-pricelist-2.0
+git pull origin main
+./scripts/pull_db_from_fly.sh   # live catalog (gitignored)
+./run.sh
 ```
 
-Thin = rows &lt; 150 (ADR-0007). Then triage → grill Judson keep/replace/ignore. Never commit the DB.
+Thin scan after pull: `./scripts/ready_catalog.sh --no-pull` (or full `./scripts/ready_catalog.sh`).
+
+Thin = rows < 150 (ADR-0007). Triage → grill Judson keep/replace/ignore. Never commit the DB.
 
 ## Agent skills
 

@@ -9,7 +9,7 @@ Copy any block below into chat. Fill in the `[brackets]` when you see them.
 ### Run / fix the app
 
 ```
-FAF Pricebook is at /FAF-pricelist-2.0.
+FAF Pricebook is at ~/FAF-pricelist-2.0.
 [I can't run it / it crashed / import failed / search is empty.]
 Here's what I did and any error text:
 [paste error or screenshot description]
@@ -55,7 +55,7 @@ Show top 15 with base, mult, retail. If nothing hits, suggest better search term
 ### Next feature (default phrasing)
 
 ```
-Continue FAF Pricebook at /FAF-pricelist-2.0.
+Continue FAF Pricebook at ~/FAF-pricelist-2.0.
 Next feature: [duplicate cleanup UI / quote builder / batch folder import / OCR / …]
 Use the existing backend.PriceBookService — don't put logic only in Streamlit.
 Keep long-form master storage. Match LAYOUT_SYSTEM.md.
@@ -77,7 +77,7 @@ Backend methods on PriceBookService; thin Streamlit tab.
 ### Per-vendor multipliers UI
 
 ```
-Improve vendor multipliers in /FAF-pricelist-2.0:
+Improve vendor multipliers in ~/FAF-pricelist-2.0:
 - List all vendors with saved mult and row counts
 - Edit mult and recompute that vendor only
 - Default 2.7 if unset
@@ -140,7 +140,7 @@ Wait for my OK.
 ### Check your work
 
 ```
-Verify the last changes on /FAF-pricelist-2.0:
+Verify the last changes on ~/FAF-pricelist-2.0:
 - run backend CLI stats/search
 - import one real Excel with upsert twice (must not double rows)
 - note any failures and fix them
@@ -160,7 +160,7 @@ in plain language for a furniture store owner — short steps, no jargon.
 ```
 I'm building Sir's Private Multiplier Engine — a Streamlit + SQLite price book for Amish furniture builders.
 
-Repo: /FAF-pricelist-2.0
+Repo: ~/FAF-pricelist-2.0
 - UI: pricebook_app.py (thin)
 - Backend: backend.PriceBookService (all real logic)
 - Parsers: wide_import.py (Excel matrices), pdf_import.py

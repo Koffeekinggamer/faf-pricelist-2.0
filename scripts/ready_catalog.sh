@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-shot: pull Fly DB (optional) → stats → thin catalogs (ADR-0007).
-# Mac project root: /FAF-pricelist-2.0 (or this clone).
+# Mac project root: ~/FAF-pricelist-2.0 (or this clone).
 # Never commit master_pricebook.db.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

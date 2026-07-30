@@ -2,11 +2,11 @@
 
 ## Source of truth
 
-| Asset                     | Location                                                  | Notes                         |
-| ------------------------- | --------------------------------------------------------- | ----------------------------- |
-| **Authoritative catalog** | `/FAF-pricelist-2.0/master_pricebook.db` on the store Mac | **Never** committed to GitHub |
-| **App code**              | `origin` → `Koffeekinggamer/pricebook-system`             | Safe to deploy                |
-| **Backups**               | `~/Documents/FAF-pricebook-backups/`                      | Local only                    |
+| Asset                     | Location                                                   | Notes                         |
+| ------------------------- | ---------------------------------------------------------- | ----------------------------- |
+| **Authoritative catalog** | `~/FAF-pricelist-2.0/master_pricebook.db` on the store Mac | **Never** committed to GitHub |
+| **App code**              | `origin` → `Koffeekinggamer/pricebook-system`              | Safe to deploy                |
+| **Backups**               | `~/Documents/FAF-pricebook-backups/`                       | Local only                    |
 
 **Important:** Streamlit Cloud / Fly deploy the **code**, not the private ~500k-row DB (gitignored).  
 Floor staff should use **local** or the **Mac public tunnel** for current prices.
@@ -26,7 +26,7 @@ While this Mac is on (LaunchAgents keep Streamlit up):
 Refresh the public URL anytime:
 
 ```bash
-/FAF-pricelist-2.0/scripts/public_tunnel.sh
+~/FAF-pricelist-2.0/scripts/public_tunnel.sh
 # writes CURRENT_PUBLIC_URL.txt when successful
 ```
 
@@ -41,9 +41,9 @@ cloudflared tunnel --url http://127.0.0.1:8501 --no-autoupdate
 **Autostart (this Mac):**
 
 ```bash
-/FAF-pricelist-2.0/scripts/install_autostart.sh   # Streamlit + tunnel agents
-/FAF-pricelist-2.0/scripts/install_weekly_backup.sh
-/FAF-pricelist-2.0/scripts/install_viztech_monthly_sync.sh
+~/FAF-pricelist-2.0/scripts/install_autostart.sh   # Streamlit + tunnel agents
+~/FAF-pricelist-2.0/scripts/install_weekly_backup.sh
+~/FAF-pricelist-2.0/scripts/install_viztech_monthly_sync.sh
 ```
 
 ---
@@ -100,7 +100,7 @@ Without `FLY_API_TOKEN`, the Fly Deploy Action fails (empty token). Redeploy fro
 
 ```bash
 export PATH="$HOME/.fly/bin:$PATH"
-cd /FAF-pricelist-2.0   # or this checkout
+cd ~/FAF-pricelist-2.0   # or this checkout
 fly auth login   # if needed
 
 # Volume (once): created automatically on deploy if missing, or:

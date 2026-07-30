@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-26 (restored as main)  
 **Owner / user:** Judson (Foothills Amish Furniture)  
-**Working copy:** this repo (`faf-pricelist-2.0`) or `/FAF-pricelist-2.0` on the Mac  
+**Working copy:** this repo (`faf-pricelist-2.0`) or `~/FAF-pricelist-2.0` on the Mac  
 **Canonical git remote:** `origin` → https://github.com/Koffeekinggamer/faf-pricelist-2.0  
 **Sibling remotes (reference):** `pricebook-system`, `faf-pricebook-system`  
 **Main UI:** `pricebook_app.py` — **accuracy mode** (Search · Drop · Vendors · Admin)  
@@ -25,7 +25,7 @@ Refresh Fly after local catalog updates: `./scripts/push_db_to_fly.sh`
 **Deploy code to Fly:** `fly deploy -a faf-pricebook` (Mac), or GitHub Action on `main` once `FLY_API_TOKEN` is set (see `DEPLOY.md`)  
 Mac tunnel (optional): `~/Documents/FAF-pricebook-backups/CURRENT_PUBLIC_URL.txt`
 
-**Live DB (gitignored):** `/FAF-pricelist-2.0/master_pricebook.db`  
+**Live DB (gitignored):** `~/FAF-pricelist-2.0/master_pricebook.db`  
 **As of 2026-07-18 (finish pass):** ~**390,509 rows · 181 vendors · 3,459 collections · 165 phones**  
 Cleaned dups + thin-catalog reimports (Hillside Chair 3040, Maple Lane 76, Amish Aspen 40).  
 Public: `~/Documents/FAF-pricebook-backups/CURRENT_PUBLIC_URL.txt` · Backup: `master_pricebook-20260718-133324.db`
@@ -186,7 +186,7 @@ Many local changes **not pushed** (and DB never goes to GitHub):
 
 | Do                                                        | Don’t                                             |
 | --------------------------------------------------------- | ------------------------------------------------- |
-| Work in `/FAF-pricelist-2.0`                              | Commit `master_pricebook.db`                      |
+| Work in `~/FAF-pricelist-2.0`                             | Commit `master_pricebook.db`                      |
 | `replace_vendor` for builder re-import                    | Duplicate same builder under two names            |
 | Backup before bulk ops: `python -m backend.cli backup-db` | Wipe vendors Viztech doesn’t have during sync     |
 | Keep FN Chair Level One                                   | Import FN Level Two as same vendor without asking |
@@ -196,7 +196,7 @@ Many local changes **not pushed** (and DB never goes to GitHub):
 
 ## Handoff checklist for next agent
 
-- [ ] `cd /FAF-pricelist-2.0 && source .venv/bin/activate`
+- [ ] `cd ~/FAF-pricelist-2.0 && source .venv/bin/activate`
 - [ ] `python -m backend.cli stats` → expect ~**518k / ~181 vendors**
 - [ ] Open http://127.0.0.1:8501 · login Foothills / Amish
 - [ ] Smoke: boolean search, pin a builder (clears query), Vendors phone column, Admin Viztech status
@@ -209,7 +209,7 @@ Many local changes **not pushed** (and DB never goes to GitHub):
 ## Copy-paste prompt for next agent
 
 ```
-Continue FAF Price Book at /FAF-pricelist-2.0.
+Continue FAF Price Book at ~/FAF-pricelist-2.0.
 
 Read HANDOFF.md first (full session handoff, 2026-07-18).
 
@@ -233,7 +233,7 @@ Next: [name priority from HANDOFF known issues or user request]
 
 | What              | Path / value                                      |
 | ----------------- | ------------------------------------------------- |
-| Project           | `/FAF-pricelist-2.0`                              |
+| Project           | `~/FAF-pricelist-2.0`                             |
 | Backups           | `~/Documents/FAF-pricebook-backups/`              |
 | Viztech downloads | `~/Documents/viztech-downloads/`                  |
 | Streamlit log     | `~/Documents/FAF-pricebook-backups/streamlit.log` |

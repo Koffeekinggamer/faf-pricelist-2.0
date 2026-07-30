@@ -11,11 +11,13 @@
 | Tabs  | Search · Drop files · Vendors · Admin |
 
 ```bash
-cd /FAF-pricelist-2.0
+cd ~/FAF-pricelist-2.0
 git pull origin main
-./scripts/ready_catalog.sh   # Fly pull + stats + thin catalogs (ADR-0007)
+./scripts/pull_db_from_fly.sh   # live catalog (gitignored)
 ./run.sh
 ```
+
+Thin-catalog scan (after DB pull): `./scripts/ready_catalog.sh --no-pull`
 
 Or: GitHub Actions → **Pull Fly DB** → download artifact `fly-master-pricebook` → save as `master_pricebook.db`.
 
