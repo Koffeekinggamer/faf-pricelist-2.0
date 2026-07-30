@@ -22,7 +22,12 @@ import streamlit as st
 
 from backend import PriceBookService
 from backend.auth import login_user
-from backend.config import APP_DIR, DEFAULT_MULTIPLIER, DEFAULT_SEARCH_LIMIT
+from backend.config import (
+    APP_DIR,
+    DEFAULT_MULTIPLIER,
+    DEFAULT_SEARCH_LIMIT,
+    THIN_CATALOG_MAX_ROWS,
+)
 
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
@@ -161,7 +166,7 @@ if _auth_sess.get("must_change_password") and st.session_state.get("auth_user_id
 
 # Bump when PriceBookService gains methods that Admin/OrderTrac need.
 # Stale @st.cache_resource instances omit new methods until cache is cleared.
-_SERVICE_CACHE_VERSION = 7
+_SERVICE_CACHE_VERSION = 8
 
 
 @st.cache_resource
@@ -2164,6 +2169,36 @@ with tab_admin:
         st.caption(f"Viztech sync: {_viztech_sync_hint()}")
     else:
         st.caption("Accuracy mode · **manual Drop import only** · Viztech sync hidden")
+
+    st.markdown("### Thin catalogs")
+    st.caption(
+        f"Builders with fewer than **{THIN_CATALOG_MAX_ROWS}** sellable rows "
+        "(ADR-0007). Judson chooses keep / replace (Drop) / ignore — no auto-ignore."
+    )
+    try:
+        thin_df = svc.list_thin_catalogs()
+    except Exception as e:
+        thin_df = pd.DataFrame()
+        st.error(f"Could not load thin catalogs: {e}")
+    if thin_df is not None and not thin_df.empty:
+        show_thin = [
+            c
+            for c in ("vendor", "rows", "collections", "source_files", "phone", "saved_mult")
+            if c in thin_df.columns
+        ]
+        st.dataframe(thin_df[show_thin], use_container_width=True, hide_index=True)
+        st.caption(
+            f"**{len(thin_df)}** thin builders · CLI: "
+            "`python -m backend.cli thin-catalogs` · "
+            "`./scripts/ready_catalog.sh --no-pull`"
+        )
+    elif int(stats.get("rows") or 0) == 0:
+        st.warning(
+            "Master price book is empty — pull Fly DB on Mac "
+            "(`./scripts/pull_db_from_fly.sh`) before triaging thins."
+        )
+    else:
+        st.info(f"No thin catalogs (no builders under {THIN_CATALOG_MAX_ROWS} rows).")
 
     # TRACE: Admin OrderTrac block — set SHOW_ORDERTRAC_ADMIN = True to restore
     # (connection, sync users, FAF users, create/reset user, push FAF→OrderTrac)
