@@ -86,6 +86,10 @@ _Avoid_: embedding import/search/pricing rules only in `pricebook_app.py`
 Canonicalization of vendor/species/finish (`backend/standardize.py` + `STANDARDS.md`).
 _Avoid_: leaving raw builder column junk in the master DB
 
+**Agent skills config**:
+FAF overlays for installed agent skills — canonical under `.agents/skills/setup-matt-pocock-skills/`, mirrored to `docs/agents/` (ADR-0006).
+_Avoid_: editing only `docs/agents/` and letting seeds drift; treating upstream generic seed examples as live FAF rules
+
 ## Locked vocabulary pointers
 
 - Row shape rules: `STANDARDS.md`

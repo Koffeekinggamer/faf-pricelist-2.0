@@ -1,4 +1,4 @@
 {
-  "*.py": ["ruff check --fix", "ruff format"],
+  "*.py": ["scripts/run_ruff.sh check --fix", "scripts/run_ruff.sh format"],
   "*": "prettier --ignore-unknown --write"
 }

@@ -6,13 +6,23 @@ disable-model-invocation: true
 
 # Setup Matt Pocock's Skills
 
+## FAF Price Book overlay (ADR-0006)
+
+In **this** repo the seed files beside this skill are the **canonical FAF agent config** (GitHub-only tracker, FAF domain reading order, FAF triage). GitLab/local tracker seeds are deleted on purpose.
+
+- Edit seeds here → run `scripts/sync_agent_docs.sh` → mirrors `docs/agents/`.
+- After `npx skills update`, re-apply FAF overlays to these seeds, then sync.
+- Do not reintroduce GitLab/local templates.
+
+## Upstream behaviour
+
 Scaffold the per-repo configuration that the engineering skills assume:
 
-- **Issue tracker** — where issues live (GitHub by default; local markdown is also supported out of the box)
+- **Issue tracker** — where issues live (FAF: GitHub only)
 - **Triage labels** — the strings used for the five canonical triage roles
 - **Domain docs** — where `CONTEXT.md` and ADRs live, and the consumer rules for reading them
 
-This is a prompt-driven skill, not a deterministic script. Explore, present what you found, confirm with the user, then write.
+This is a prompt-driven skill, not a deterministic script. Explore, present what you found, confirm with the user, then write. For FAF, prefer updating the seeds in this folder and syncing rather than hand-editing only `docs/agents/`.
 
 ## Process
 
@@ -103,13 +113,11 @@ Include the `### Triage labels` sub-block, and write `docs/agents/triage-labels.
 
 Then write the docs files using the seed templates in this skill folder as a starting point:
 
-- [issue-tracker-github.md](./issue-tracker-github.md) — GitHub issue tracker
-- [issue-tracker-gitlab.md](./issue-tracker-gitlab.md) — GitLab issue tracker
-- [issue-tracker-local.md](./issue-tracker-local.md) — local-markdown issue tracker
+- [issue-tracker-github.md](./issue-tracker-github.md) — GitHub issue tracker (FAF: only tracker)
 - [triage-labels.md](./triage-labels.md) — label mapping (only if `triage` is installed)
 - [domain.md](./domain.md) — domain doc consumer rules + layout
 
-For "other" issue trackers, write `docs/agents/issue-tracker.md` from scratch using the user's description.
+For FAF, update those seeds in place, then run `scripts/sync_agent_docs.sh` so `docs/agents/` matches. For "other" issue trackers outside FAF, write `docs/agents/issue-tracker.md` from scratch using the user's description.
 
 ### 5. Done
 

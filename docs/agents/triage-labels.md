@@ -1,14 +1,16 @@
 # Triage Labels — FAF Price Book
 
+Canonical seed (ADR-0006). Mirror: `docs/agents/triage-labels.md` via `scripts/sync_agent_docs.sh`.
+
 Canonical triage roles for Matt Pocock `/triage`, mapped to GitHub label strings on `Koffeekinggamer/faf-pricelist-2.0`.
 
-| Label in mattpocock/skills | Label in our tracker | Meaning |
-| -------------------------- | -------------------- | ------- |
-| `needs-triage`             | `needs-triage`       | Judson / maintainer needs to evaluate |
-| `needs-info`               | `needs-info`         | Waiting on builder file, screenshot, or floor repro |
-| `ready-for-agent`          | `ready-for-agent`    | Fully specified for an AFK Cursor/cloud agent |
+| Label in mattpocock/skills | Label in our tracker | Meaning                                                         |
+| -------------------------- | -------------------- | --------------------------------------------------------------- |
+| `needs-triage`             | `needs-triage`       | Judson / maintainer needs to evaluate                           |
+| `needs-info`               | `needs-info`         | Waiting on builder file, screenshot, or floor repro             |
+| `ready-for-agent`          | `ready-for-agent`    | Fully specified for an AFK Cursor/cloud agent                   |
 | `ready-for-human`          | `ready-for-human`    | Needs Judson (credentials, Viztech login, live DB, design call) |
-| `wontfix`                  | `wontfix`            | Will not be actioned |
+| `wontfix`                  | `wontfix`            | Will not be actioned                                            |
 
 ## FAF triage hints
 

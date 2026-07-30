@@ -1,16 +1,27 @@
 ---
 name: setup-pre-commit
-description: Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing.
+description: Set up Husky pre-commit hooks with lint-staged (Prettier), Ruff for Python, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/testing.
 ---
 
 # Setup Pre-Commit Hooks
 
+## FAF Price Book overlay
+
+This repo is **Python / Streamlit**, not a TypeScript app.
+
+- **Do not** add `npm run typecheck` — there is no JS/TS typecheck.
+- Pre-commit runs: `npx lint-staged` then `npm test` (pytest via `.venv`).
+- lint-staged: Ruff on `*.py` via `scripts/run_ruff.sh` (`.venv/bin/ruff`, else PATH), Prettier on other text.
+- `package.json` is **hooks-only**.
+
+If `npx skills update` restores the upstream JS-oriented text, re-apply this FAF overlay.
+
 ## What This Sets Up
 
 - **Husky** pre-commit hook
-- **lint-staged** running Prettier on all staged files
+- **lint-staged** running Prettier on staged non-Python text + Ruff on `*.py`
 - **Prettier** config (if missing)
-- **typecheck** and **test** scripts in the pre-commit hook
+- **test** script in the pre-commit hook (pytest) — **no typecheck**
 
 ## Steps
 
@@ -26,6 +37,8 @@ Install as devDependencies:
 husky lint-staged prettier
 ```
 
+Also ensure the Python venv has `ruff` and `pytest` (`pip install -r requirements.txt`).
+
 ### 3. Initialize Husky
 
 ```bash
@@ -40,19 +53,24 @@ Write this file (no shebang needed for Husky v9+):
 
 ```
 npx lint-staged
-npm run typecheck
-npm run test
+npm test
 ```
 
-**Adapt**: Replace `npm` with detected package manager. If repo has no `typecheck` or `test` script in package.json, omit those lines and tell the user.
+**FAF:** omit `typecheck`. Replace `npm` with detected package manager if needed. Keep `test` pointing at `.venv/bin/python -m pytest -q`.
 
 ### 5. Create `.lintstagedrc`
 
 ```json
 {
+  "*.py": [
+    "scripts/run_ruff.sh check --fix",
+    "scripts/run_ruff.sh format"
+  ],
   "*": "prettier --ignore-unknown --write"
 }
 ```
+
+Provide `scripts/run_ruff.sh` that prefers `.venv/bin/ruff` then falls back to `ruff` on PATH.
 
 ### 6. Create `.prettierrc` (if missing)
 
@@ -76,7 +94,9 @@ Only create if no Prettier config exists. Use these defaults:
 - [ ] `.lintstagedrc` exists
 - [ ] `prepare` script in package.json is `"husky"`
 - [ ] `prettier` config exists
+- [ ] No `typecheck` line in the pre-commit hook
 - [ ] Run `npx lint-staged` to verify it works
+- [ ] Run `npm test` (pytest)
 
 ### 8. Commit
 
@@ -88,4 +108,4 @@ This will run through the new pre-commit hooks — a good smoke test that everyt
 
 - Husky v9+ doesn't need shebangs in hook files
 - `prettier --ignore-unknown` skips files Prettier can't parse (images, etc.)
-- The pre-commit runs lint-staged first (fast, staged-only), then full typecheck and tests
+- The pre-commit runs lint-staged first (fast, staged-only), then full tests — **not** typecheck

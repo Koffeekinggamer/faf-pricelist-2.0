@@ -1,5 +1,7 @@
 # Domain Docs — FAF Price Book
 
+Canonical seed: `.agents/skills/setup-matt-pocock-skills/domain.md` (ADR-0006). Synced to `docs/agents/domain.md` via `scripts/sync_agent_docs.sh`.
+
 How Matt Pocock engineering skills should consume this repo’s domain documentation.
 
 ## Before exploring, read these (in order)
@@ -8,8 +10,8 @@ How Matt Pocock engineering skills should consume this repo’s domain documenta
 2. **`CONTEXT.md`** — FAF ubiquitous language (builder, retail, replace vendor, …)
 3. **`HANDOFF.md`** — current ops state, known issues, do/don’t
 4. **`STANDARDS.md`** — master row shape (vendor / collection / species / finish / prices)
-5. **`docs/adr/`** — locked decisions that must not be “fixed” casually
-6. **`FLOOR_CHEAT_SHEET.md`** — when the change affects floor Search behavior
+
+Then **`docs/adr/`** as needed for locked decisions that touch the change. Read **`FLOOR_CHEAT_SHEET.md`** when the change affects floor Search behavior.
 
 If a file is missing mid-task, proceed — but **do not invent synonyms** that contradict `CONTEXT.md` / `STANDARDS.md`. Prefer `/domain-modeling` or `/grill-with-docs` to add terms or ADRs.
 
@@ -22,7 +24,7 @@ Single-context repo:
 ├── CONTEXT.md                 ← FAF glossary (required for skill vocabulary)
 ├── HANDOFF.md / STANDARDS.md  ← ops + row canon (FAF-specific; always respect)
 ├── docs/adr/                  ← locked product/architecture decisions
-├── docs/agents/               ← skill config (tracker, labels, this file)
+├── docs/agents/               ← mirrored skill config (from this seed tree)
 ├── pricebook_app.py           ← thin UI
 └── backend/                   ← PriceBookService + import/search/standardize
 ```

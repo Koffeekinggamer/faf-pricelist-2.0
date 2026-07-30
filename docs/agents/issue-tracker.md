@@ -1,5 +1,9 @@
 # Issue tracker: GitHub (FAF Price Book)
 
+Canonical seed (ADR-0006). Mirror: `docs/agents/issue-tracker.md` via `scripts/sync_agent_docs.sh`.
+
+GitLab and local-markdown trackers are **out of scope** for this repo — GitHub only.
+
 Issues and specs for **Foothills Amish Furniture Price Book** live in GitHub Issues on `Koffeekinggamer/faf-pricelist-2.0`. Use the `gh` CLI for all operations.
 
 ## Product framing for tickets

@@ -1,6 +1,6 @@
 # Agent instructions — FAF Price Book (main)
 
-1. Read **HANDOFF.md** first, then **CONTEXT.md** (domain language) and **`docs/adr/`** (locked decisions).
+1. Read in order: **AGENTS.md** (this file) → **CONTEXT.md** → **HANDOFF.md** → **STANDARDS.md**. Consult **`docs/adr/`** as needed.
 2. **This repo is the main FAF Price Book.** Current focus: **catalog accuracy** (Search · Drop files · Vendors · Admin).
 3. Default entry: `pricebook_app.py`. OrderTrac UI flags are **off** — do not re-enable unless Judson asks.
 4. Never commit `*.db`, `.env`, or `.streamlit/secrets.toml`.
@@ -10,9 +10,9 @@
 
 ## Agent skills
 
-Matt Pocock skills are installed under `.agents/skills/` from [mattpocock/skills](https://github.com/mattpocock/skills), configured for **this** price book (not a generic TypeScript app). Update with `npx skills update`.
+Skills live under `.agents/skills/` ([mattpocock/skills](https://github.com/mattpocock/skills) + [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman)). Configured for **this** price book (ADR-0006). Update with `npx skills update`, then re-apply FAF overlays on setup-skill seeds and run `scripts/sync_agent_docs.sh`.
 
-Recommended FAF flows:
+Recommended FAF flows (full pack stays installed; these are reach-for-first):
 
 | Goal                                                        | Skill                         |
 | ----------------------------------------------------------- | ----------------------------- |
@@ -23,19 +23,20 @@ Recommended FAF flows:
 | Hard bug / bad import / wrong retail                        | `/diagnosing-bugs`            |
 | Review a PR against standards + spec                        | `/code-review`                |
 | Multi-session roadmap                                       | `/wayfinder`                  |
+| Terse replies (less fluff)                                  | `/caveman`                    |
 
 ### Pre-commit hooks
 
-Husky runs on every commit: **lint-staged** (Ruff on `*.py`, Prettier on other text) then **`npm test`** → pytest. App remains Python — `package.json` is hooks-only. After clone: `npm install` (installs Husky) and ensure `.venv` has `ruff` / `pytest`.
+Husky: **lint-staged** (Ruff via `scripts/run_ruff.sh` — `.venv/bin/ruff` then PATH; Prettier on other text) then **`npm test`** → pytest. No JS typecheck. `package.json` is hooks-only. After clone: `npm install` + `.venv` with `ruff` / `pytest`.
 
 ### Issue tracker
 
-GitHub Issues on `Koffeekinggamer/faf-pricelist-2.0` via `gh`. Use FAF vocabulary in titles/bodies. See `docs/agents/issue-tracker.md`.
+GitHub Issues on `Koffeekinggamer/faf-pricelist-2.0` via `gh`. See `docs/agents/issue-tracker.md` (mirrored from setup-skill seed).
 
 ### Triage labels
 
-`needs-triage` · `needs-info` · `ready-for-agent` · `ready-for-human` · `wontfix`. Secrets, live DB, and Viztech login → `ready-for-human`. See `docs/agents/triage-labels.md`.
+`needs-triage` · `needs-info` · `ready-for-agent` · `ready-for-human` · `wontfix`. Secrets / live DB / Viztech → `ready-for-human`. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context FAF glossary: root **`CONTEXT.md`**, ops in **`HANDOFF.md`** / **`STANDARDS.md`**, locked decisions in **`docs/adr/`**. Reading order in `docs/agents/domain.md`.
+Reading order above. Detail in `docs/agents/domain.md` (mirror). **Canonical seeds:** `.agents/skills/setup-matt-pocock-skills/` — sync with `scripts/sync_agent_docs.sh` (ADR-0006).
