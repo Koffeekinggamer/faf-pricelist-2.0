@@ -167,6 +167,7 @@ Many local changes **not pushed** (and DB never goes to GitHub):
 3. **Git not synced** — large uncommitted UI/backend/sync/import work (commit product code, never DB/secrets).
 4. **Cloud/Fly deploy** may still have **old small DB** if anyone uses a hosted deploy; authoritative catalog is **local** `master_pricebook.db`. Streamlit Cloud does not get the private DB automatically.
 5. **Quick Cloudflare URL** is ephemeral; re-run tunnel if dead: `scripts/public_tunnel.sh` or cloudflared quick tunnel → update `CURRENT_PUBLIC_URL.txt`.
+6. **Streamlit disconnect mid Drop:** parsed rows used to live in `session_state` (huge shuttle on every Mult click). Fixed with disk cache (`backend/drop_cache.py`) + `websocketPingInterval` / `fileWatcherType=none`. Prefer **localhost:8501** for large Drops; Cloudflare tunnel stays flaky for long ops. Fly VM raised to **2gb** in `fly.toml` (redeploy to apply). Diagnose: `scripts/diagnose_streamlit_disconnect.py`.
 
 ### Data quality (ongoing)
 

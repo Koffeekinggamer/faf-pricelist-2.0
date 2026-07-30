@@ -33,7 +33,8 @@ primary_region = 'iad'
   initial_size = '3gb'
 
 [[vm]]
-  memory = '1gb'
+  # 2gb: full catalog + Drop import previously OOM-killed 1gb machines mid-process
+  memory = '2gb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 1024
+  memory_mb = 2048

@@ -20,7 +20,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from backend import PriceBookService
+from backend import PriceBookService, drop_cache
 from backend.auth import login_user
 from backend.config import (
     APP_DIR,
@@ -1627,6 +1627,11 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
 **replace that builder’s catalog** so you never get duplicate builders.
             """
         )
+    st.caption(
+        "Large Drop: use **http://127.0.0.1:8501** on the Mac (not the Cloudflare "
+        "tunnel). Parsed rows stay on disk so the browser session doesn’t disconnect "
+        "while you set multipliers."
+    )
 
     uploads = st.file_uploader(
         "Drop Excel or PDF price lists here",
@@ -1697,6 +1702,10 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
 
         if st.session_state.get("drop_file_keys") != upload_sig:
             _clear_drop_widget_state()
+            # Drop any prior disk cache for a different signature
+            old_meta = st.session_state.get(cache_key)
+            if isinstance(old_meta, dict) and old_meta.get("path"):
+                drop_cache.clear(path=old_meta["path"])
             parsed: list[dict] = []
             progress = st.progress(0.0, text="Reading files…")
             n_up = max(len(uploads), 1)
@@ -1738,14 +1747,23 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                     }
                 )
             progress.progress(1.0, text="Done parsing")
-            st.session_state[cache_key] = parsed
+            # Rows on disk — session only keeps a light path meta (avoids WS disconnects)
+            disk_path = drop_cache.save_parsed(upload_sig, parsed)
+            st.session_state[cache_key] = drop_cache.session_meta(disk_path, parsed)
             st.session_state["drop_file_keys"] = upload_sig
 
-        parsed_list: list = st.session_state.get(cache_key) or []
-        # Align list length with current uploads if cache is stale/partial
-        if len(parsed_list) != len(uploads):
+        cache_meta = st.session_state.get(cache_key)
+        parsed_list: list | None = None
+        if isinstance(cache_meta, dict) and cache_meta.get("path"):
+            parsed_list = drop_cache.load_parsed(upload_sig, path=cache_meta["path"])
+        elif isinstance(cache_meta, list):
+            # Legacy in-session cache from older builds
+            parsed_list = cache_meta
+        if not parsed_list or len(parsed_list) != len(uploads):
             st.session_state.pop(cache_key, None)
             st.session_state.pop("drop_file_keys", None)
+            if isinstance(cache_meta, dict) and cache_meta.get("path"):
+                drop_cache.clear(path=cache_meta["path"])
             st.warning("Parse cache out of sync — re-reading files…")
             st.rerun()
 
@@ -1989,8 +2007,12 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                         )
                 bar.progress(1.0, text="Done")
                 ok_n = sum(1 for r in results_log if r.get("Status") == "ok")
-                st.session_state.pop(cache_key, None)
+                meta = st.session_state.pop(cache_key, None)
                 st.session_state.pop("drop_file_keys", None)
+                if isinstance(meta, dict) and meta.get("path"):
+                    drop_cache.clear(path=meta["path"])
+                else:
+                    drop_cache.clear(upload_sig)
                 _clear_drop_widget_state()
                 st.session_state["drop_load_msg"] = (
                     f"Loaded **{ok_n}** of **{len(items)}** builder(s). "

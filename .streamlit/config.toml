@@ -1,6 +1,13 @@
 [server]
 headless = true
 enableXsrfProtection = true
+# Keep WebSocket alive through Fly / Cloudflare proxies (Streamlit 1.48+)
+websocketPingInterval = 20
+# Large Drop previews / tables; still keep row payloads off session (drop_cache)
+maxMessageSize = 500
+maxUploadSize = 400
+# Avoid mid-import reload when sync scripts touch files on disk
+fileWatcherType = "none"
 
 [browser]
 gatherUsageStats = false
