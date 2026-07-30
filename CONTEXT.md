@@ -30,6 +30,10 @@ _Avoid_: sheet title, upcharge section name
 Wood tier **or** color/fabric option on the row (slash-separated woods, Title Case).
 _Avoid_: `col_N`, bare `FINISHED`, raw column headers
 
+**Option** / **addon charge**:
+A builder upcharge or specialty adder — e.g. +% over base for certain woods, or a listed specialty change that is not the main SKU×wood×finish sellable row. Floor **Option** dropdown should surface these when present.
+_Avoid_: treating finish Cat.N / fabric _tier labels_ as the only meaning of Option; treating raw adder dollars as full chair retail (FN fabric adder columns are skipped on purpose)
+
 **Finish state**:
 Only `finished` or `unfinished` (default `finished` for floor search).
 _Avoid_: free-text finish names in this field
