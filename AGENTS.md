@@ -14,5 +14,6 @@
 - Lint/tests: `.venv/bin/python -m pytest -q` (config in `pytest.ini`, tests in `tests/`). There is no separate linter configured.
 - Backend CLI (useful without the UI): `.venv/bin/python -m backend.cli stats|search|import-xlsx|batch` (see `backend/cli.py`).
 - `master_pricebook.db` is gitignored and NOT in the repo, so a fresh clone starts with an empty catalog (`stats` → 0 rows). The schema is auto-created on first service init / app start; seed data by importing a builder Excel/PDF via the "Drop files" tab or `backend.cli import-xlsx`.
+- To get the REAL live catalog (~168MB), pull it from Fly (the private source of truth): `./scripts/pull_db_from_fly.sh`. This needs `flyctl` (installed at `~/.fly/bin`) authenticated via a real `FLY_API_TOKEN` secret (value starts with `FlyV1 `). See `SYNC.md` for the full multi-machine workflow. NEVER commit the DB or a `*.db.gz` dump to this repo — it is PUBLIC and the data is private.
 - The `python3-venv` system package is required to build `.venv` and is baked into the environment snapshot; it is intentionally not in the update script.
 - Never commit `*.db`, `.env`, or `.streamlit/secrets.toml`.
