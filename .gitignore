@@ -18,6 +18,9 @@ build/
 *.db-wal
 *.db-shm
 master_pricebook.db
+# Compressed DB dumps + local clone of the PRIVATE backup repo — never in this public repo
+*.db.gz
+.faf-backup/
 
 # OS / editor
 .DS_Store

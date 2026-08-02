@@ -31,6 +31,18 @@ OrderTrac quote / connection UI stays in the codebase behind flags (`SHOW_ORDERT
 # http://127.0.0.1:8501
 ```
 
+## Working across machines
+
+Code syncs via GitHub; the private ~168MB catalog DB syncs via Fly (never committed). To get the live catalog on any device:
+
+```bash
+./scripts/pull_db_from_fly.sh   # live catalog → master_pricebook.db (needs flyctl auth)
+./run.sh
+./scripts/push_db_to_fly.sh     # push local catalog changes back to live
+```
+
+Full multi-machine workflow (both Macs + cloud agents): see [SYNC.md](SYNC.md).
+
 ## App entrypoints
 
 | File | Role |
