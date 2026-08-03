@@ -468,7 +468,7 @@ if st.sidebar.button("Sign out"):
 
 stats = svc.stats()
 st.sidebar.metric("Master rows", f"{stats['rows']:,}")
-st.sidebar.caption(f"{stats['vendors']} vendors · {stats['collections']} collections")
+st.sidebar.caption(f"{stats['vendors']} vendors")
 if SHOW_ORDERTRAC_QUOTE:
     _quote_sidebar_badge()
 # Viztech sync status lives under Admin only (hidden from floor sidebar)
