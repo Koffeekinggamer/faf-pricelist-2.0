@@ -2663,12 +2663,3 @@ python scripts/viztech_sync.py --dry-run
 python scripts/viztech_sync.py
 """.rstrip()
     st.code(_cli)
-
-st.caption(
-    "FAF Price Book · Search · Drop files · Vendors · Admin · "
-    + (
-        "one builder = one catalog · Viztech sync every ~30 days"
-        if SHOW_VIZTECH
-        else "one builder = one catalog · manual Drop while verifying accuracy"
-    )
-)
