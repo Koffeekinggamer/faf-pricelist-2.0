@@ -569,12 +569,6 @@ with tab_search:
                 ):
                     st.session_state["pin_panel_open"] = True
                     st.rerun()
-        q = st.text_input(
-            "Search the master book",
-            placeholder="Part # or product words…",
-            key="sq",
-            label_visibility="collapsed",
-        )
 
         vendors = ["All"] + all_vendors
         # Put favorites first after All for faster floor pick in dropdown only
@@ -635,6 +629,13 @@ with tab_search:
                         if st.button("Pin builder", key="pin_builder", use_container_width=True):
                             _save_favorites(favorites + [vf])
                             st.rerun()
+
+        q = st.text_input(
+            "Search the master book",
+            placeholder="Part # or product words…",
+            key="sq",
+            label_visibility="collapsed",
+        )
 
         # Don't dump the whole book when search is empty — unless a builder is chosen
         if not (q or "").strip() and vf == "All":
