@@ -548,7 +548,7 @@ with tab_search:
             rest = [v for v in all_vendors if v not in favorites]
             vendors = ["All"] + favorites + rest
 
-        f1, f2, f3, f4 = st.columns([1.45, 1.25, 0.95, 0.85])
+        f1, f2, f3 = st.columns([1.6, 1.4, 0.85])
         with f1:
             vf = st.selectbox("Builder", vendors, key="sv")
         with f2:
@@ -567,11 +567,9 @@ with tab_search:
             )
             if vf != "All" and len(wood_opts) <= 1:
                 st.caption("No wood options parsed for this builder.")
+        # Finish dropdown hidden — always show a builder's finished options only.
+        ff = "finished"
         with f3:
-            # Floor default: finished only
-            finish_opts = ["finished", "All", "unfinished"]
-            ff = st.selectbox("Finish", finish_opts, index=0, key="sf")
-        with f4:
             if not SHOW_SIMPLE_UI:
                 st.write("")  # align with selectboxes
                 st.write("")
