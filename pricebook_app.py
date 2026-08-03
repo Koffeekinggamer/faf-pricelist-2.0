@@ -583,10 +583,10 @@ with tab_search:
             vendors = ["All"] + favorites + rest
 
         if SHOW_SIMPLE_UI:
-            f1, f2, f3, f4 = st.columns([1.35, 1.2, 0.9, 1.0])
-            f5 = None
+            f1, f2, f3 = st.columns([1.5, 1.3, 1.1])
+            f4 = None
         else:
-            f1, f2, f3, f4, f5 = st.columns([1.25, 1.1, 0.85, 0.95, 0.75])
+            f1, f2, f3, f4 = st.columns([1.35, 1.2, 1.0, 0.8])
         with f1:
             vf = st.selectbox("Builder", vendors, key="sv")
         with f2:
@@ -605,11 +605,9 @@ with tab_search:
             )
             if vf != "All" and len(wood_opts) <= 1:
                 st.caption("No wood options parsed for this builder.")
+        # Finish dropdown hidden — always show a builder's finished options only.
+        ff = "finished"
         with f3:
-            # Floor default: finished only
-            finish_opts = ["finished", "All", "unfinished"]
-            ff = st.selectbox("Finish", finish_opts, index=0, key="sf")
-        with f4:
             # Option — per builder (addon charges + finish Cat.N, etc.)
             opt_list = _option_dropdown_options(vf if vf else "All")
             opt_opts = ["All"] + [o for o in opt_list if o and o != "All"]
@@ -624,8 +622,8 @@ with tab_search:
                 "Disabled when Builder is All or that builder has no options.",
                 disabled=(vf == "All" or len(opt_opts) <= 1),
             )
-        if f5 is not None:
-            with f5:
+        if f4 is not None:
+            with f4:
                 st.write("")  # align with selectboxes
                 st.write("")
                 if vf != "All":
