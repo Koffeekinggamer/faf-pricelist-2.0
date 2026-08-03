@@ -673,15 +673,15 @@ with tab_search:
             elif empty_reason == "error":
                 pass  # error already shown
             else:
-                if ff == "finished" and vf != "All":
+                if vf != "All":
                     st.info(
-                        "No **finished** hits for this builder — try **Finish → All** "
-                        "(or **unfinished**), or clear the search box."
+                        "No hits for this builder — try clearing the **Wood** or "
+                        "**Option** filter, or the search box."
                     )
                 else:
                     st.info(
-                        "No hits — try fewer words, Boolean **OR**, or check "
-                        "**Builder** / **Finish** / **Option** filters."
+                        "No hits — try fewer words, Boolean **OR**, or check the "
+                        "**Builder** / **Wood** / **Option** filters."
                     )
         else:
             hit_note = f"**{len(display):,}** hits"

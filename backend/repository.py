@@ -574,7 +574,14 @@ class PriceBookRepository:
         if q:
             bool_sql, bool_params, bare_terms = self._boolean_to_sql(q)
             if bool_sql:
-                clauses.append(bool_sql)
+                if opt_filter:
+                    # Add-on rows (Option lookups) are catalog-wide — a product
+                    # text query must not hide the selected add-on charge (ADR-0008).
+                    clauses.append(
+                        "(lower(COALESCE(line_kind, 'item')) = 'addon' OR (" + bool_sql + "))"
+                    )
+                else:
+                    clauses.append(bool_sql)
                 params.extend(bool_params)
             else:
                 # User typed something that parsed to no real terms (e.g. "AND OR NOT")
@@ -593,7 +600,7 @@ class PriceBookRepository:
         if species and species != "All":
             # Exact tier/label, or multi-wood tier that includes this wood as a token
             sp = species.strip()
-            clauses.append(
+            species_cond = (
                 "("
                 "trim(coalesce(species,'')) = ? OR "
                 "trim(coalesce(species,'')) LIKE ? ESCAPE '\\' OR "
@@ -601,6 +608,14 @@ class PriceBookRepository:
                 "trim(coalesce(species,'')) LIKE ? ESCAPE '\\'"
                 ")"
             )
+            if opt_filter:
+                # Add-on rows have no wood — a Wood filter must not hide the
+                # selected option's charge (ADR-0008).
+                clauses.append(
+                    "(lower(COALESCE(line_kind, 'item')) = 'addon' OR " + species_cond + ")"
+                )
+            else:
+                clauses.append(species_cond)
             esc = self._like_escape(sp)
             params.extend(
                 [
