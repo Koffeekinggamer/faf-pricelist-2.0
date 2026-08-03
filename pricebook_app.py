@@ -479,7 +479,7 @@ if SHOW_ORDERTRAC_QUOTE:
 
 if SHOW_SIMPLE_UI:
     st.caption(
-        f"**FAF Price Book** · accuracy mode · {stats['rows']:,} rows · {stats['vendors']} builders"
+        f"**FAF Price Book** · {stats['rows']:,} rows · {stats['vendors']} builders"
     )
     if int(stats.get("rows") or 0) == 0:
         st.error(
