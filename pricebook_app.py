@@ -612,9 +612,7 @@ with tab_search:
                 options=opt_opts,
                 key="so",
                 help="Addon charges and finish/size/color options for this "
-                "builder (ADR-0008). Pick an adder to see its $ / % charge. "
-                "Disabled when Builder is All or that builder has no options.",
-                disabled=(vf == "All" or len(opt_opts) <= 1),
+                "builder (ADR-0008). Pick an adder to see its $ / % charge.",
             )
         if f4 is not None:
             with f4:
