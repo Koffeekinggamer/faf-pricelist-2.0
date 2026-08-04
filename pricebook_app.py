@@ -728,6 +728,18 @@ with tab_search:
                     f"Wood filter: **{wf}** · Wood column shows only this selection "
                     f"(other woods in the builder’s price tier are hidden)."
                 )
+            if (
+                of
+                and of != "All"
+                and "option_key" in display.columns
+                and "collection" in display.columns
+                and (display["option_key"].astype(str) == of).any()
+                and (display["collection"].astype(str) != "Addons").any()
+            ):
+                st.caption(
+                    f"**RETAIL includes the {of} option** — its upcharge is already "
+                    f"added to each eligible item’s price."
+                )
             # Content-based widths so headers + values fully show (scrolls if needed)
             st.dataframe(
                 view,

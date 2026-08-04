@@ -693,6 +693,41 @@ class PriceBookRepository:
         with self._conn() as conn:
             return pd.read_sql_query(sql, conn, params=params)
 
+    def get_addon_charge(
+        self, vendor: str, option_key: str
+    ) -> Optional[dict]:
+        """Return one addon (upcharge) row for a builder's Option, or None.
+
+        Prefers the *flat* form whose part_number equals the option label
+        (e.g. "Undermount Drawer Slides") over per-category rows
+        (e.g. "9 Drawer Dresser - Paint"). Fields: base_price, adjusted_price,
+        addon_pct, part_number, is_flat.
+        """
+        if not vendor or not option_key:
+            return None
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT base_price, adjusted_price, addon_pct, part_number
+                FROM pricebook
+                WHERE vendor = ? AND option_key = ?
+                  AND lower(COALESCE(line_kind, '')) = 'addon'
+                ORDER BY (CASE WHEN trim(COALESCE(part_number,'')) = ? THEN 0 ELSE 1 END),
+                         COALESCE(adjusted_price, 0)
+                LIMIT 1
+                """,
+                (vendor, option_key, option_key),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "base_price": row["base_price"],
+            "adjusted_price": row["adjusted_price"],
+            "addon_pct": row["addon_pct"],
+            "part_number": row["part_number"],
+            "is_flat": (row["part_number"] or "").strip() == option_key.strip(),
+        }
+
     # ------------------------------------------------------------------ write
     def insert_rows(self, rows: list[dict]) -> int:
         if not rows:

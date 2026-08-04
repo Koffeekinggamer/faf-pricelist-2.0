@@ -85,6 +85,24 @@ class PriceBookService:
         limit: int = DEFAULT_SEARCH_LIMIT,
     ) -> pd.DataFrame:
         self.ensure_ready()
+        opt = (option_key or "").strip()
+        if (
+            opt
+            and opt.lower() != "all"
+            and vendor
+            and vendor != "All"
+            and self._is_item_upcharge_option(opt)
+        ):
+            upcharged = self._search_with_item_option_upcharge(
+                query,
+                vendor=vendor,
+                finish_state=finish_state,
+                species=species,
+                option_key=opt,
+                limit=limit,
+            )
+            if upcharged is not None:
+                return upcharged
         return self.repo.search(
             query,
             collection=collection,
@@ -94,6 +112,83 @@ class PriceBookService:
             option_key=option_key,
             limit=limit,
         )
+
+    # Options whose upcharge modifies the price of eligible ITEMS (drawered /
+    # doored goods) rather than showing a standalone addon row. Start narrow
+    # (ADR-0008 follow-up): flat per-unit drawer/door options. Per-category
+    # finish upcharges (Paint, 2-tone Stain, …) keep prior behaviour for now.
+    _ITEM_UPCHARGE_OPTION_KEYWORDS = ("drawer", "door", "slide")
+    _DRAWER_DOOR_ITEM_KEYWORDS = (
+        "drawer", "dresser", "chest", "night stand", "nightstand", "lingerie",
+        "armoire", "wardrobe", "credenza", "sideboard", "buffet", "cabinet",
+        "vanity", "hutch", "server", "console", "door",
+    )
+
+    def _is_item_upcharge_option(self, option_key: str) -> bool:
+        o = (option_key or "").lower()
+        return any(k in o for k in self._ITEM_UPCHARGE_OPTION_KEYWORDS)
+
+    def _search_with_item_option_upcharge(
+        self,
+        query: str,
+        *,
+        vendor: str,
+        finish_state: Optional[str],
+        species: Optional[str],
+        option_key: str,
+        limit: int,
+    ) -> Optional[pd.DataFrame]:
+        """Eligible items with retail raised by a flat drawer/door Option.
+
+        Returns None (caller falls back to the normal search) when the Option
+        has no flat charge for this builder.
+        """
+        charge = self.repo.get_addon_charge(vendor, option_key)
+        if not charge or not charge.get("is_flat"):
+            return None
+        retail_add = charge.get("adjusted_price")
+        base_add = charge.get("base_price")
+        if retail_add is None and base_add is None:
+            return None
+
+        # Eligible ITEM rows only (repo excludes addon rows when no Option filter).
+        df = self.repo.search(
+            query,
+            vendor=vendor,
+            finish_state=finish_state,
+            species=species,
+            option_key=None,
+            limit=max(int(limit) * 5, 200),
+        )
+        if df.empty:
+            return df
+
+        haystack = (
+            df.get("description").fillna("").astype(str)
+            + " | " + df.get("collection").fillna("").astype(str)
+            + " | " + df.get("part_number").fillna("").astype(str)
+        ).str.lower()
+        eligible = haystack.apply(
+            lambda s: any(k in s for k in self._DRAWER_DOOR_ITEM_KEYWORDS)
+        )
+        df = df[eligible].copy()
+        if df.empty:
+            return df
+
+        if "adjusted_price" in df.columns and retail_add is not None:
+            df["adjusted_price"] = df["adjusted_price"].fillna(0) + float(retail_add)
+        if "base_price" in df.columns and base_add is not None:
+            df["base_price"] = df["base_price"].fillna(0) + float(base_add)
+        # Tag the applied Option so the UI can show what was added.
+        df["option_key"] = option_key
+        add_txt = f"+ {option_key}"
+        if retail_add is not None:
+            add_txt += f" (+${float(retail_add):,.0f})"
+        if "notes" in df.columns:
+            df["notes"] = df["notes"].fillna("").astype(str).apply(
+                lambda n: f"{n} · {add_txt}".strip(" ·") if n else add_txt
+            )
+        return df.head(int(limit)).reset_index(drop=True)
 
     def get_row(self, row_id: int) -> Optional[dict]:
         self.ensure_ready()
