@@ -711,6 +711,18 @@ with tab_search:
                 and display["option_key"].fillna("").astype(str).str.strip().eq("").all()
             ):
                 show_cols = [c for c in show_cols if c != "option_key"]
+            # When an Option is applied, surface the per-item upcharge detail
+            # (matched category / "approx") from notes so the floor can verify.
+            option_applied = (
+                of
+                and of != "All"
+                and "option_key" in display.columns
+                and (display["option_key"].astype(str) == of).any()
+                and "collection" in display.columns
+                and (display["collection"].astype(str) != "Addons").any()
+            )
+            if option_applied and "notes" in display.columns and "notes" not in show_cols:
+                show_cols = show_cols + ["notes"]
             view = display[show_cols].rename(
                 columns={
                     "part_number": "Part #",
@@ -721,6 +733,7 @@ with tab_search:
                     "species": "Wood",
                     "finish_state": "Finish",
                     "adjusted_price": "RETAIL",
+                    "notes": "Option detail",
                 }
             )
             if wf and wf != "All":

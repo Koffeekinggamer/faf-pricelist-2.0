@@ -38,6 +38,20 @@ def _addon(vendor, label, base, retail):
     }
 
 
+def _addon_cat(vendor, label, category, base, retail):
+    # Per-category addon: part_number carries the furniture category prefix.
+    return {
+        "vendor": vendor,
+        "collection": "Addons",
+        "part_number": f"{category} - {label}",
+        "description": f"{label} adder ({category})",
+        "option_key": label,
+        "base_price": base,
+        "adjusted_price": retail,
+        "line_kind": "addon",
+    }
+
+
 def test_flat_drawer_option_upcharges_only_eligible_items(tmp_path):
     svc = _svc(tmp_path)
     V = "Test Builder"
@@ -62,16 +76,31 @@ def test_flat_drawer_option_upcharges_only_eligible_items(tmp_path):
     assert "Undermount Drawer Slides" in str(dresser["notes"])
 
 
-def test_finish_option_does_not_upcharge_items(tmp_path):
-    # "Paint" is a per-category finish upcharge, not a drawer/door option: items
-    # must keep their own price (prior behaviour), so D1 is never returned upcharged.
+def test_finish_option_upcharges_every_wood_item_by_category(tmp_path):
+    # A finish option (Paint) applies to EVERY physical wood item; the charge
+    # comes from the item's matched category. Non-wood accessories are excluded.
     svc = _svc(tmp_path)
     V = "Test Builder"
     svc.repo.insert_rows([
-        _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
-        _addon(V, "Paint", 50.0, 135.0),
+        _item(V, "Bedroom", "Q1", "Queen Panel Bed", 2000.0),
+        _item(V, "Bedroom", "D9", "9 Drawer Dresser", 1000.0),
+        {
+            "vendor": V, "collection": "Misc", "part_number": "AC1",
+            "description": "Knob Set", "species": None, "finish_state": "finished",
+            "base_price": 10.0, "adjusted_price": 27.0, "line_kind": "item",
+        },
+        _addon_cat(V, "Paint", "Queen Bed", 130.0, 352.0),
+        _addon_cat(V, "Paint", "9 Drawer Dresser", 150.0, 406.0),
     ])
 
     res = svc.search("", vendor=V, option_key="Paint")
-    if (res["part_number"] == "D1").any():
-        assert res[res["part_number"] == "D1"].iloc[0]["adjusted_price"] == 1000.0
+    parts = set(res["part_number"])
+    assert "Q1" in parts and "D9" in parts   # every wood item eligible
+    assert "AC1" not in parts                # non-wood accessory excluded
+
+    q = res[res["part_number"] == "Q1"].iloc[0]
+    d = res[res["part_number"] == "D9"].iloc[0]
+    assert q["adjusted_price"] == 2352.0     # 2000 + Queen Bed Paint 352
+    assert d["adjusted_price"] == 1406.0     # 1000 + 9 Drawer Dresser Paint 406
+    assert "Queen Bed" in str(q["notes"])
+    assert "9 Drawer Dresser" in str(d["notes"])

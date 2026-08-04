@@ -6,6 +6,7 @@ UI and scripts should prefer this over touching repository/importers directly.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence, Union
 
@@ -91,7 +92,6 @@ class PriceBookService:
             and opt.lower() != "all"
             and vendor
             and vendor != "All"
-            and self._is_item_upcharge_option(opt)
         ):
             upcharged = self._search_with_item_option_upcharge(
                 query,
@@ -128,6 +128,63 @@ class PriceBookService:
         o = (option_key or "").lower()
         return any(k in o for k in self._ITEM_UPCHARGE_OPTION_KEYWORDS)
 
+    def _match_addon_category(
+        self, item_text: str, categories: list[dict]
+    ) -> tuple[Optional[dict], bool]:
+        """Best-matching addon category for an item, and whether it's confident.
+
+        Heuristic (ADR-0008 follow-up): distinctive-synonym overrides first, then
+        furniture-type token scoring. `confident` is False for ambiguous ties
+        (plain "Dresser", generic "Chest") and compound goods ("5 Piece Set"), so
+        the caller can flag the charge as approximate rather than imply certainty.
+        Returns (None, False) when nothing matches.
+        """
+        low = (item_text or "").lower()
+
+        def find(pred) -> Optional[dict]:
+            for c in categories:
+                if pred((c.get("category") or "").lower()):
+                    return c
+            return None
+
+        # Distinctive-synonym overrides (win over generic token ties).
+        overrides = [
+            (("man" in low and "chest" in low), lambda l: "manschest" in l or ("man" in l and "chest" in l)),
+            (("chifferobe" in low or "wardrobe" in low), lambda l: "armoire" in l),
+            (("tri-view" in low or "triview" in low or "tri view" in low), lambda l: "triview" in l or ("tri" in l and "view" in l)),
+            ("lingerie" in low, lambda l: "lingerie" in l),
+            (("studio" in low and "chest" in low), lambda l: "studio" in l),
+        ]
+        for cond, pred in overrides:
+            if cond:
+                c = find(pred)
+                if c is not None:
+                    return c, True
+
+        t = " " + re.sub(r"[^a-z0-9\"/ ]+", " ", low) + " "
+        if "nightstand" in low:
+            t += " night stand "
+        words = set(t.split())
+        scored: list[tuple[int, dict]] = []
+        for cat in categories:
+            toks = [w for w in re.split(r"[^a-z0-9\"]+", (cat.get("category") or "").lower()) if w]
+            score = 0
+            for w in toks:
+                if w in words:
+                    score += 1 if w.isdigit() else 2
+                elif len(w) > 3 and w in t:
+                    score += 1
+            scored.append((score, cat))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        if not scored or scored[0][0] == 0:
+            return None, False
+        best_score, best = scored[0]
+        second = scored[1][0] if len(scored) > 1 else 0
+        confident = best_score > second
+        if "piece set" in low or "pc set" in low or "piece bedroom" in low:
+            confident = False  # compound: upcharge would be the sum of several categories
+        return best, confident
+
     def _search_with_item_option_upcharge(
         self,
         query: str,
@@ -138,56 +195,109 @@ class PriceBookService:
         option_key: str,
         limit: int,
     ) -> Optional[pd.DataFrame]:
-        """Eligible items with retail raised by a flat drawer/door Option.
+        """Show eligible items with retail raised by the selected Option's charge.
 
-        Returns None (caller falls back to the normal search) when the Option
-        has no flat charge for this builder.
+        - Drawer/door options (flat charge): only drawered/doored items.
+        - Finish (and other) options: EVERY physical wood item is eligible; the
+          charge comes from the item's best-matching category (falls back to the
+          median category charge, flagged, when no confident match).
+
+        Returns None (caller falls back to normal search) when the Option has no
+        addon charge rows for this builder.
         """
-        charge = self.repo.get_addon_charge(vendor, option_key)
-        if not charge or not charge.get("is_flat"):
+        addons = self.repo.get_addon_rows(vendor, option_key)
+        if not addons:
             return None
-        retail_add = charge.get("adjusted_price")
-        base_add = charge.get("base_price")
-        if retail_add is None and base_add is None:
-            return None
+        flat = [a for a in addons if a.get("is_flat")]
+        cats = [a for a in addons if not a.get("is_flat")]
+        is_drawer_door = self._is_item_upcharge_option(option_key)
 
-        # Eligible ITEM rows only (repo excludes addon rows when no Option filter).
         df = self.repo.search(
             query,
             vendor=vendor,
             finish_state=finish_state,
             species=species,
             option_key=None,
-            limit=max(int(limit) * 5, 200),
+            limit=max(int(limit) * 6, 400),
         )
         if df.empty:
             return df
 
-        haystack = (
-            df.get("description").fillna("").astype(str)
-            + " | " + df.get("collection").fillna("").astype(str)
-            + " | " + df.get("part_number").fillna("").astype(str)
+        text = (
+            df.get("description").fillna("").astype(str) + " | "
+            + df.get("collection").fillna("").astype(str) + " | "
+            + df.get("part_number").fillna("").astype(str)
         ).str.lower()
-        eligible = haystack.apply(
-            lambda s: any(k in s for k in self._DRAWER_DOOR_ITEM_KEYWORDS)
-        )
-        df = df[eligible].copy()
+
+        if is_drawer_door and flat:
+            eligible = text.apply(
+                lambda s: any(k in s for k in self._DRAWER_DOOR_ITEM_KEYWORDS)
+            )
+            df = df[eligible].copy()
+            if df.empty:
+                return df
+            base_add = flat[0].get("base_price")
+            retail_add = flat[0].get("adjusted_price")
+            if retail_add is not None:
+                df["adjusted_price"] = df["adjusted_price"].fillna(0) + float(retail_add)
+            if base_add is not None:
+                df["base_price"] = df["base_price"].fillna(0) + float(base_add)
+            df["option_key"] = option_key
+            tag = f"+ {option_key}"
+            if retail_add is not None:
+                tag += f" (+${float(retail_add):,.0f})"
+            df["notes"] = df["notes"].fillna("").astype(str).apply(
+                lambda n: f"{n} · {tag}".strip(" ·") if n else tag
+            )
+            return df.head(int(limit)).reset_index(drop=True)
+
+        # Finish / per-category option: every physical WOOD item is eligible.
+        has_wood = df.get("species").fillna("").astype(str).str.strip() != ""
+        df = df[has_wood].copy()
         if df.empty:
             return df
 
-        if "adjusted_price" in df.columns and retail_add is not None:
-            df["adjusted_price"] = df["adjusted_price"].fillna(0) + float(retail_add)
-        if "base_price" in df.columns and base_add is not None:
-            df["base_price"] = df["base_price"].fillna(0) + float(base_add)
-        # Tag the applied Option so the UI can show what was added.
+        rc = sorted(a["adjusted_price"] for a in cats if a.get("adjusted_price") is not None)
+        bc = sorted(a["base_price"] for a in cats if a.get("base_price") is not None)
+        med_retail = rc[len(rc) // 2] if rc else (flat[0].get("adjusted_price") if flat else None)
+        med_base = bc[len(bc) // 2] if bc else (flat[0].get("base_price") if flat else None)
+
+        cur_notes = df.get("notes").fillna("").astype(str).tolist()
+        old_retail = df["adjusted_price"].tolist()
+        old_base = df["base_price"].tolist()
+        new_retail, new_base, new_notes = [], [], []
+        for i, (_, r) in enumerate(df.iterrows()):
+            itext = f"{r.get('description') or ''} {r.get('collection') or ''} {r.get('part_number') or ''}"
+            if cats:
+                m, confident = self._match_addon_category(itext, cats)
+            else:
+                m, confident = (flat[0], True) if flat else (None, False)
+            if m is not None:
+                b, a = m.get("base_price"), m.get("adjusted_price")
+                label = None if m.get("is_flat") else m.get("category")
+                approx = not confident
+            else:
+                b, a, label, approx = med_base, med_retail, None, True
+            op = old_retail[i]
+            ob = old_base[i]
+            new_retail.append((float(op) if op is not None else 0.0) + (float(a) if a is not None else 0.0))
+            new_base.append((float(ob) if ob is not None else 0.0) + (float(b) if b is not None else 0.0))
+            amt = f" +${float(a):,.0f}" if a is not None else ""
+            if approx:
+                inner = f"approx: {label}{amt}" if label else f"approx{amt}"
+            elif label:
+                inner = f"{label}{amt}"
+            else:
+                inner = amt.strip(" +")
+            tag = f"+ {option_key} ({inner})" if inner else f"+ {option_key}"
+            base = cur_notes[i]
+            new_notes.append(f"{base} · {tag}".strip(" ·") if base else tag)
+
+        df = df.copy()
+        df["adjusted_price"] = new_retail
+        df["base_price"] = new_base
         df["option_key"] = option_key
-        add_txt = f"+ {option_key}"
-        if retail_add is not None:
-            add_txt += f" (+${float(retail_add):,.0f})"
-        if "notes" in df.columns:
-            df["notes"] = df["notes"].fillna("").astype(str).apply(
-                lambda n: f"{n} · {add_txt}".strip(" ·") if n else add_txt
-            )
+        df["notes"] = new_notes
         return df.head(int(limit)).reset_index(drop=True)
 
     def get_row(self, row_id: int) -> Optional[dict]:

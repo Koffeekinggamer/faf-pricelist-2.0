@@ -728,6 +728,41 @@ class PriceBookRepository:
             "is_flat": (row["part_number"] or "").strip() == option_key.strip(),
         }
 
+    def get_addon_rows(self, vendor: str, option_key: str) -> list[dict]:
+        """All addon (upcharge) rows for a builder's Option.
+
+        Each row: category (the part_number minus the " - <option>" suffix, or
+        the whole label when flat), base_price, adjusted_price, addon_pct, is_flat.
+        Finish options (Paint, …) return many per-category rows; flat options
+        (Undermount Drawer Slides) return a single is_flat row.
+        """
+        if not vendor or not option_key:
+            return []
+        opt = option_key.strip()
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT part_number, base_price, adjusted_price, addon_pct
+                FROM pricebook
+                WHERE vendor = ? AND option_key = ?
+                  AND lower(COALESCE(line_kind, '')) = 'addon'
+                """,
+                (vendor, opt),
+            ).fetchall()
+        out: list[dict] = []
+        for r in rows:
+            pn = (r["part_number"] or "").strip()
+            is_flat = pn == opt
+            category = pn if is_flat else pn.rsplit(" - ", 1)[0]
+            out.append({
+                "category": category,
+                "base_price": r["base_price"],
+                "adjusted_price": r["adjusted_price"],
+                "addon_pct": r["addon_pct"],
+                "is_flat": is_flat,
+            })
+        return out
+
     # ------------------------------------------------------------------ write
     def insert_rows(self, rows: list[dict]) -> int:
         if not rows:
