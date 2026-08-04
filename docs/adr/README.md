@@ -14,5 +14,6 @@ Locked product/architecture decisions. Skills (`/grill-with-docs`, `/domain-mode
 | [0008](./0008-options-are-addon-charges.md)                | Option = addon charges (`line_kind=addon`); not fake retail      |
 | [0009](./0009-practical-office-skill-process.md)           | Practical-Office process; keep mattpocock skill packages         |
 | [0010](./0010-smart-reimport-skip-unchanged.md)            | Smart re-import: skip unchanged; else replace_vendor             |
+| [0011](./0011-builder-profiles.md)                         | Per-builder learned rules in `config/builder_profiles/*.json`    |
 
 New ADRs: next number, short slug, see `.agents/skills/domain-modeling/ADR-FORMAT.md`.
