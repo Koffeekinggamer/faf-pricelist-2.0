@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union  # noqa: F401 — Optional used throughout
+from typing import Optional, Sequence, Union  # noqa: F401 — Optional used throughout
 
 import pandas as pd
 
@@ -714,6 +715,117 @@ class PriceBookRepository:
         with self._conn() as conn:
             return pd.read_sql_query(sql, conn, params=params)
 
+    def list_part_numbers_for_vendor(self, vendor: str) -> set[str]:
+        """Distinct part_number values for a builder (items + addons)."""
+        if not vendor:
+            return set()
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT trim(part_number) AS pn
+                FROM pricebook
+                WHERE vendor = ?
+                  AND part_number IS NOT NULL
+                  AND trim(part_number) != ''
+                """,
+                (vendor,),
+            ).fetchall()
+        return {str(r[0]) for r in rows if r[0]}
+
+    def upsert_catalog_image(
+        self,
+        *,
+        vendor: str,
+        part_number: str,
+        image_path: str,
+        source_file: Optional[str] = None,
+        page: Optional[int] = None,
+        match_method: Optional[str] = None,
+        updated_at: Optional[str] = None,
+    ) -> None:
+        """Insert or replace one catalog image row for (vendor, part_number)."""
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO catalog_images (
+                    vendor, part_number, image_path, source_file,
+                    page, match_method, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(vendor, part_number) DO UPDATE SET
+                    image_path = excluded.image_path,
+                    source_file = excluded.source_file,
+                    page = excluded.page,
+                    match_method = excluded.match_method,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    vendor,
+                    part_number,
+                    image_path,
+                    source_file,
+                    page,
+                    match_method,
+                    updated_at,
+                ),
+            )
+            conn.commit()
+
+    def catalog_image_paths(
+        self, pairs: Sequence[tuple[str, str]]
+    ) -> dict[tuple[str, str], str]:
+        """Map (vendor, part_number) → image_path for the given pairs."""
+        if not pairs:
+            return {}
+        # Deduplicate while preserving order for stable queries.
+        uniq: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for v, p in pairs:
+            key = (str(v or ""), str(p or ""))
+            if not key[0] or not key[1] or key in seen:
+                continue
+            seen.add(key)
+            uniq.append(key)
+        if not uniq:
+            return {}
+        out: dict[tuple[str, str], str] = {}
+        # Chunk IN queries to stay under SQLite variable limits.
+        chunk = 400
+        with self._conn() as conn:
+            for i in range(0, len(uniq), chunk):
+                batch = uniq[i : i + chunk]
+                placeholders = ",".join("(?, ?)" for _ in batch)
+                params: list = []
+                for v, p in batch:
+                    params.extend([v, p])
+                rows = conn.execute(
+                    f"""
+                    SELECT vendor, part_number, image_path
+                    FROM catalog_images
+                    WHERE (vendor, part_number) IN ({placeholders})
+                    """,
+                    params,
+                ).fetchall()
+                for r in rows:
+                    path = r["image_path"] if isinstance(r, sqlite3.Row) else r[2]
+                    vendor = r["vendor"] if isinstance(r, sqlite3.Row) else r[0]
+                    pn = r["part_number"] if isinstance(r, sqlite3.Row) else r[1]
+                    if path:
+                        out[(str(vendor), str(pn))] = str(path)
+        return out
+
+    def vendors_with_catalog_images(self) -> set[str]:
+        """Builders that have at least one catalog photo."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT vendor FROM catalog_images WHERE image_path <> ''"
+            ).fetchall()
+        out: set[str] = set()
+        for r in rows:
+            vendor = r["vendor"] if isinstance(r, sqlite3.Row) else r[0]
+            if vendor:
+                out.add(str(vendor))
+        return out
+
     def get_addon_charge(
         self, vendor: str, option_key: str
     ) -> Optional[dict]:
@@ -1090,13 +1202,20 @@ class PriceBookRepository:
         """Set mult and recompute retail (even whole dollars)."""
         # 2 * CEIL((base * mult) / 2) — next even dollar up
         retail_expr = "2 * CEIL((base_price * ?) / 2.0 - 1e-12)"
+        no_markup = """
+            lower(trim(COALESCE(line_kind, 'item'))) = 'addon'
+            AND lower(trim(COALESCE(option_key, ''))) = 'undermount drawer slides'
+        """
         with self._conn() as conn:
             if vendor:
                 cur = conn.execute(
                     f"""
                     UPDATE pricebook
-                    SET multiplier = ?,
-                        adjusted_price = {retail_expr}
+                    SET multiplier = CASE WHEN {no_markup} THEN 1.0 ELSE ? END,
+                        adjusted_price = CASE
+                            WHEN {no_markup} THEN base_price
+                            ELSE {retail_expr}
+                        END
                     WHERE base_price IS NOT NULL AND vendor = ?
                     """,
                     (new_mult, new_mult, vendor),
@@ -1105,8 +1224,11 @@ class PriceBookRepository:
                 cur = conn.execute(
                     f"""
                     UPDATE pricebook
-                    SET multiplier = ?,
-                        adjusted_price = {retail_expr}
+                    SET multiplier = CASE WHEN {no_markup} THEN 1.0 ELSE ? END,
+                        adjusted_price = CASE
+                            WHEN {no_markup} THEN base_price
+                            ELSE {retail_expr}
+                        END
                     WHERE base_price IS NOT NULL
                     """,
                     (new_mult, new_mult),
@@ -1117,12 +1239,20 @@ class PriceBookRepository:
     def recompute_adjusted(self, vendor: Optional[str] = None) -> int:
         """Recompute retail from each row's own multiplier (even whole dollars)."""
         retail_expr = "2 * CEIL((base_price * multiplier) / 2.0 - 1e-12)"
+        no_markup = """
+            lower(trim(COALESCE(line_kind, 'item'))) = 'addon'
+            AND lower(trim(COALESCE(option_key, ''))) = 'undermount drawer slides'
+        """
         with self._conn() as conn:
             if vendor:
                 cur = conn.execute(
                     f"""
                     UPDATE pricebook
-                    SET adjusted_price = {retail_expr}
+                    SET multiplier = CASE WHEN {no_markup} THEN 1.0 ELSE multiplier END,
+                        adjusted_price = CASE
+                            WHEN {no_markup} THEN base_price
+                            ELSE {retail_expr}
+                        END
                     WHERE base_price IS NOT NULL AND multiplier IS NOT NULL
                       AND vendor = ?
                     """,
@@ -1132,7 +1262,11 @@ class PriceBookRepository:
                 cur = conn.execute(
                     f"""
                     UPDATE pricebook
-                    SET adjusted_price = {retail_expr}
+                    SET multiplier = CASE WHEN {no_markup} THEN 1.0 ELSE multiplier END,
+                        adjusted_price = CASE
+                            WHEN {no_markup} THEN base_price
+                            ELSE {retail_expr}
+                        END
                     WHERE base_price IS NOT NULL AND multiplier IS NOT NULL
                     """
                 )

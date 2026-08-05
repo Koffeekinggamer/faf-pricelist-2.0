@@ -62,6 +62,47 @@ if _LOGO.is_file():
 st.markdown(
     """
     <style>
+      /* White app surface with dark, high-contrast text. */
+      .stApp {
+        background: #ffffff;
+        color: #1f2937;
+      }
+      [data-testid="stHeader"] { background: rgba(255, 255, 255, 0.96); }
+      [data-testid="stSidebar"] { background: #f3f4f6; }
+      [data-testid="stSidebar"] * { color: #1f2937; }
+      .stApp a { color: #244a2e; }
+      .stApp a:hover { color: #17351f; }
+      .stApp [data-testid="stCaptionContainer"],
+      .stApp [data-testid="stMarkdownContainer"] p {
+        color: #374151;
+      }
+      .stApp div[data-baseweb="input"] > div,
+      .stApp div[data-baseweb="select"] > div,
+      .stApp textarea {
+        background: #ffffff;
+        color: #17233a;
+      }
+      .stApp input,
+      .stApp textarea {
+        color: #17233a !important;
+        caret-color: #17233a;
+      }
+      .stApp input::placeholder,
+      .stApp textarea::placeholder {
+        color: #667085 !important;
+        opacity: 1;
+      }
+      .stApp [data-baseweb="select"] span {
+        color: #17233a;
+      }
+      .stApp button[kind="primary"],
+      .stApp button[data-testid="stBaseButton-primary"] {
+        color: #ffffff;
+      }
+      .stApp [data-testid="stDataFrame"] {
+        background: #ffffff;
+        border-radius: 0.45rem;
+      }
       /* Larger tap targets on touch devices */
       @media (max-width: 900px) {
         .stTextInput input, .stSelectbox div[data-baseweb="select"] {
@@ -79,18 +120,18 @@ st.markdown(
       /* Option checkbox panel */
       .faf-option-panel-title {
         font-weight: 600;
-        color: #2d4a30;
+        color: #244a2e;
         font-size: 0.95rem;
         margin-bottom: 0.15rem;
       }
       .faf-option-selected {
         margin-top: 0.35rem;
         padding: 0.35rem 0.55rem;
-        background: #e3efe4;
-        border-left: 3px solid #2d4a30;
+        background: #f3f4f6;
+        border-left: 3px solid #2f5638;
         border-radius: 4px;
         font-size: 0.9rem;
-        color: #1e3321;
+        color: #1f2937;
       }
     </style>
     """,
@@ -121,9 +162,9 @@ def _require_login() -> bool:
     st.markdown(
         """
         <div style="max-width:420px;margin:4rem auto 1rem auto;text-align:center;">
-          <div style="font-size:2rem;font-weight:700;color:#2d4a30;">FAF Price Book</div>
-          <div style="color:#555;margin-top:0.25rem;">Foothills Amish Furniture · sign in to continue</div>
-          <div style="color:#888;margin-top:0.5rem;font-size:0.9rem;">
+          <div style="font-size:2rem;font-weight:700;color:#244a2e;">FAF Price Book</div>
+          <div style="color:#1f2937;margin-top:0.25rem;">Foothills Amish Furniture · sign in to continue</div>
+          <div style="color:#4b5563;margin-top:0.5rem;font-size:0.9rem;">
             Use your FAF floor login
           </div>
         </div>
@@ -202,6 +243,14 @@ def _svc() -> PriceBookService:
         get_service.clear()
         svc = get_service(_SERVICE_CACHE_VERSION)
     return svc
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _vendors_with_catalog_images() -> set[str]:
+    try:
+        return set(_svc().vendors_with_catalog_images() or set())
+    except Exception:
+        return set()
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -311,6 +360,48 @@ def _auto_col_widths(
     return widths
 
 
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=512)
+def _catalog_thumb_uri(rel_path: str, mtime: float) -> str | None:
+    """Inline data URI for a catalog photo.
+
+    ImageColumn only renders URLs or data URIs, so on-disk paths must be
+    embedded. `mtime` busts the cache when a photo is re-extracted.
+    """
+    path = Path(rel_path)
+    if not path.is_absolute():
+        path = APP_DIR / path
+    if not path.is_file():
+        return None
+    try:
+        from base64 import b64encode
+        from io import BytesIO
+
+        from PIL import Image
+
+        with Image.open(path) as img:
+            thumb = img.convert("RGB")
+            thumb.thumbnail((160, 160))
+            buf = BytesIO()
+            thumb.save(buf, format="JPEG", quality=80, optimize=True)
+        return "data:image/jpeg;base64," + b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return None
+
+
+def _catalog_thumb(raw) -> str | None:
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return None
+    rel = str(raw).strip()
+    if not rel:
+        return None
+    path = Path(rel)
+    if not path.is_absolute():
+        path = APP_DIR / path
+    if not path.is_file():
+        return None
+    return _catalog_thumb_uri(rel, path.stat().st_mtime)
+
+
 def _dataframe_column_config(
     df: pd.DataFrame,
     *,
@@ -318,15 +409,23 @@ def _dataframe_column_config(
     number_formats: dict[str, str] | None = None,
     help_text: dict[str, str] | None = None,
     overrides: dict[str, int] | None = None,
+    image_cols: set[str] | None = None,
 ) -> dict:
     """Build st.column_config with content-based widths so cells aren't clipped."""
     money_cols = money_cols or set()
     number_formats = number_formats or {}
     help_text = help_text or {}
+    image_cols = image_cols or set()
     widths = _auto_col_widths(df, overrides=overrides)
     cfg: dict = {}
     for col, w in widths.items():
-        if col in money_cols:
+        if col in image_cols:
+            cfg[col] = st.column_config.ImageColumn(
+                col,
+                width=w,
+                help=help_text.get(col),
+            )
+        elif col in money_cols:
             cfg[col] = st.column_config.NumberColumn(
                 col,
                 format=number_formats.get(col, "$%.2f"),
@@ -562,7 +661,7 @@ else:
 with tab_search:
     st.subheader("Find a price")
 
-    # Apply pin selection BEFORE any widgets with keys sq/sv/sf exist
+    # Apply pin / clear BEFORE any widgets with keys sq/sv/sf exist
     # (Streamlit forbids changing those keys after the widgets are created)
     _pending_pin = st.session_state.pop("_pin_select", None)
     if _pending_pin is not None:
@@ -570,6 +669,8 @@ with tab_search:
         st.session_state["sv"] = _pending_pin
         st.session_state["sf"] = "finished"
         st.session_state["so_panel_open"] = False
+    if st.session_state.pop("_clear_search", False):
+        st.session_state["sq"] = ""
 
     all_vendors = svc.list_vendors()
     favorites = [v for v in _load_favorites() if v in all_vendors]
@@ -748,12 +849,25 @@ with tab_search:
         elif vf != "All" and not opt_list:
             st.caption("No options parsed for this builder.")
 
-        q = st.text_input(
-            "Search the master book",
-            placeholder="Part # or product words…",
-            key="sq",
-            label_visibility="collapsed",
-        )
+        q_col, clear_col = st.columns([5.5, 1.0], gap="small")
+        with q_col:
+            q = st.text_input(
+                "Search the master book",
+                placeholder="Part # or product words…",
+                key="sq",
+                label_visibility="collapsed",
+            )
+        with clear_col:
+            has_query = bool((st.session_state.get("sq") or "").strip())
+            if st.button(
+                "Clear",
+                key="sq_clear",
+                use_container_width=True,
+                disabled=not has_query,
+                help="Clear the search box",
+            ):
+                st.session_state["_clear_search"] = True
+                st.rerun()
 
         # Don't dump the whole book when search is empty — unless a builder is chosen
         if not (q or "").strip() and vf == "All":
@@ -809,13 +923,14 @@ with tab_search:
                 hit_note += f" (showing first {DEFAULT_SEARCH_LIMIT})"
             st.markdown(
                 f"{hit_note} · "
-                f"<span style='color:#2d4a30;font-weight:700'>Retail is what the customer pays</span>",
+                f"<span style='color:#244a2e;font-weight:700'>Retail is what the customer pays</span>",
                 unsafe_allow_html=True,
             )
             # Floor view: retail only (wholesale/mult managed on Vendors tab)
             show_cols = [
                 c
                 for c in [
+                    "image_path",
                     "collection",
                     "part_number",
                     "description",
@@ -827,6 +942,26 @@ with tab_search:
                 ]
                 if c in display.columns
             ]
+            # Keep Image in place for any builder that has photos, so the column
+            # doesn't appear and vanish as the search narrows to un-photographed SKUs.
+            has_images = False
+            if "image_path" in show_cols:
+                # Blank (not None) for un-photographed SKUs — ImageColumn prints
+                # the literal "None" otherwise.
+                thumbs = [
+                    _catalog_thumb(raw) or "" for raw in display["image_path"].tolist()
+                ]
+                display = display.copy()
+                display["image_path"] = thumbs
+                photo_vendors = _vendors_with_catalog_images()
+                shown_vendors = (
+                    set(display["vendor"].dropna().astype(str))
+                    if "vendor" in display.columns
+                    else set()
+                )
+                has_images = any(thumbs) or bool(shown_vendors & photo_vendors)
+                if not has_images:
+                    show_cols = [c for c in show_cols if c != "image_path"]
             if (
                 "option_key" in show_cols
                 and display["option_key"].fillna("").astype(str).str.strip().eq("").all()
@@ -845,6 +980,7 @@ with tab_search:
                 show_cols = show_cols + ["notes"]
             view = display[show_cols].rename(
                 columns={
+                    "image_path": "Image",
                     "part_number": "Part #",
                     "description": "Description",
                     "vendor": "Builder",
@@ -876,12 +1012,15 @@ with tab_search:
                     view,
                     money_cols={"RETAIL"},
                     number_formats={"RETAIL": "$%.0f"},
+                    image_cols={"Image"} if has_images else set(),
                     help_text={
                         "RETAIL": "Customer price — wholesale × mult, rolled up to next even dollar",
                         "Wood": "Wood species / option — use the Wood dropdown above to pick one",
                         "Option": "Addon charge or finish/size option",
+                        "Image": "Catalog photo for this SKU",
                     },
                     overrides={
+                        "Image": 72,
                         "Part #": 110,
                         "Description": 230,
                         "Option": 90,

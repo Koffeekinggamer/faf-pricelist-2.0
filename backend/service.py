@@ -108,22 +108,52 @@ class PriceBookService:
                 limit=limit,
             )
             if upcharged is not None:
-                return upcharged
+                return self._with_catalog_images(upcharged)
         # Repo accepts a single key or a list (IN filter).
         repo_opt: Optional[Union[str, Sequence[str]]] = None
         if len(opts) == 1:
             repo_opt = opts[0]
         elif len(opts) > 1:
             repo_opt = opts
-        return self.repo.search(
-            query,
-            collection=collection,
-            vendor=vendor,
-            finish_state=finish_state,
-            species=species,
-            option_key=repo_opt,
-            limit=limit,
+        return self._with_catalog_images(
+            self.repo.search(
+                query,
+                collection=collection,
+                vendor=vendor,
+                finish_state=finish_state,
+                species=species,
+                option_key=repo_opt,
+                limit=limit,
+            )
         )
+
+    def vendors_with_catalog_images(self) -> set[str]:
+        """Builders that have catalog photos, so the UI can keep the column."""
+        return self.repo.vendors_with_catalog_images()
+
+    def _with_catalog_images(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Attach ``image_path`` from catalog_images for each row's vendor+SKU."""
+        if df is None or df.empty:
+            if df is not None and "image_path" not in df.columns:
+                df = df.copy()
+                df["image_path"] = pd.Series(dtype=object)
+            return df
+        if "vendor" not in df.columns or "part_number" not in df.columns:
+            out = df.copy()
+            out["image_path"] = None
+            return out
+        pairs = list(
+            zip(
+                df["vendor"].fillna("").astype(str),
+                df["part_number"].fillna("").astype(str),
+            )
+        )
+        paths = self.repo.catalog_image_paths(pairs)
+        out = df.copy()
+        out["image_path"] = [
+            paths.get((v, p)) for v, p in pairs
+        ]
+        return out
 
     @staticmethod
     def _normalize_option_keys(
@@ -180,6 +210,7 @@ class PriceBookService:
         *,
         item_base: Any,
         item_retail: Any,
+        option_key: str = "",
     ) -> tuple[Optional[float], Optional[float], Optional[str]]:
         """Resolve flat $ or addon_pct into (base_add, retail_add, pct_tag).
 
@@ -193,6 +224,11 @@ class PriceBookService:
             retail_add is not None and float(retail_add) != 0.0
         )
         if has_dollar:
+            from backend.pricing import is_no_markup_option
+
+            if is_no_markup_option(option_key) and base_add is not None:
+                amount = float(base_add)
+                return amount, amount, None
             return (
                 float(base_add) if base_add is not None else None,
                 float(retail_add) if retail_add is not None else None,
@@ -319,6 +355,7 @@ class PriceBookService:
                     flat[0],
                     item_base=r.get("base_price"),
                     item_retail=r.get("adjusted_price"),
+                    option_key=option_key,
                 )
                 if a is not None:
                     a = float(a) * qty
@@ -377,12 +414,17 @@ class PriceBookService:
             ob = r.get("base_price")
             pct_tag = None
             if m is not None:
-                b, a, pct_tag = self._addon_dollar_or_pct(m, item_base=ob, item_retail=op)
+                b, a, pct_tag = self._addon_dollar_or_pct(
+                    m, item_base=ob, item_retail=op, option_key=option_key
+                )
                 label = None if m.get("is_flat") else m.get("category")
                 approx = not confident
             elif med_addon is not None:
                 b, a, pct_tag = self._addon_dollar_or_pct(
-                    med_addon, item_base=ob, item_retail=op
+                    med_addon,
+                    item_base=ob,
+                    item_retail=op,
+                    option_key=option_key,
                 )
                 label, approx = None, True
             else:
@@ -1012,9 +1054,19 @@ class PriceBookService:
                 bp = r.get("base_price")
                 if bp is not None:
                     try:
-                        from backend.pricing import retail_from_wholesale
+                        from backend.pricing import catalog_multiplier, catalog_retail
 
-                        r["adjusted_price"] = retail_from_wholesale(bp, mult)
+                        r["multiplier"] = catalog_multiplier(
+                            mult,
+                            line_kind=r.get("line_kind"),
+                            option_key=r.get("option_key"),
+                        )
+                        r["adjusted_price"] = catalog_retail(
+                            bp,
+                            mult,
+                            line_kind=r.get("line_kind"),
+                            option_key=r.get("option_key"),
+                        )
                     except (TypeError, ValueError):
                         pass
 

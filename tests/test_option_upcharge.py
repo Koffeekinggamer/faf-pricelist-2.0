@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.service import PriceBookService
+from backend.standardize import standardize_row
 
 
 def _svc(tmp_path):
@@ -70,8 +71,8 @@ def test_flat_drawer_option_upcharges_only_eligible_items(tmp_path):
     assert "Undermount Drawer Slides" not in parts
 
     dresser = res[res["part_number"] == "D1"].iloc[0]
-    # Retail raised by exactly the flat charge (independent literal: 1000 + 54).
-    assert dresser["adjusted_price"] == 1054.0
+    # Slides are passed through at wholesale with no markup: 1000 + 20.
+    assert dresser["adjusted_price"] == 1020.0
     assert dresser["option_key"] == "Undermount Drawer Slides"
     assert "Undermount Drawer Slides" in str(dresser["notes"])
 
@@ -159,8 +160,8 @@ def test_multi_options_stack_upcharges(tmp_path):
 
     dresser = res[res["part_number"] == "D9"].iloc[0]
     bed = res[res["part_number"] == "Q1"].iloc[0]
-    # Dresser: 1000 + Paint 406 + Slides 54
-    assert dresser["adjusted_price"] == 1460.0
+    # Dresser: 1000 + Paint 406 + Slides wholesale 20
+    assert dresser["adjusted_price"] == 1426.0
     assert "Paint" in str(dresser["notes"]) and "Undermount Drawer Slides" in str(dresser["notes"])
     # Bed: 2000 + Paint 352 (not eligible for drawer slides)
     assert bed["adjusted_price"] == 2352.0
@@ -230,5 +231,23 @@ def test_undermount_slides_qty_multiplies_flat_charge(tmp_path):
         option_qty={"Undermount Drawer Slides": 3},
     )
     dresser = three.iloc[0]
-    assert float(dresser["adjusted_price"]) == 1000.0 + 54.0 * 3
+    assert float(dresser["adjusted_price"]) == 1000.0 + 20.0 * 3
     assert "×3" in str(dresser["notes"])
+
+
+def test_future_imports_store_undermount_slides_without_markup():
+    row = standardize_row(
+        {
+            "vendor": "Any Future Builder",
+            "collection": "Addons",
+            "part_number": "Undermount Drawer Slides",
+            "description": "Undermount Drawer Slides",
+            "option_key": "Undermount Drawer Slides",
+            "line_kind": "addon",
+            "base_price": 17.5,
+            "multiplier": 2.7,
+        }
+    )
+    assert row is not None
+    assert row["multiplier"] == 1.0
+    assert row["adjusted_price"] == 17.5

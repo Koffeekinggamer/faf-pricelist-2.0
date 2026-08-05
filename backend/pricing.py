@@ -16,6 +16,50 @@ from typing import Optional, Union
 
 Number = Union[int, float]
 
+NO_MARKUP_OPTIONS = {"undermount drawer slides"}
+
+
+def is_no_markup_option(option_key: object) -> bool:
+    """True for addon charges that retail at their wholesale dollar amount."""
+    return str(option_key or "").strip().casefold() in NO_MARKUP_OPTIONS
+
+
+def catalog_multiplier(
+    multiplier: Optional[Number],
+    *,
+    line_kind: object = "item",
+    option_key: object = None,
+) -> Optional[float]:
+    """Return 1.0 for no-markup addon rows; otherwise preserve the multiplier."""
+    if (
+        str(line_kind or "item").strip().casefold() == "addon"
+        and is_no_markup_option(option_key)
+    ):
+        return 1.0
+    try:
+        return float(multiplier) if multiplier is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def catalog_retail(
+    base_price: Optional[Number],
+    multiplier: Optional[Number],
+    *,
+    line_kind: object = "item",
+    option_key: object = None,
+) -> Optional[float]:
+    """Retail for a catalog row, including explicit no-markup addon rules."""
+    if (
+        str(line_kind or "item").strip().casefold() == "addon"
+        and is_no_markup_option(option_key)
+    ):
+        try:
+            return round(float(base_price), 2) if base_price is not None else None
+        except (TypeError, ValueError):
+            return None
+    return retail_from_wholesale(base_price, multiplier)
+
 
 def round_up_even_dollar(amount: Optional[Number]) -> Optional[float]:
     """Ceiling to the next even whole dollar. Exact even dollars stay put."""

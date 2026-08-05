@@ -122,6 +122,21 @@ CREATE TABLE IF NOT EXISTS integrations (
     meta_json TEXT,
     updated_at TEXT
 );
+
+-- Product photos from builder catalogs (one image per vendor SKU)
+CREATE TABLE IF NOT EXISTS catalog_images (
+    vendor TEXT NOT NULL,
+    part_number TEXT NOT NULL,
+    image_path TEXT NOT NULL,
+    source_file TEXT,
+    page INTEGER,
+    match_method TEXT,
+    updated_at TEXT,
+    PRIMARY KEY (vendor, part_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_images_vendor
+    ON catalog_images (vendor);
 """
 
 # Columns added after early v1 — migrate existing DBs (pricebook table)
