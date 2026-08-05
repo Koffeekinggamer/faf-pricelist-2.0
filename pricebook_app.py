@@ -2339,8 +2339,6 @@ with tab_admin:
     st.caption(f"Last backup: {_last_backup_hint()}")
     if SHOW_VIZTECH:
         st.caption(f"Viztech sync: {_viztech_sync_hint()}")
-    else:
-        st.caption("Accuracy mode · **manual Drop import only** · Viztech sync hidden")
 
     st.markdown("### Thin catalogs")
     st.caption(
