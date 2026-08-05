@@ -21,6 +21,7 @@
     "console",
     "door"
   ],
+  "drawer_door_exclude_keywords": ["mirror"],
   "compound_item_markers": ["piece set", "pc set", "piece bedroom"],
   "category_synonym_overrides": [
     {

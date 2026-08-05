@@ -166,3 +166,26 @@ def test_multi_options_stack_upcharges(tmp_path):
     assert bed["adjusted_price"] == 2352.0
     assert "Paint" in str(bed["notes"])
     assert "Undermount Drawer Slides" not in str(bed["notes"])
+
+
+def test_mirrors_exempt_from_drawer_door_options(tmp_path):
+    """Mirrors never get drawer/door upcharges (even console / vanity mirrors)."""
+    svc = _svc(tmp_path)
+    V = "Test Builder"
+    svc.repo.insert_rows([
+        _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
+        _item(V, "Bedroom", "M1", "Tri-View Mirror", 500.0),
+        _item(V, "Bedroom", "M2", "Console Mirror", 400.0),
+        _addon(V, "Undermount Drawer Slides", 20.0, 54.0),
+        _addon(V, "Extra Drawers or Doors", 30.0, 81.0),
+    ])
+
+    slides = svc.search("", vendor=V, option_key="Undermount Drawer Slides")
+    assert "D1" in set(slides["part_number"])
+    assert "M1" not in set(slides["part_number"])
+    assert "M2" not in set(slides["part_number"])
+
+    doors = svc.search("", vendor=V, option_key="Extra Drawers or Doors")
+    assert "D1" in set(doors["part_number"])
+    assert "M1" not in set(doors["part_number"])
+    assert "M2" not in set(doors["part_number"])

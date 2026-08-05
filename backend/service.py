@@ -267,6 +267,7 @@ class PriceBookService:
         cats = [a for a in addons if not a.get("is_flat")]
         is_drawer_door = self._is_item_upcharge_option(option_key, profile)
         drawer_keywords = profile.get("drawer_door_item_keywords") or []
+        drawer_exclude = profile.get("drawer_door_exclude_keywords") or []
 
         text = (
             df.get("description").fillna("").astype(str) + " | "
@@ -279,7 +280,10 @@ class PriceBookService:
         notes = df.get("notes").fillna("").astype(str)
 
         if is_drawer_door and flat:
-            eligible = text.apply(lambda s: any(k in s for k in drawer_keywords))
+            eligible = text.apply(
+                lambda s: any(k in s for k in drawer_keywords)
+                and not any(x in s for x in drawer_exclude)
+            )
             if not eligible.any():
                 return df, applied
             for idx in df.index[eligible]:

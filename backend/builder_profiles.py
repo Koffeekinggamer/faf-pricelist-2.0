@@ -42,6 +42,9 @@ DEFAULT_PROFILE: dict[str, Any] = {
         "console",
         "door",
     ],
+    # Items matching these are never charged drawer/door options (even if they
+    # also match an include keyword, e.g. "console mirror").
+    "drawer_door_exclude_keywords": ["mirror"],
     "compound_item_markers": ["piece set", "pc set", "piece bedroom"],
     "category_synonym_overrides": [
         {
@@ -90,6 +93,7 @@ def _merge_profile(raw: dict[str, Any], vendor: str) -> dict[str, Any]:
     for key in (
         "item_upcharge_option_keywords",
         "drawer_door_item_keywords",
+        "drawer_door_exclude_keywords",
         "compound_item_markers",
         "category_synonym_overrides",
     ):
@@ -133,6 +137,7 @@ def load_builder_profile(
         out["category_synonym_overrides"] = list(DEFAULT_PROFILE["category_synonym_overrides"])
         out["item_upcharge_option_keywords"] = list(DEFAULT_PROFILE["item_upcharge_option_keywords"])
         out["drawer_door_item_keywords"] = list(DEFAULT_PROFILE["drawer_door_item_keywords"])
+        out["drawer_door_exclude_keywords"] = list(DEFAULT_PROFILE["drawer_door_exclude_keywords"])
         out["compound_item_markers"] = list(DEFAULT_PROFILE["compound_item_markers"])
         return out
     raw = json.loads(cached[0])
