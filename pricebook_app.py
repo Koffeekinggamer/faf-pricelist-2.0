@@ -575,7 +575,7 @@ with tab_search:
     pins_open = bool(st.session_state["pin_panel_open"])
 
     if pins_open:
-        search_col, pin_col = st.columns([3.4, 1.15], gap="large")
+        search_col, pin_col = st.columns([3.1, 1.4], gap="medium")
     else:
         search_col = st.container()
         pin_col = None
@@ -954,19 +954,19 @@ with tab_search:
     # ---- Separate pinned-builders column (collapsible) ----
     if pin_col is not None:
         with pin_col:
-            head_l, head_r = st.columns([3.2, 1.0])
+            head_l, head_r = st.columns([5.0, 1.0], vertical_alignment="center")
             with head_l:
-                st.markdown("##### Pinned builders")
+                st.markdown("#### Pinned")
             with head_r:
                 if st.button(
-                    "‹ Hide",
+                    "‹",
                     key="hide_pin_panel",
                     use_container_width=True,
-                    help="Collapse pinned builders column",
+                    help="Hide pinned builders",
                 ):
                     st.session_state["pin_panel_open"] = False
                     st.rerun()
-            st.caption("Tap to filter search · pin builders on the **Vendors** tab")
+            st.caption("Tap builder to filter · manage pins on **Vendors**")
             if not favorites:
                 st.info("No pins yet. Tick **Pinned** on the **Vendors** tab.")
             else:
