@@ -41,7 +41,7 @@ _LOGO = APP_DIR / "assets" / "logo.png"
 SHOW_ORDERTRAC_QUOTE = False  # quote tab + search cart + sidebar badge
 SHOW_ORDERTRAC_ADMIN = False  # Admin: OrderTrac connection, user sync, push tools
 SHOW_SIMPLE_UI = True  # lean Search/Drop/Vendors; hide pins & bulk tools
-SHOW_ADMIN_ADVANCED = True  # cleanup / deploy / CLI under Admin (accuracy tools)
+SHOW_ADMIN_ADVANCED = True  # cleanup tools under Admin
 SHOW_VIZTECH = False  # hide Viztech sync UI — manual Drop only while verifying data
 # TRACE restore quoting: SHOW_ORDERTRAC_* = True
 # TRACE Viztech: SHOW_VIZTECH = True
@@ -2787,26 +2787,3 @@ with tab_admin:
         if st.button("Delete all rows from this source"):
             n = svc.delete_by_source(src)
             st.warning(f"Removed {n:,} rows")
-
-    st.markdown("##### Deploy")
-    st.caption(
-        "Permanent hosting: Streamlit Community Cloud from GitHub "
-        "`Koffeekinggamer/pricebook-system` · main file `pricebook_app.py`. "
-        "See **DEPLOY.md**. Public tunnel (this Mac on): `scripts/public_tunnel.sh`."
-    )
-
-    st.markdown("##### CLI")
-    _cli = """
-source ~/FAF-pricelist-2.0/.venv/bin/activate
-python -m backend.cli stats
-python -m backend.cli search "oak nightstand"
-python scripts/backup_db.py backup
-python scripts/backup_db.py list
-python scripts/backup_db.py restore --file master_pricebook-YYYYMMDD-HHMMSS.db
-""".strip()
-    if SHOW_VIZTECH:
-        _cli += """
-python scripts/viztech_sync.py --dry-run
-python scripts/viztech_sync.py
-""".rstrip()
-    st.code(_cli)
