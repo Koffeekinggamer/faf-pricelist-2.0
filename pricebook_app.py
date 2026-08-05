@@ -76,6 +76,22 @@ st.markdown(
       .faf-fav-row button { margin-right: 0.25rem; margin-bottom: 0.25rem; }
       /* Sidebar brand */
       [data-testid="stSidebar"] img { max-width: 100%; }
+      /* Option checkbox panel */
+      .faf-option-panel-title {
+        font-weight: 600;
+        color: #2d4a30;
+        font-size: 0.95rem;
+        margin-bottom: 0.15rem;
+      }
+      .faf-option-selected {
+        margin-top: 0.35rem;
+        padding: 0.35rem 0.55rem;
+        background: #e3efe4;
+        border-left: 3px solid #2d4a30;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        color: #1e3321;
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -645,23 +661,42 @@ with tab_search:
         elif not opt_list:
             st.caption("No options parsed for this builder.")
         else:
-            st.markdown(
-                "Option "
-                "<span title='Check one or more addon charges / finish options. "
-                "Selections stack their upcharges on eligible items.' "
-                "style='cursor:help;opacity:0.65;font-size:0.85em'>ⓘ</span>",
-                unsafe_allow_html=True,
-            )
-            n_cols = 3 if len(opt_list) > 4 else max(1, min(3, len(opt_list)))
-            cb_cols = st.columns(n_cols)
-            for i, opt in enumerate(opt_list):
-                with cb_cols[i % n_cols]:
-                    if st.checkbox(opt, key=_option_checkbox_key(vf, opt)):
-                        of_list.append(opt)
-            if of_list:
-                st.caption("Selected: **" + " · ".join(of_list) + "**")
-            else:
-                st.caption("None selected — showing base retail (no option upcharge).")
+            with st.container(border=True):
+                head_l, head_r = st.columns([4.5, 1.2])
+                with head_l:
+                    st.markdown(
+                        '<div class="faf-option-panel-title">Option '
+                        "<span title='Check one or more. Selections stack their "
+                        "upcharges on eligible items.' "
+                        "style='cursor:help;opacity:0.65;font-size:0.85em'>ⓘ</span>"
+                        "</div>",
+                        unsafe_allow_html=True,
+                    )
+                with head_r:
+                    if st.button(
+                        "Clear",
+                        key="so_clear_options",
+                        use_container_width=True,
+                        help="Uncheck all Options",
+                    ):
+                        for opt in opt_list:
+                            st.session_state[_option_checkbox_key(vf, opt)] = False
+                        st.rerun()
+                n_cols = 2 if len(opt_list) <= 6 else 3
+                cb_cols = st.columns(n_cols)
+                for i, opt in enumerate(opt_list):
+                    with cb_cols[i % n_cols]:
+                        if st.checkbox(opt, key=_option_checkbox_key(vf, opt)):
+                            of_list.append(opt)
+                if of_list:
+                    st.markdown(
+                        '<div class="faf-option-selected"><strong>Selected:</strong> '
+                        + " · ".join(of_list)
+                        + "</div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.caption("None checked — base retail (no option upcharge).")
 
         q = st.text_input(
             "Search the master book",
