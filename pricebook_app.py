@@ -641,7 +641,7 @@ with tab_search:
                             _save_favorites(favorites + [vf])
                             st.rerun()
 
-        # Option — checkboxes so every selection stays visible (stack upcharges).
+        # Option — hidden until the floor opts in (keeps Search clean).
         opt_list = _option_dropdown_options(vf if vf else "All")
         # Migrate legacy select / multiselect session value into checkbox keys once.
         if "so" in st.session_state:
@@ -655,48 +655,72 @@ with tab_search:
                 if opt in opt_list:
                     st.session_state[_option_checkbox_key(vf, opt)] = True
 
+        # Auto-open the panel only when this builder already has checks saved.
+        prechecked = [
+            opt
+            for opt in opt_list
+            if st.session_state.get(_option_checkbox_key(vf, opt))
+        ]
+        if "so_panel_open" not in st.session_state and prechecked:
+            st.session_state["so_panel_open"] = True
+
         of_list: list[str] = []
-        if vf == "All":
-            st.caption("Option — pick a **Builder** to see its addon / finish options.")
-        elif not opt_list:
+        if vf != "All" and opt_list:
+            show_opts = st.checkbox(
+                "Options",
+                key="so_panel_open",
+                help="Show addon / finish option checkboxes. "
+                "Leave off for base retail.",
+            )
+            if show_opts:
+                with st.container(border=True):
+                    head_l, head_r = st.columns([4.5, 1.2])
+                    with head_l:
+                        st.markdown(
+                            '<div class="faf-option-panel-title">Check options to stack '
+                            "upcharges "
+                            "<span title='Each checked option adds its charge to "
+                            "eligible items.' "
+                            "style='cursor:help;opacity:0.65;font-size:0.85em'>ⓘ</span>"
+                            "</div>",
+                            unsafe_allow_html=True,
+                        )
+                    with head_r:
+                        if st.button(
+                            "Clear",
+                            key="so_clear_options",
+                            use_container_width=True,
+                            help="Uncheck all Options",
+                        ):
+                            for opt in opt_list:
+                                st.session_state[_option_checkbox_key(vf, opt)] = False
+                            st.rerun()
+                    n_cols = 2 if len(opt_list) <= 6 else 3
+                    cb_cols = st.columns(n_cols)
+                    for i, opt in enumerate(opt_list):
+                        with cb_cols[i % n_cols]:
+                            if st.checkbox(opt, key=_option_checkbox_key(vf, opt)):
+                                of_list.append(opt)
+                    if of_list:
+                        st.markdown(
+                            '<div class="faf-option-selected"><strong>Selected:</strong> '
+                            + " · ".join(of_list)
+                            + "</div>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.caption("None checked — base retail (no option upcharge).")
+            elif prechecked:
+                # Panel closed but prior checks remain — remind without taking space.
+                st.caption(
+                    f"Options off · {len(prechecked)} saved "
+                    f"({', '.join(prechecked[:3])}{'…' if len(prechecked) > 3 else ''}) "
+                    "— turn **Options** on to apply."
+                )
+        elif vf == "All":
+            pass  # no option chrome until a builder is chosen
+        elif vf != "All" and not opt_list:
             st.caption("No options parsed for this builder.")
-        else:
-            with st.container(border=True):
-                head_l, head_r = st.columns([4.5, 1.2])
-                with head_l:
-                    st.markdown(
-                        '<div class="faf-option-panel-title">Option '
-                        "<span title='Check one or more. Selections stack their "
-                        "upcharges on eligible items.' "
-                        "style='cursor:help;opacity:0.65;font-size:0.85em'>ⓘ</span>"
-                        "</div>",
-                        unsafe_allow_html=True,
-                    )
-                with head_r:
-                    if st.button(
-                        "Clear",
-                        key="so_clear_options",
-                        use_container_width=True,
-                        help="Uncheck all Options",
-                    ):
-                        for opt in opt_list:
-                            st.session_state[_option_checkbox_key(vf, opt)] = False
-                        st.rerun()
-                n_cols = 2 if len(opt_list) <= 6 else 3
-                cb_cols = st.columns(n_cols)
-                for i, opt in enumerate(opt_list):
-                    with cb_cols[i % n_cols]:
-                        if st.checkbox(opt, key=_option_checkbox_key(vf, opt)):
-                            of_list.append(opt)
-                if of_list:
-                    st.markdown(
-                        '<div class="faf-option-selected"><strong>Selected:</strong> '
-                        + " · ".join(of_list)
-                        + "</div>",
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.caption("None checked — base retail (no option upcharge).")
 
         q = st.text_input(
             "Search the master book",
