@@ -28,13 +28,13 @@ Session handoff for the in-flight work on branch **`cursor/hide-finish-keep-opti
 - `pricebook_app.py`: Search results Option-detail column + caption; dropdown/layout/caption cleanups.
 - `tests/test_option_upcharge.py`: flat drawer option (eligible-only); finish option upcharges every wood item by matched category; non-wood excluded.
 
-## Builder Profiles — design status (NOT built)
+## Builder Profiles — design + first slice
 Goal: learn each builder's conventions once, persist them, and have both the **Drop-files import** and the **search/upcharge helper** consume them so re-importing/updating a builder is seamless and new builders parse correctly. J&M is the pilot.
 
-- **Decided (ADR-0011, `CONTEXT.md` term "Builder Profile"):** per-builder rules stored as **versioned JSON** at `config/builder_profiles/<vendor>.json` (keyed by `standardize.resolve_builder_vendor`); consumed by Drop-files + search helper; auto-learned on import + hand-tunable. Private catalog stays in DB/Fly (ADR-0005).
-- **OPEN QUESTION (answer to resume):** should the profile store **only durable rules** (category synonyms, item→category overrides, per-option eligibility, parse hints) and keep **charges/category list live from the DB** (so re-imports refresh prices automatically, no stale numbers)? (Agent recommended: yes.)
-- **Then:** grill how Drop-files captures/applies the profile → then **J&M tracer-bullet refactor**: move today's hardcoded J&M vocabulary (synonyms, keyword sets) into `config/builder_profiles/j-and-m-woodworking.json` with search-upcharge behavior unchanged (no regression), plus percent-adder (`addon_pct`) support for builders that price options as `+%`.
-- Note: only **J&M** is loaded locally (other 94 builders were purged during a reset). To validate multi-builder flexibility, pull the full catalog or import a contrasting builder.
+- **Locked (2026-08-05):** profile stores **only durable rules** (category synonyms, item→category overrides, per-option eligibility, parse hints, charge *shapes*); **charges/category list stay live in the DB**. Recorded in ADR-0011.
+- **Locked:** Drop auto-updates profiles on successful Load, **local/Mac only** → commit → deploy; Fly production reads shipped profiles, never writes.
+- **Locked first slice:** search/upcharge only (Drop read/write follow-up).
+- **Shipped in this branch (tracer bullet):** `config/builder_profiles/j-and-m-woodworking.json` + `backend/builder_profiles.py`; search upcharge reads the profile (defaults preserve prior behaviour for builders without a file); `addon_pct` percent adders raise eligible item retail by pct.
 
 ## How to run / test / verify
 - Deps + run: see `README.md` / `run.sh`. Local: `PORT=8501 ./run.sh` → http://localhost:8501, login `Foothills` / `Amish`.

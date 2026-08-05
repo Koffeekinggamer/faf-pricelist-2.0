@@ -1,5 +1,7 @@
 """Feedback loop: Option dropdown = addon charges + finish codes (ADR-0008)."""
 
+from __future__ import annotations
+
 from backend.db import init_db
 from backend.repository import PriceBookRepository
 from backend.service import PriceBookService

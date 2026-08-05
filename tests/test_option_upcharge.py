@@ -104,3 +104,33 @@ def test_finish_option_upcharges_every_wood_item_by_category(tmp_path):
     assert d["adjusted_price"] == 1406.0     # 1000 + 9 Drawer Dresser Paint 406
     assert "Queen Bed" in str(q["notes"])
     assert "9 Drawer Dresser" in str(d["notes"])
+
+
+def test_percent_addon_raises_eligible_items_by_pct(tmp_path):
+    """addon_pct Option: retail += item_retail × pct/100 (ADR-0008 / ADR-0011)."""
+    svc = _svc(tmp_path)
+    V = "Test Builder"
+    svc.repo.insert_rows([
+        _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
+        _item(V, "Bedroom", "B1", "Queen Bed", 2000.0),
+        {
+            "vendor": V,
+            "collection": "Addons",
+            "part_number": "Premium Drawer Slides",
+            "description": "Premium Drawer Slides pct",
+            "option_key": "Premium Drawer Slides",
+            "base_price": None,
+            "adjusted_price": None,
+            "addon_pct": 10.0,
+            "line_kind": "addon",
+        },
+    ])
+
+    res = svc.search("", vendor=V, option_key="Premium Drawer Slides")
+    parts = set(res["part_number"])
+    assert "D1" in parts
+    assert "B1" not in parts
+    dresser = res[res["part_number"] == "D1"].iloc[0]
+    # 1000 + 10% = 1100
+    assert dresser["adjusted_price"] == 1100.0
+    assert "+10%" in str(dresser["notes"])

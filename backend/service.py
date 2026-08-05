@@ -13,6 +13,11 @@ from typing import Any, Callable, Optional, Sequence, Union
 import pandas as pd
 
 from backend.batch import BatchImporter, BatchResult
+from backend.builder_profiles import (
+    category_matches_override,
+    load_builder_profile,
+    override_applies,
+)
 from backend.config import (
     DB_PATH,
     DEFAULT_MULTIPLIER,
@@ -114,22 +119,56 @@ class PriceBookService:
         )
 
     # Options whose upcharge modifies the price of eligible ITEMS (drawered /
-    # doored goods) rather than showing a standalone addon row. Start narrow
-    # (ADR-0008 follow-up): flat per-unit drawer/door options. Per-category
-    # finish upcharges (Paint, 2-tone Stain, …) keep prior behaviour for now.
-    _ITEM_UPCHARGE_OPTION_KEYWORDS = ("drawer", "door", "slide")
-    _DRAWER_DOOR_ITEM_KEYWORDS = (
-        "drawer", "dresser", "chest", "night stand", "nightstand", "lingerie",
-        "armoire", "wardrobe", "credenza", "sideboard", "buffet", "cabinet",
-        "vanity", "hutch", "server", "console", "door",
-    )
+    # doored goods) rather than showing a standalone addon row. Vocabulary for
+    # keywords / synonym overrides lives in Builder Profiles (ADR-0011); the
+    # default profile preserves pre-profile search behaviour.
 
-    def _is_item_upcharge_option(self, option_key: str) -> bool:
+    @staticmethod
+    def _addon_dollar_or_pct(
+        addon: dict,
+        *,
+        item_base: Any,
+        item_retail: Any,
+    ) -> tuple[Optional[float], Optional[float], Optional[str]]:
+        """Resolve flat $ or addon_pct into (base_add, retail_add, pct_tag).
+
+        Percent adders apply to the item's own wholesale/retail (ADR-0008).
+        When both pct and dollar amounts exist, dollars win (legacy flat rows).
+        """
+        base_add = addon.get("base_price")
+        retail_add = addon.get("adjusted_price")
+        pct = addon.get("addon_pct")
+        has_dollar = (base_add is not None and float(base_add) != 0.0) or (
+            retail_add is not None and float(retail_add) != 0.0
+        )
+        if has_dollar:
+            return (
+                float(base_add) if base_add is not None else None,
+                float(retail_add) if retail_add is not None else None,
+                None,
+            )
+        if pct is not None:
+            p = float(pct)
+            b = round(float(item_base or 0.0) * p / 100.0, 2)
+            a = round(float(item_retail or 0.0) * p / 100.0, 2)
+            return b, a, f"+{p:g}%"
+        return (
+            float(base_add) if base_add is not None else None,
+            float(retail_add) if retail_add is not None else None,
+            None,
+        )
+
+    def _is_item_upcharge_option(self, option_key: str, profile: Optional[dict] = None) -> bool:
         o = (option_key or "").lower()
-        return any(k in o for k in self._ITEM_UPCHARGE_OPTION_KEYWORDS)
+        profile = profile or load_builder_profile(None)
+        keys = profile.get("item_upcharge_option_keywords") or []
+        return any(k in o for k in keys)
 
     def _match_addon_category(
-        self, item_text: str, categories: list[dict]
+        self,
+        item_text: str,
+        categories: list[dict],
+        profile: Optional[dict] = None,
     ) -> tuple[Optional[dict], bool]:
         """Best-matching addon category for an item, and whether it's confident.
 
@@ -139,6 +178,7 @@ class PriceBookService:
         the caller can flag the charge as approximate rather than imply certainty.
         Returns (None, False) when nothing matches.
         """
+        profile = profile or load_builder_profile(None)
         low = (item_text or "").lower()
 
         def find(pred) -> Optional[dict]:
@@ -147,19 +187,12 @@ class PriceBookService:
                     return c
             return None
 
-        # Distinctive-synonym overrides (win over generic token ties).
-        overrides = [
-            (("man" in low and "chest" in low), lambda l: "manschest" in l or ("man" in l and "chest" in l)),
-            (("chifferobe" in low or "wardrobe" in low), lambda l: "armoire" in l),
-            (("tri-view" in low or "triview" in low or "tri view" in low), lambda l: "triview" in l or ("tri" in l and "view" in l)),
-            ("lingerie" in low, lambda l: "lingerie" in l),
-            (("studio" in low and "chest" in low), lambda l: "studio" in l),
-        ]
-        for cond, pred in overrides:
-            if cond:
-                c = find(pred)
-                if c is not None:
-                    return c, True
+        for rule in profile.get("category_synonym_overrides") or []:
+            if not override_applies(low, rule):
+                continue
+            c = find(lambda cat: category_matches_override(cat, rule))
+            if c is not None:
+                return c, True
 
         t = " " + re.sub(r"[^a-z0-9\"/ ]+", " ", low) + " "
         if "nightstand" in low:
@@ -181,8 +214,10 @@ class PriceBookService:
         best_score, best = scored[0]
         second = scored[1][0] if len(scored) > 1 else 0
         confident = best_score > second
-        if "piece set" in low or "pc set" in low or "piece bedroom" in low:
-            confident = False  # compound: upcharge would be the sum of several categories
+        for marker in profile.get("compound_item_markers") or []:
+            if marker in low:
+                confident = False  # compound: upcharge would be the sum of several categories
+                break
         return best, confident
 
     def _search_with_item_option_upcharge(
@@ -197,7 +232,7 @@ class PriceBookService:
     ) -> Optional[pd.DataFrame]:
         """Show eligible items with retail raised by the selected Option's charge.
 
-        - Drawer/door options (flat charge): only drawered/doored items.
+        - Drawer/door options (flat charge or addon_pct): only drawered/doored items.
         - Finish (and other) options: EVERY physical wood item is eligible; the
           charge comes from the item's best-matching category (falls back to the
           median category charge, flagged, when no confident match).
@@ -208,9 +243,11 @@ class PriceBookService:
         addons = self.repo.get_addon_rows(vendor, option_key)
         if not addons:
             return None
+        profile = load_builder_profile(vendor)
         flat = [a for a in addons if a.get("is_flat")]
         cats = [a for a in addons if not a.get("is_flat")]
-        is_drawer_door = self._is_item_upcharge_option(option_key)
+        is_drawer_door = self._is_item_upcharge_option(option_key, profile)
+        drawer_keywords = profile.get("drawer_door_item_keywords") or []
 
         df = self.repo.search(
             query,
@@ -231,13 +268,48 @@ class PriceBookService:
 
         if is_drawer_door and flat:
             eligible = text.apply(
-                lambda s: any(k in s for k in self._DRAWER_DOOR_ITEM_KEYWORDS)
+                lambda s: any(k in s for k in drawer_keywords)
             )
             df = df[eligible].copy()
             if df.empty:
                 return df
+            # Flat $: same add for every eligible item. Percent: per-item.
+            pct = flat[0].get("addon_pct")
             base_add = flat[0].get("base_price")
             retail_add = flat[0].get("adjusted_price")
+            has_dollar = (base_add is not None and float(base_add) != 0.0) or (
+                retail_add is not None and float(retail_add) != 0.0
+            )
+            if pct is not None and not has_dollar:
+                new_retail, new_base, new_notes = [], [], []
+                cur_notes = df.get("notes").fillna("").astype(str).tolist()
+                for i, (_, r) in enumerate(df.iterrows()):
+                    b, a, pct_tag = self._addon_dollar_or_pct(
+                        flat[0],
+                        item_base=r.get("base_price"),
+                        item_retail=r.get("adjusted_price"),
+                    )
+                    ob = r.get("base_price")
+                    op = r.get("adjusted_price")
+                    new_base.append((float(ob) if ob is not None else 0.0) + (float(b) if b is not None else 0.0))
+                    new_retail.append((float(op) if op is not None else 0.0) + (float(a) if a is not None else 0.0))
+                    tag = f"+ {option_key}"
+                    if pct_tag:
+                        tag += f" ({pct_tag}"
+                        if a is not None:
+                            tag += f" +${float(a):,.0f}"
+                        tag += ")"
+                    elif a is not None:
+                        tag += f" (+${float(a):,.0f})"
+                    base_n = cur_notes[i]
+                    new_notes.append(f"{base_n} · {tag}".strip(" ·") if base_n else tag)
+                df = df.copy()
+                df["adjusted_price"] = new_retail
+                df["base_price"] = new_base
+                df["option_key"] = option_key
+                df["notes"] = new_notes
+                return df.head(int(limit)).reset_index(drop=True)
+
             if retail_add is not None:
                 df["adjusted_price"] = df["adjusted_price"].fillna(0) + float(retail_add)
             if base_add is not None:
@@ -257,10 +329,23 @@ class PriceBookService:
         if df.empty:
             return df
 
-        rc = sorted(a["adjusted_price"] for a in cats if a.get("adjusted_price") is not None)
-        bc = sorted(a["base_price"] for a in cats if a.get("base_price") is not None)
+        rc = sorted(
+            a["adjusted_price"] for a in cats
+            if a.get("adjusted_price") is not None and float(a["adjusted_price"] or 0) != 0
+        )
+        bc = sorted(
+            a["base_price"] for a in cats
+            if a.get("base_price") is not None and float(a["base_price"] or 0) != 0
+        )
         med_retail = rc[len(rc) // 2] if rc else (flat[0].get("adjusted_price") if flat else None)
         med_base = bc[len(bc) // 2] if bc else (flat[0].get("base_price") if flat else None)
+        med_addon = None
+        if not rc and not bc:
+            # Prefer a category (or flat) row that carries addon_pct for median fallback.
+            for a in cats + flat:
+                if a.get("addon_pct") is not None:
+                    med_addon = a
+                    break
 
         cur_notes = df.get("notes").fillna("").astype(str).tolist()
         old_retail = df["adjusted_price"].tolist()
@@ -269,20 +354,35 @@ class PriceBookService:
         for i, (_, r) in enumerate(df.iterrows()):
             itext = f"{r.get('description') or ''} {r.get('collection') or ''} {r.get('part_number') or ''}"
             if cats:
-                m, confident = self._match_addon_category(itext, cats)
+                m, confident = self._match_addon_category(itext, cats, profile)
             else:
                 m, confident = (flat[0], True) if flat else (None, False)
-            if m is not None:
-                b, a = m.get("base_price"), m.get("adjusted_price")
-                label = None if m.get("is_flat") else m.get("category")
-                approx = not confident
-            else:
-                b, a, label, approx = med_base, med_retail, None, True
             op = old_retail[i]
             ob = old_base[i]
+            pct_tag = None
+            if m is not None:
+                b, a, pct_tag = self._addon_dollar_or_pct(
+                    m, item_base=ob, item_retail=op
+                )
+                label = None if m.get("is_flat") else m.get("category")
+                approx = not confident
+            elif med_addon is not None:
+                b, a, pct_tag = self._addon_dollar_or_pct(
+                    med_addon, item_base=ob, item_retail=op
+                )
+                label, approx = None, True
+            else:
+                b, a, label, approx = med_base, med_retail, None, True
             new_retail.append((float(op) if op is not None else 0.0) + (float(a) if a is not None else 0.0))
             new_base.append((float(ob) if ob is not None else 0.0) + (float(b) if b is not None else 0.0))
-            amt = f" +${float(a):,.0f}" if a is not None else ""
+            if pct_tag and a is not None:
+                amt = f" {pct_tag} +${float(a):,.0f}"
+            elif pct_tag:
+                amt = f" {pct_tag}"
+            elif a is not None:
+                amt = f" +${float(a):,.0f}"
+            else:
+                amt = ""
             if approx:
                 inner = f"approx: {label}{amt}" if label else f"approx{amt}"
             elif label:

@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "vendor": "J & M Woodworking",
+  "item_upcharge_option_keywords": ["drawer", "door", "slide"],
+  "drawer_door_item_keywords": [
+    "drawer",
+    "dresser",
+    "chest",
+    "night stand",
+    "nightstand",
+    "lingerie",
+    "armoire",
+    "wardrobe",
+    "credenza",
+    "sideboard",
+    "buffet",
+    "cabinet",
+    "vanity",
+    "hutch",
+    "server",
+    "console",
+    "door"
+  ],
+  "compound_item_markers": ["piece set", "pc set", "piece bedroom"],
+  "category_synonym_overrides": [
+    {
+      "when_all": ["man", "chest"],
+      "match_category_any": ["manschest"],
+      "match_category_all": ["man", "chest"]
+    },
+    {
+      "when_any": ["chifferobe", "wardrobe"],
+      "match_category_any": ["armoire"]
+    },
+    {
+      "when_any": ["tri-view", "triview", "tri view"],
+      "match_category_any": ["triview"],
+      "match_category_all": ["tri", "view"]
+    },
+    {
+      "when_any": ["lingerie"],
+      "match_category_any": ["lingerie"]
+    },
+    {
+      "when_all": ["studio", "chest"],
+      "match_category_any": ["studio"]
+    }
+  ],
+  "charge_shapes": {
+    "note": "Dollar amounts stay in DB; shapes only. Flat $ vs per-category vs addon_pct."
+  }
+}
