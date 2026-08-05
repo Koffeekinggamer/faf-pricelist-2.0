@@ -5,7 +5,7 @@
 3. Default entry: `pricebook_app.py`. OrderTrac UI flags are **off** — do not re-enable unless Judson asks.
 4. Never commit `*.db`, `.env`, or `.streamlit/secrets.toml`.
 5. Local port **8501** (Fly: https://faf-pricebook.fly.dev).
-6. Slim Drop→PDF-only experiment: branch `backup/phase1-slim-2026-07-26` / `pricebook_app_slim.py`.
+6. `pricebook_app.py` is the **only** app entrypoint. Old variations (`pricebook_app_slim.py`, `pricebook_app_legacy.py`) were purged; the slim experiment history remains on branch `backup/phase1-slim-2026-07-26` if ever needed.
 7. Thin UI; put logic in `backend.PriceBookService`. One builder = one vendor; retail = wholesale × mult (2.7 default, Genuine Oak 1.7).
 
 ## Fast ops (Mac)

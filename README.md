@@ -35,9 +35,7 @@ OrderTrac quote / connection UI stays in the codebase behind flags (`SHOW_ORDERT
 
 | File | Role |
 |------|------|
-| `pricebook_app.py` | **Main** — accuracy mode (Search · Drop · Vendors · Admin) |
-| `pricebook_app_slim.py` | Slim Drop→PDF + Admin only |
-| `pricebook_app_legacy.py` | Archive copy |
+| `pricebook_app.py` | **Main (only)** — accuracy mode (Search · Drop · Vendors · Admin) |
 
 ## Docs
 
