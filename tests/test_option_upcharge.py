@@ -134,3 +134,35 @@ def test_percent_addon_raises_eligible_items_by_pct(tmp_path):
     # 1000 + 10% = 1100
     assert dresser["adjusted_price"] == 1100.0
     assert "+10%" in str(dresser["notes"])
+
+
+def test_multi_options_stack_upcharges(tmp_path):
+    """Selecting Paint + Undermount Drawer Slides stacks both on a dresser."""
+    svc = _svc(tmp_path)
+    V = "Test Builder"
+    svc.repo.insert_rows([
+        _item(V, "Bedroom", "D9", "9 Drawer Dresser", 1000.0),
+        _item(V, "Bedroom", "Q1", "Queen Panel Bed", 2000.0),
+        _addon(V, "Undermount Drawer Slides", 20.0, 54.0),
+        _addon_cat(V, "Paint", "9 Drawer Dresser", 150.0, 406.0),
+        _addon_cat(V, "Paint", "Queen Bed", 130.0, 352.0),
+    ])
+
+    res = svc.search(
+        "",
+        vendor=V,
+        option_key=["Paint", "Undermount Drawer Slides"],
+    )
+    parts = set(res["part_number"])
+    assert "D9" in parts
+    assert "Q1" in parts  # bed gets Paint only
+
+    dresser = res[res["part_number"] == "D9"].iloc[0]
+    bed = res[res["part_number"] == "Q1"].iloc[0]
+    # Dresser: 1000 + Paint 406 + Slides 54
+    assert dresser["adjusted_price"] == 1460.0
+    assert "Paint" in str(dresser["notes"]) and "Undermount Drawer Slides" in str(dresser["notes"])
+    # Bed: 2000 + Paint 352 (not eligible for drawer slides)
+    assert bed["adjusted_price"] == 2352.0
+    assert "Paint" in str(bed["notes"])
+    assert "Undermount Drawer Slides" not in str(bed["notes"])

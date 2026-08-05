@@ -538,7 +538,7 @@ class PriceBookRepository:
         vendor: Optional[str] = None,
         finish_state: Optional[str] = None,
         species: Optional[str] = None,
-        option_key: Optional[str] = None,
+        option_key: Optional[Union[str, list]] = None,
         limit: int = DEFAULT_SEARCH_LIMIT,
     ) -> pd.DataFrame:
         """
@@ -553,6 +553,8 @@ class PriceBookRepository:
         species: exact match, or multi-wood tier containing that wood
         (e.g. filter "Cherry" matches "Elm / Cherry / Maple / QSWO").
 
+        option_key: one label, or a list (OR — match any).
+
         Ranking (best first):
           1. Exact part_number match
           2. Part number starts with query / term
@@ -566,15 +568,24 @@ class PriceBookRepository:
         q_lower = q.lower()
 
         # ADR-0008: hide addon charges unless Option filter targets them
-        opt_filter = option_key.strip() if option_key and option_key != "All" else None
-        if not opt_filter:
+        opt_filters: list[str] = []
+        if isinstance(option_key, (list, tuple)):
+            opt_filters = [
+                str(o).strip()
+                for o in option_key
+                if o and str(o).strip() and str(o).strip() != "All"
+            ]
+        elif option_key and option_key != "All":
+            opt_filters = [option_key.strip()]
+        has_opt = bool(opt_filters)
+        if not has_opt:
             clauses.append("lower(COALESCE(line_kind, 'item')) != 'addon'")
 
         bare_terms: list[str] = []
         if q:
             bool_sql, bool_params, bare_terms = self._boolean_to_sql(q)
             if bool_sql:
-                if opt_filter:
+                if has_opt:
                     # Add-on rows (Option lookups) are catalog-wide — a product
                     # text query must not hide the selected add-on charge (ADR-0008).
                     clauses.append(
@@ -608,7 +619,7 @@ class PriceBookRepository:
                 "trim(coalesce(species,'')) LIKE ? ESCAPE '\\'"
                 ")"
             )
-            if opt_filter:
+            if has_opt:
                 # Add-on rows have no wood — a Wood filter must not hide the
                 # selected option's charge (ADR-0008).
                 clauses.append(
@@ -625,11 +636,21 @@ class PriceBookRepository:
                     "% / " + esc,  # "… / Cherry"
                 ]
             )
-        if opt_filter:
+        if has_opt:
             # Match option_key column OR species stored as an option tier
-            # (Patio Kraft colors, LuxHome leather, etc.)
-            clauses.append("(trim(coalesce(option_key,'')) = ? OR trim(coalesce(species,'')) = ?)")
-            params.extend([opt_filter, opt_filter])
+            # (Patio Kraft colors, LuxHome leather, etc.). Multi = OR.
+            if len(opt_filters) == 1:
+                clauses.append(
+                    "(trim(coalesce(option_key,'')) = ? OR trim(coalesce(species,'')) = ?)"
+                )
+                params.extend([opt_filters[0], opt_filters[0]])
+            else:
+                ph = ",".join("?" * len(opt_filters))
+                clauses.append(
+                    f"(trim(coalesce(option_key,'')) IN ({ph}) "
+                    f"OR trim(coalesce(species,'')) IN ({ph}))"
+                )
+                params.extend(list(opt_filters) + list(opt_filters))
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         cols = ", ".join(SELECT_COLS)
 

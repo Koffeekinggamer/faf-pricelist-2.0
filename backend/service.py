@@ -87,14 +87,13 @@ class PriceBookService:
         vendor: Optional[str] = None,
         finish_state: Optional[str] = None,
         species: Optional[str] = None,
-        option_key: Optional[str] = None,
+        option_key: Optional[Union[str, Sequence[str]]] = None,
         limit: int = DEFAULT_SEARCH_LIMIT,
     ) -> pd.DataFrame:
         self.ensure_ready()
-        opt = (option_key or "").strip()
+        opts = self._normalize_option_keys(option_key)
         if (
-            opt
-            and opt.lower() != "all"
+            opts
             and vendor
             and vendor != "All"
         ):
@@ -103,20 +102,48 @@ class PriceBookService:
                 vendor=vendor,
                 finish_state=finish_state,
                 species=species,
-                option_key=opt,
+                option_keys=opts,
                 limit=limit,
             )
             if upcharged is not None:
                 return upcharged
+        # Repo accepts a single key or a list (IN filter).
+        repo_opt: Optional[Union[str, Sequence[str]]] = None
+        if len(opts) == 1:
+            repo_opt = opts[0]
+        elif len(opts) > 1:
+            repo_opt = opts
         return self.repo.search(
             query,
             collection=collection,
             vendor=vendor,
             finish_state=finish_state,
             species=species,
-            option_key=option_key,
+            option_key=repo_opt,
             limit=limit,
         )
+
+    @staticmethod
+    def _normalize_option_keys(
+        option_key: Optional[Union[str, Sequence[str]]],
+    ) -> list[str]:
+        """Flatten UI/API option selection into a de-duped list (no All/blank)."""
+        if option_key is None:
+            return []
+        if isinstance(option_key, str):
+            raw = [option_key]
+        else:
+            raw = list(option_key)
+        out: list[str] = []
+        seen: set[str] = set()
+        for o in raw:
+            s = (o or "").strip()
+            if not s or s.lower() == "all":
+                continue
+            if s not in seen:
+                seen.add(s)
+                out.append(s)
+        return out
 
     # Options whose upcharge modifies the price of eligible ITEMS (drawered /
     # doored goods) rather than showing a standalone addon row. Vocabulary for
@@ -220,45 +247,26 @@ class PriceBookService:
                 break
         return best, confident
 
-    def _search_with_item_option_upcharge(
+    def _apply_one_option_upcharge(
         self,
-        query: str,
+        df: pd.DataFrame,
         *,
-        vendor: str,
-        finish_state: Optional[str],
-        species: Optional[str],
         option_key: str,
-        limit: int,
-    ) -> Optional[pd.DataFrame]:
-        """Show eligible items with retail raised by the selected Option's charge.
+        addons: list[dict],
+        profile: dict,
+    ) -> tuple[pd.DataFrame, pd.Series]:
+        """Stack one Option's charge onto eligible rows. Returns (df, applied_mask).
 
-        - Drawer/door options (flat charge or addon_pct): only drawered/doored items.
-        - Finish (and other) options: EVERY physical wood item is eligible; the
-          charge comes from the item's best-matching category (falls back to the
-          median category charge, flagged, when no confident match).
-
-        Returns None (caller falls back to normal search) when the Option has no
-        addon charge rows for this builder.
+        Ineligible rows are left unchanged (needed so multi-select can stack
+        paint onto a bed while drawer slides only hit drawered goods).
         """
-        addons = self.repo.get_addon_rows(vendor, option_key)
-        if not addons:
-            return None
-        profile = load_builder_profile(vendor)
+        if df.empty or not addons:
+            return df, pd.Series(False, index=df.index)
+
         flat = [a for a in addons if a.get("is_flat")]
         cats = [a for a in addons if not a.get("is_flat")]
         is_drawer_door = self._is_item_upcharge_option(option_key, profile)
         drawer_keywords = profile.get("drawer_door_item_keywords") or []
-
-        df = self.repo.search(
-            query,
-            vendor=vendor,
-            finish_state=finish_state,
-            species=species,
-            option_key=None,
-            limit=max(int(limit) * 6, 400),
-        )
-        if df.empty:
-            return df
 
         text = (
             df.get("description").fillna("").astype(str) + " | "
@@ -266,68 +274,44 @@ class PriceBookService:
             + df.get("part_number").fillna("").astype(str)
         ).str.lower()
 
+        df = df.copy()
+        applied = pd.Series(False, index=df.index)
+        notes = df.get("notes").fillna("").astype(str)
+
         if is_drawer_door and flat:
-            eligible = text.apply(
-                lambda s: any(k in s for k in drawer_keywords)
-            )
-            df = df[eligible].copy()
-            if df.empty:
-                return df
-            # Flat $: same add for every eligible item. Percent: per-item.
-            pct = flat[0].get("addon_pct")
-            base_add = flat[0].get("base_price")
-            retail_add = flat[0].get("adjusted_price")
-            has_dollar = (base_add is not None and float(base_add) != 0.0) or (
-                retail_add is not None and float(retail_add) != 0.0
-            )
-            if pct is not None and not has_dollar:
-                new_retail, new_base, new_notes = [], [], []
-                cur_notes = df.get("notes").fillna("").astype(str).tolist()
-                for i, (_, r) in enumerate(df.iterrows()):
-                    b, a, pct_tag = self._addon_dollar_or_pct(
-                        flat[0],
-                        item_base=r.get("base_price"),
-                        item_retail=r.get("adjusted_price"),
-                    )
-                    ob = r.get("base_price")
-                    op = r.get("adjusted_price")
-                    new_base.append((float(ob) if ob is not None else 0.0) + (float(b) if b is not None else 0.0))
-                    new_retail.append((float(op) if op is not None else 0.0) + (float(a) if a is not None else 0.0))
-                    tag = f"+ {option_key}"
-                    if pct_tag:
-                        tag += f" ({pct_tag}"
-                        if a is not None:
-                            tag += f" +${float(a):,.0f}"
-                        tag += ")"
-                    elif a is not None:
-                        tag += f" (+${float(a):,.0f})"
-                    base_n = cur_notes[i]
-                    new_notes.append(f"{base_n} · {tag}".strip(" ·") if base_n else tag)
-                df = df.copy()
-                df["adjusted_price"] = new_retail
-                df["base_price"] = new_base
-                df["option_key"] = option_key
-                df["notes"] = new_notes
-                return df.head(int(limit)).reset_index(drop=True)
+            eligible = text.apply(lambda s: any(k in s for k in drawer_keywords))
+            if not eligible.any():
+                return df, applied
+            for idx in df.index[eligible]:
+                r = df.loc[idx]
+                b, a, pct_tag = self._addon_dollar_or_pct(
+                    flat[0],
+                    item_base=r.get("base_price"),
+                    item_retail=r.get("adjusted_price"),
+                )
+                if a is not None:
+                    cur = r.get("adjusted_price")
+                    df.at[idx, "adjusted_price"] = (float(cur) if cur is not None else 0.0) + float(a)
+                if b is not None:
+                    cur = r.get("base_price")
+                    df.at[idx, "base_price"] = (float(cur) if cur is not None else 0.0) + float(b)
+                tag = f"+ {option_key}"
+                if pct_tag:
+                    tag += f" ({pct_tag}"
+                    if a is not None:
+                        tag += f" +${float(a):,.0f}"
+                    tag += ")"
+                elif a is not None:
+                    tag += f" (+${float(a):,.0f})"
+                n = notes.at[idx] if idx in notes.index else ""
+                df.at[idx, "notes"] = f"{n} · {tag}".strip(" ·") if n else tag
+                applied.at[idx] = True
+            return df, applied
 
-            if retail_add is not None:
-                df["adjusted_price"] = df["adjusted_price"].fillna(0) + float(retail_add)
-            if base_add is not None:
-                df["base_price"] = df["base_price"].fillna(0) + float(base_add)
-            df["option_key"] = option_key
-            tag = f"+ {option_key}"
-            if retail_add is not None:
-                tag += f" (+${float(retail_add):,.0f})"
-            df["notes"] = df["notes"].fillna("").astype(str).apply(
-                lambda n: f"{n} · {tag}".strip(" ·") if n else tag
-            )
-            return df.head(int(limit)).reset_index(drop=True)
-
-        # Finish / per-category option: every physical WOOD item is eligible.
+        # Finish / per-category (or non-drawer flat): every physical WOOD item.
         has_wood = df.get("species").fillna("").astype(str).str.strip() != ""
-        df = df[has_wood].copy()
-        if df.empty:
-            return df
+        if not has_wood.any():
+            return df, applied
 
         rc = sorted(
             a["adjusted_price"] for a in cats
@@ -341,29 +325,23 @@ class PriceBookService:
         med_base = bc[len(bc) // 2] if bc else (flat[0].get("base_price") if flat else None)
         med_addon = None
         if not rc and not bc:
-            # Prefer a category (or flat) row that carries addon_pct for median fallback.
             for a in cats + flat:
                 if a.get("addon_pct") is not None:
                     med_addon = a
                     break
 
-        cur_notes = df.get("notes").fillna("").astype(str).tolist()
-        old_retail = df["adjusted_price"].tolist()
-        old_base = df["base_price"].tolist()
-        new_retail, new_base, new_notes = [], [], []
-        for i, (_, r) in enumerate(df.iterrows()):
+        for idx in df.index[has_wood]:
+            r = df.loc[idx]
             itext = f"{r.get('description') or ''} {r.get('collection') or ''} {r.get('part_number') or ''}"
             if cats:
                 m, confident = self._match_addon_category(itext, cats, profile)
             else:
                 m, confident = (flat[0], True) if flat else (None, False)
-            op = old_retail[i]
-            ob = old_base[i]
+            op = r.get("adjusted_price")
+            ob = r.get("base_price")
             pct_tag = None
             if m is not None:
-                b, a, pct_tag = self._addon_dollar_or_pct(
-                    m, item_base=ob, item_retail=op
-                )
+                b, a, pct_tag = self._addon_dollar_or_pct(m, item_base=ob, item_retail=op)
                 label = None if m.get("is_flat") else m.get("category")
                 approx = not confident
             elif med_addon is not None:
@@ -373,8 +351,10 @@ class PriceBookService:
                 label, approx = None, True
             else:
                 b, a, label, approx = med_base, med_retail, None, True
-            new_retail.append((float(op) if op is not None else 0.0) + (float(a) if a is not None else 0.0))
-            new_base.append((float(ob) if ob is not None else 0.0) + (float(b) if b is not None else 0.0))
+            if a is not None:
+                df.at[idx, "adjusted_price"] = (float(op) if op is not None else 0.0) + float(a)
+            if b is not None:
+                df.at[idx, "base_price"] = (float(ob) if ob is not None else 0.0) + float(b)
             if pct_tag and a is not None:
                 amt = f" {pct_tag} +${float(a):,.0f}"
             elif pct_tag:
@@ -390,14 +370,67 @@ class PriceBookService:
             else:
                 inner = amt.strip(" +")
             tag = f"+ {option_key} ({inner})" if inner else f"+ {option_key}"
-            base = cur_notes[i]
-            new_notes.append(f"{base} · {tag}".strip(" ·") if base else tag)
+            n = str(df.at[idx, "notes"] or "") if "notes" in df.columns else ""
+            df.at[idx, "notes"] = f"{n} · {tag}".strip(" ·") if n else tag
+            applied.at[idx] = True
+        return df, applied
 
-        df = df.copy()
-        df["adjusted_price"] = new_retail
-        df["base_price"] = new_base
-        df["option_key"] = option_key
-        df["notes"] = new_notes
+    def _search_with_item_option_upcharge(
+        self,
+        query: str,
+        *,
+        vendor: str,
+        finish_state: Optional[str],
+        species: Optional[str],
+        option_keys: Sequence[str],
+        limit: int,
+    ) -> Optional[pd.DataFrame]:
+        """Show eligible items with retail raised by selected Option charge(s).
+
+        Multiple Options stack: each adder applies only to items eligible for it
+        (drawer slides → drawered goods; finish options → every wood item).
+
+        Returns None (caller falls back to normal search) when none of the
+        Options have addon charge rows for this builder.
+        """
+        keys = [k for k in option_keys if k]
+        if not keys:
+            return None
+
+        profile = load_builder_profile(vendor)
+        addon_by_opt: list[tuple[str, list[dict]]] = []
+        for opt in keys:
+            addons = self.repo.get_addon_rows(vendor, opt)
+            if addons:
+                addon_by_opt.append((opt, addons))
+        if not addon_by_opt:
+            return None
+
+        df = self.repo.search(
+            query,
+            vendor=vendor,
+            finish_state=finish_state,
+            species=species,
+            option_key=None,
+            limit=max(int(limit) * 6, 400),
+        )
+        if df.empty:
+            return df
+
+        any_applied = pd.Series(False, index=df.index)
+        for opt, addons in addon_by_opt:
+            df, mask = self._apply_one_option_upcharge(
+                df, option_key=opt, addons=addons, profile=profile
+            )
+            any_applied = any_applied | mask.reindex(df.index, fill_value=False)
+
+        if not any_applied.any():
+            return df.iloc[0:0].copy()
+
+        df = df.loc[any_applied].copy()
+        # Label with all selected upcharge options (stable order from UI).
+        label = ", ".join(opt for opt, _ in addon_by_opt)
+        df["option_key"] = label
         return df.head(int(limit)).reset_index(drop=True)
 
     def get_row(self, row_id: int) -> Optional[dict]:

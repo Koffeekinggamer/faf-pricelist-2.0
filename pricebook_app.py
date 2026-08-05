@@ -602,18 +602,26 @@ with tab_search:
         # Finish dropdown hidden — always show a builder's finished options only.
         ff = "finished"
         with f3:
-            # Option — per builder (addon charges + finish Cat.N, etc.)
+            # Option — multi-select (addon charges + finish Cat.N, etc.)
             opt_list = _option_dropdown_options(vf if vf else "All")
-            opt_opts = ["All"] + [o for o in opt_list if o and o != "All"]
-            if "so" in st.session_state and st.session_state["so"] not in opt_opts:
-                st.session_state["so"] = "All"
-            of = st.selectbox(
+            # Migrate legacy single-select session value → list
+            if "so" in st.session_state:
+                cur = st.session_state["so"]
+                if isinstance(cur, str):
+                    st.session_state["so"] = [] if cur in ("", "All") else [cur]
+                elif isinstance(cur, list):
+                    st.session_state["so"] = [x for x in cur if x in opt_list]
+                else:
+                    st.session_state["so"] = []
+            of_list = st.multiselect(
                 "Option",
-                options=opt_opts,
+                options=opt_list,
                 key="so",
-                help="Addon charges and finish/size/color options for this "
-                "builder (ADR-0008). Pick an adder to see its $ / % charge.",
+                placeholder="All",
+                help="Pick one or more addon charges / finish options for this "
+                "builder. Multiple selections stack their upcharges on eligible items.",
             )
+            of_list = [o for o in (of_list or []) if o and o != "All"]
         if f4 is not None:
             with f4:
                 st.write("")  # align with selectboxes
@@ -647,7 +655,7 @@ with tab_search:
                     collection=None,  # Collection filter hidden on floor UI
                     finish_state=None if ff == "All" else ff,
                     species=None if wf == "All" else wf,
-                    option_key=None if of == "All" else of,
+                    option_key=of_list or None,
                     limit=DEFAULT_SEARCH_LIMIT,
                 )
                 empty_reason = "none" if results.empty else ""
@@ -711,13 +719,12 @@ with tab_search:
                 and display["option_key"].fillna("").astype(str).str.strip().eq("").all()
             ):
                 show_cols = [c for c in show_cols if c != "option_key"]
-            # When an Option is applied, surface the per-item upcharge detail
+            # When Option(s) are applied, surface the per-item upcharge detail
             # (matched category / "approx") from notes so the floor can verify.
             option_applied = (
-                of
-                and of != "All"
+                bool(of_list)
                 and "option_key" in display.columns
-                and (display["option_key"].astype(str) == of).any()
+                and display["option_key"].fillna("").astype(str).str.strip().ne("").any()
                 and "collection" in display.columns
                 and (display["collection"].astype(str) != "Addons").any()
             )
@@ -741,16 +748,10 @@ with tab_search:
                     f"Wood filter: **{wf}** · Wood column shows only this selection "
                     f"(other woods in the builder’s price tier are hidden)."
                 )
-            if (
-                of
-                and of != "All"
-                and "option_key" in display.columns
-                and "collection" in display.columns
-                and (display["option_key"].astype(str) == of).any()
-                and (display["collection"].astype(str) != "Addons").any()
-            ):
+            if option_applied:
+                opt_label = ", ".join(of_list)
                 st.caption(
-                    f"**RETAIL includes the {of} option** — its upcharge is already "
+                    f"**RETAIL includes {opt_label}** — upcharge(s) already "
                     f"added to each eligible item’s price."
                 )
             # Content-based widths so headers + values fully show (scrolls if needed)
