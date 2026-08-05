@@ -840,7 +840,7 @@ with tab_search:
                     f"**RETAIL includes {opt_label}** — upcharge(s) already "
                     f"added to each eligible item’s price."
                 )
-            # Content-based widths so headers + values fully show (scrolls if needed)
+            # Keep descriptions compact; taller rows make long text wrap.
             st.dataframe(
                 view,
                 use_container_width=True,
@@ -856,6 +856,7 @@ with tab_search:
                     },
                     overrides={
                         "Part #": 110,
+                        "Description": 230,
                         "Option": 90,
                         "Wood": 160,
                         "Finish": 100,
@@ -863,6 +864,7 @@ with tab_search:
                     },
                 ),
                 height=480,
+                row_height=64,
             )
 
             if SHOW_ORDERTRAC_QUOTE:
