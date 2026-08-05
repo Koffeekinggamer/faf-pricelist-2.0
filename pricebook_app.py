@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -220,6 +221,15 @@ def _option_dropdown_options(vendor_key: str) -> list:
         return list(svc.list_option_keys(vendor=vendor_key) or [])
     except Exception:
         return []
+
+
+def _option_checkbox_key(vendor_key: str, option_label: str) -> str:
+    """Stable Streamlit widget key for an Option checkbox (per builder)."""
+
+    def slug(s: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "_", (s or "").lower()).strip("_") or "x"
+
+    return f"so_cb_{slug(vendor_key)}_{slug(option_label)}"
 
 
 svc = _svc()
@@ -577,10 +587,10 @@ with tab_search:
             vendors = ["All"] + favorites + rest
 
         if SHOW_SIMPLE_UI:
-            f1, f2, f3 = st.columns([1.5, 1.3, 1.1])
-            f4 = None
+            f1, f2 = st.columns([1.5, 1.3])
+            f3 = None
         else:
-            f1, f2, f3, f4 = st.columns([1.35, 1.2, 1.0, 0.8])
+            f1, f2, f3 = st.columns([1.5, 1.3, 0.9])
         with f1:
             vf = st.selectbox("Builder", vendors, key="sv")
         with f2:
@@ -601,29 +611,8 @@ with tab_search:
                 st.caption("No wood options parsed for this builder.")
         # Finish dropdown hidden — always show a builder's finished options only.
         ff = "finished"
-        with f3:
-            # Option — multi-select (addon charges + finish Cat.N, etc.)
-            opt_list = _option_dropdown_options(vf if vf else "All")
-            # Migrate legacy single-select session value → list
-            if "so" in st.session_state:
-                cur = st.session_state["so"]
-                if isinstance(cur, str):
-                    st.session_state["so"] = [] if cur in ("", "All") else [cur]
-                elif isinstance(cur, list):
-                    st.session_state["so"] = [x for x in cur if x in opt_list]
-                else:
-                    st.session_state["so"] = []
-            of_list = st.multiselect(
-                "Option",
-                options=opt_list,
-                key="so",
-                placeholder="All",
-                help="Pick one or more addon charges / finish options for this "
-                "builder. Multiple selections stack their upcharges on eligible items.",
-            )
-            of_list = [o for o in (of_list or []) if o and o != "All"]
-        if f4 is not None:
-            with f4:
+        if f3 is not None:
+            with f3:
                 st.write("")  # align with selectboxes
                 st.write("")
                 if vf != "All":
@@ -635,6 +624,44 @@ with tab_search:
                         if st.button("Pin builder", key="pin_builder", use_container_width=True):
                             _save_favorites(favorites + [vf])
                             st.rerun()
+
+        # Option — checkboxes so every selection stays visible (stack upcharges).
+        opt_list = _option_dropdown_options(vf if vf else "All")
+        # Migrate legacy select / multiselect session value into checkbox keys once.
+        if "so" in st.session_state:
+            cur = st.session_state.pop("so")
+            legacy = []
+            if isinstance(cur, str) and cur not in ("", "All"):
+                legacy = [cur]
+            elif isinstance(cur, list):
+                legacy = [x for x in cur if x and x != "All"]
+            for opt in legacy:
+                if opt in opt_list:
+                    st.session_state[_option_checkbox_key(vf, opt)] = True
+
+        of_list: list[str] = []
+        if vf == "All":
+            st.caption("Option — pick a **Builder** to see its addon / finish options.")
+        elif not opt_list:
+            st.caption("No options parsed for this builder.")
+        else:
+            st.markdown(
+                "Option "
+                "<span title='Check one or more addon charges / finish options. "
+                "Selections stack their upcharges on eligible items.' "
+                "style='cursor:help;opacity:0.65;font-size:0.85em'>ⓘ</span>",
+                unsafe_allow_html=True,
+            )
+            n_cols = 3 if len(opt_list) > 4 else max(1, min(3, len(opt_list)))
+            cb_cols = st.columns(n_cols)
+            for i, opt in enumerate(opt_list):
+                with cb_cols[i % n_cols]:
+                    if st.checkbox(opt, key=_option_checkbox_key(vf, opt)):
+                        of_list.append(opt)
+            if of_list:
+                st.caption("Selected: **" + " · ".join(of_list) + "**")
+            else:
+                st.caption("None selected — showing base retail (no option upcharge).")
 
         q = st.text_input(
             "Search the master book",
