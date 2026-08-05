@@ -564,15 +564,15 @@ with tab_search:
         st.session_state["sq"] = ""
         st.session_state["sv"] = _pending_pin
         st.session_state["sf"] = "finished"
-        st.session_state["so"] = "All"
+        st.session_state["so_panel_open"] = False
 
     all_vendors = svc.list_vendors()
     favorites = [v for v in _load_favorites() if v in all_vendors]
 
-    # Pinned-builders rail (off in simple accuracy UI)
+    # Pinned-builders rail
     if "pin_panel_open" not in st.session_state:
         st.session_state["pin_panel_open"] = False
-    pins_open = bool(st.session_state["pin_panel_open"]) and not SHOW_SIMPLE_UI
+    pins_open = bool(st.session_state["pin_panel_open"])
 
     if pins_open:
         search_col, pin_col = st.columns([3.4, 1.15], gap="large")
@@ -964,9 +964,9 @@ with tab_search:
                 ):
                     st.session_state["pin_panel_open"] = False
                     st.rerun()
-            st.caption("Tap to filter search · pin from the Builder menu")
+            st.caption("Tap to filter search · pin builders on the **Vendors** tab")
             if not favorites:
-                st.info("No pins yet. Choose a **Builder**, then **Pin builder**.")
+                st.info("No pins yet. Tick **Pinned** on the **Vendors** tab.")
             else:
                 for i, name in enumerate(favorites[:24]):
                     active = (
