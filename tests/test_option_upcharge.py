@@ -212,3 +212,23 @@ def test_extra_drawers_qty_multiplies_flat_charge(tmp_path):
     dresser = three.iloc[0]
     assert float(dresser["adjusted_price"]) == 1000.0 + 81.0 * 3
     assert "×3" in str(dresser["notes"])
+
+
+def test_undermount_slides_qty_multiplies_flat_charge(tmp_path):
+    """Qty N stacks Undermount Drawer Slides flat charge N times."""
+    svc = _svc(tmp_path)
+    V = "Test Builder"
+    svc.repo.insert_rows([
+        _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
+        _addon(V, "Undermount Drawer Slides", 20.0, 54.0),
+    ])
+
+    three = svc.search(
+        "",
+        vendor=V,
+        option_key="Undermount Drawer Slides",
+        option_qty={"Undermount Drawer Slides": 3},
+    )
+    dresser = three.iloc[0]
+    assert float(dresser["adjusted_price"]) == 1000.0 + 54.0 * 3
+    assert "×3" in str(dresser["notes"])

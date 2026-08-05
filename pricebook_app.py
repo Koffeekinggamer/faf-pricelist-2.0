@@ -714,13 +714,13 @@ with tab_search:
                                     if qkey not in st.session_state:
                                         st.session_state[qkey] = 1
                                     qty = st.number_input(
-                                        "How many extras?",
+                                        "How many?",
                                         min_value=1,
                                         max_value=20,
                                         step=1,
                                         key=qkey,
-                                        help="Some casegoods need more than one "
-                                        "extra drawer or door — charge × count.",
+                                        help="Charge × count — casegoods with "
+                                        "several drawers/doors need more than one.",
                                     )
                                     option_qty[opt] = int(qty)
                     if of_list:

@@ -149,9 +149,17 @@ class PriceBookService:
 
     @staticmethod
     def _option_qty_allowed(option_key: str) -> bool:
-        """True when floor may pick how many of this option to stack (extras)."""
+        """True when floor may pick how many of this option to stack.
+
+        Extra drawers/doors and undermount slides are per-opening charges on
+        casegoods that may have more than one drawer or door.
+        """
         o = (option_key or "").lower()
-        return "extra" in o and ("drawer" in o or "door" in o)
+        if "extra" in o and ("drawer" in o or "door" in o):
+            return True
+        if "slide" in o and "drawer" in o:
+            return True
+        return False
 
     @staticmethod
     def _clamp_option_qty(qty: Any, *, default: int = 1) -> int:
