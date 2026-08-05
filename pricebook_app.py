@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -40,7 +41,7 @@ _LOGO = APP_DIR / "assets" / "logo.png"
 SHOW_ORDERTRAC_QUOTE = False  # quote tab + search cart + sidebar badge
 SHOW_ORDERTRAC_ADMIN = False  # Admin: OrderTrac connection, user sync, push tools
 SHOW_SIMPLE_UI = True  # lean Search/Drop/Vendors; hide pins & bulk tools
-SHOW_ADMIN_ADVANCED = True  # cleanup / deploy / CLI under Admin (accuracy tools)
+SHOW_ADMIN_ADVANCED = True  # cleanup tools under Admin
 SHOW_VIZTECH = False  # hide Viztech sync UI — manual Drop only while verifying data
 # TRACE restore quoting: SHOW_ORDERTRAC_* = True
 # TRACE Viztech: SHOW_VIZTECH = True
@@ -61,6 +62,47 @@ if _LOGO.is_file():
 st.markdown(
     """
     <style>
+      /* White app surface with dark, high-contrast text. */
+      .stApp {
+        background: #ffffff;
+        color: #1f2937;
+      }
+      [data-testid="stHeader"] { background: rgba(255, 255, 255, 0.96); }
+      [data-testid="stSidebar"] { background: #f3f4f6; }
+      [data-testid="stSidebar"] * { color: #1f2937; }
+      .stApp a { color: #244a2e; }
+      .stApp a:hover { color: #17351f; }
+      .stApp [data-testid="stCaptionContainer"],
+      .stApp [data-testid="stMarkdownContainer"] p {
+        color: #374151;
+      }
+      .stApp div[data-baseweb="input"] > div,
+      .stApp div[data-baseweb="select"] > div,
+      .stApp textarea {
+        background: #ffffff;
+        color: #17233a;
+      }
+      .stApp input,
+      .stApp textarea {
+        color: #17233a !important;
+        caret-color: #17233a;
+      }
+      .stApp input::placeholder,
+      .stApp textarea::placeholder {
+        color: #667085 !important;
+        opacity: 1;
+      }
+      .stApp [data-baseweb="select"] span {
+        color: #17233a;
+      }
+      .stApp button[kind="primary"],
+      .stApp button[data-testid="stBaseButton-primary"] {
+        color: #ffffff;
+      }
+      .stApp [data-testid="stDataFrame"] {
+        background: #ffffff;
+        border-radius: 0.45rem;
+      }
       /* Larger tap targets on touch devices */
       @media (max-width: 900px) {
         .stTextInput input, .stSelectbox div[data-baseweb="select"] {
@@ -75,6 +117,22 @@ st.markdown(
       .faf-fav-row button { margin-right: 0.25rem; margin-bottom: 0.25rem; }
       /* Sidebar brand */
       [data-testid="stSidebar"] img { max-width: 100%; }
+      /* Option checkbox panel */
+      .faf-option-panel-title {
+        font-weight: 600;
+        color: #244a2e;
+        font-size: 0.95rem;
+        margin-bottom: 0.15rem;
+      }
+      .faf-option-selected {
+        margin-top: 0.35rem;
+        padding: 0.35rem 0.55rem;
+        background: #f3f4f6;
+        border-left: 3px solid #2f5638;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        color: #1f2937;
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -104,9 +162,9 @@ def _require_login() -> bool:
     st.markdown(
         """
         <div style="max-width:420px;margin:4rem auto 1rem auto;text-align:center;">
-          <div style="font-size:2rem;font-weight:700;color:#2d4a30;">FAF Price Book</div>
-          <div style="color:#555;margin-top:0.25rem;">Foothills Amish Furniture · sign in to continue</div>
-          <div style="color:#888;margin-top:0.5rem;font-size:0.9rem;">
+          <div style="font-size:2rem;font-weight:700;color:#244a2e;">FAF Price Book</div>
+          <div style="color:#1f2937;margin-top:0.25rem;">Foothills Amish Furniture · sign in to continue</div>
+          <div style="color:#4b5563;margin-top:0.5rem;font-size:0.9rem;">
             Use your FAF floor login
           </div>
         </div>
@@ -188,6 +246,14 @@ def _svc() -> PriceBookService:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
+def _vendors_with_catalog_images() -> set[str]:
+    try:
+        return set(_svc().vendors_with_catalog_images() or set())
+    except Exception:
+        return set()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
 def _wood_dropdown_options(vendor_key: str) -> list:
     """
     Woods for the Search dropdown, scoped to the selected builder.
@@ -220,6 +286,20 @@ def _option_dropdown_options(vendor_key: str) -> list:
         return list(svc.list_option_keys(vendor=vendor_key) or [])
     except Exception:
         return []
+
+
+def _option_checkbox_key(vendor_key: str, option_label: str) -> str:
+    """Stable Streamlit widget key for an Option checkbox (per builder)."""
+
+    def slug(s: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "_", (s or "").lower()).strip("_") or "x"
+
+    return f"so_cb_{slug(vendor_key)}_{slug(option_label)}"
+
+
+def _option_qty_key(vendor_key: str, option_label: str) -> str:
+    """Session key for Extra Drawers/Doors quantity."""
+    return _option_checkbox_key(vendor_key, option_label) + "_qty"
 
 
 svc = _svc()
@@ -280,6 +360,48 @@ def _auto_col_widths(
     return widths
 
 
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=512)
+def _catalog_thumb_uri(rel_path: str, mtime: float) -> str | None:
+    """Inline data URI for a catalog photo.
+
+    ImageColumn only renders URLs or data URIs, so on-disk paths must be
+    embedded. `mtime` busts the cache when a photo is re-extracted.
+    """
+    path = Path(rel_path)
+    if not path.is_absolute():
+        path = APP_DIR / path
+    if not path.is_file():
+        return None
+    try:
+        from base64 import b64encode
+        from io import BytesIO
+
+        from PIL import Image
+
+        with Image.open(path) as img:
+            thumb = img.convert("RGB")
+            thumb.thumbnail((160, 160))
+            buf = BytesIO()
+            thumb.save(buf, format="JPEG", quality=80, optimize=True)
+        return "data:image/jpeg;base64," + b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return None
+
+
+def _catalog_thumb(raw) -> str | None:
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return None
+    rel = str(raw).strip()
+    if not rel:
+        return None
+    path = Path(rel)
+    if not path.is_absolute():
+        path = APP_DIR / path
+    if not path.is_file():
+        return None
+    return _catalog_thumb_uri(rel, path.stat().st_mtime)
+
+
 def _dataframe_column_config(
     df: pd.DataFrame,
     *,
@@ -287,15 +409,23 @@ def _dataframe_column_config(
     number_formats: dict[str, str] | None = None,
     help_text: dict[str, str] | None = None,
     overrides: dict[str, int] | None = None,
+    image_cols: set[str] | None = None,
 ) -> dict:
     """Build st.column_config with content-based widths so cells aren't clipped."""
     money_cols = money_cols or set()
     number_formats = number_formats or {}
     help_text = help_text or {}
+    image_cols = image_cols or set()
     widths = _auto_col_widths(df, overrides=overrides)
     cfg: dict = {}
     for col, w in widths.items():
-        if col in money_cols:
+        if col in image_cols:
+            cfg[col] = st.column_config.ImageColumn(
+                col,
+                width=w,
+                help=help_text.get(col),
+            )
+        elif col in money_cols:
             cfg[col] = st.column_config.NumberColumn(
                 col,
                 format=number_formats.get(col, "$%.2f"),
@@ -468,7 +598,7 @@ if st.sidebar.button("Sign out"):
 
 stats = svc.stats()
 st.sidebar.metric("Master rows", f"{stats['rows']:,}")
-st.sidebar.caption(f"{stats['vendors']} vendors · {stats['collections']} collections")
+st.sidebar.caption(f"{stats['vendors']} vendors")
 if SHOW_ORDERTRAC_QUOTE:
     _quote_sidebar_badge()
 # Viztech sync status lives under Admin only (hidden from floor sidebar)
@@ -479,7 +609,7 @@ if SHOW_ORDERTRAC_QUOTE:
 
 if SHOW_SIMPLE_UI:
     st.caption(
-        f"**FAF Price Book** · accuracy mode · {stats['rows']:,} rows · {stats['vendors']} builders"
+        f"**FAF Price Book** · {stats['rows']:,} rows · {stats['vendors']} builders"
     )
     if int(stats.get("rows") or 0) == 0:
         st.error(
@@ -531,25 +661,27 @@ else:
 with tab_search:
     st.subheader("Find a price")
 
-    # Apply pin selection BEFORE any widgets with keys sq/sv/sf exist
+    # Apply pin / clear BEFORE any widgets with keys sq/sv/sf exist
     # (Streamlit forbids changing those keys after the widgets are created)
     _pending_pin = st.session_state.pop("_pin_select", None)
     if _pending_pin is not None:
         st.session_state["sq"] = ""
         st.session_state["sv"] = _pending_pin
         st.session_state["sf"] = "finished"
-        st.session_state["so"] = "All"
+        st.session_state["so_panel_open"] = False
+    if st.session_state.pop("_clear_search", False):
+        st.session_state["sq"] = ""
 
     all_vendors = svc.list_vendors()
     favorites = [v for v in _load_favorites() if v in all_vendors]
 
-    # Pinned-builders rail (off in simple accuracy UI)
+    # Pinned-builders rail
     if "pin_panel_open" not in st.session_state:
         st.session_state["pin_panel_open"] = False
-    pins_open = bool(st.session_state["pin_panel_open"]) and not SHOW_SIMPLE_UI
+    pins_open = bool(st.session_state["pin_panel_open"])
 
     if pins_open:
-        search_col, pin_col = st.columns([3.4, 1.15], gap="large")
+        search_col, pin_col = st.columns([3.1, 1.4], gap="medium")
     else:
         search_col = st.container()
         pin_col = None
@@ -569,12 +701,6 @@ with tab_search:
                 ):
                     st.session_state["pin_panel_open"] = True
                     st.rerun()
-        q = st.text_input(
-            "Search the master book",
-            placeholder="Part # or product words…",
-            key="sq",
-            label_visibility="collapsed",
-        )
 
         vendors = ["All"] + all_vendors
         # Put favorites first after All for faster floor pick in dropdown only
@@ -583,10 +709,10 @@ with tab_search:
             vendors = ["All"] + favorites + rest
 
         if SHOW_SIMPLE_UI:
-            f1, f2, f3, f4 = st.columns([1.35, 1.2, 0.9, 1.0])
-            f5 = None
+            f1, f2 = st.columns([1.5, 1.3])
+            f3 = None
         else:
-            f1, f2, f3, f4, f5 = st.columns([1.25, 1.1, 0.85, 0.95, 0.75])
+            f1, f2, f3 = st.columns([1.5, 1.3, 0.9])
         with f1:
             vf = st.selectbox("Builder", vendors, key="sv")
         with f2:
@@ -605,27 +731,10 @@ with tab_search:
             )
             if vf != "All" and len(wood_opts) <= 1:
                 st.caption("No wood options parsed for this builder.")
-        with f3:
-            # Floor default: finished only
-            finish_opts = ["finished", "All", "unfinished"]
-            ff = st.selectbox("Finish", finish_opts, index=0, key="sf")
-        with f4:
-            # Option — per builder (addon charges + finish Cat.N, etc.)
-            opt_list = _option_dropdown_options(vf if vf else "All")
-            opt_opts = ["All"] + [o for o in opt_list if o and o != "All"]
-            if "so" in st.session_state and st.session_state["so"] not in opt_opts:
-                st.session_state["so"] = "All"
-            of = st.selectbox(
-                "Option",
-                options=opt_opts,
-                key="so",
-                help="Addon charges and finish/size/color options for this "
-                "builder (ADR-0008). Pick an adder to see its $ / % charge. "
-                "Disabled when Builder is All or that builder has no options.",
-                disabled=(vf == "All" or len(opt_opts) <= 1),
-            )
-        if f5 is not None:
-            with f5:
+        # Finish dropdown hidden — always show a builder's finished options only.
+        ff = "finished"
+        if f3 is not None:
+            with f3:
                 st.write("")  # align with selectboxes
                 st.write("")
                 if vf != "All":
@@ -637,6 +746,128 @@ with tab_search:
                         if st.button("Pin builder", key="pin_builder", use_container_width=True):
                             _save_favorites(favorites + [vf])
                             st.rerun()
+
+        # Option — hidden until the floor opts in (keeps Search clean).
+        opt_list = _option_dropdown_options(vf if vf else "All")
+        # Migrate legacy select / multiselect session value into checkbox keys once.
+        if "so" in st.session_state:
+            cur = st.session_state.pop("so")
+            legacy = []
+            if isinstance(cur, str) and cur not in ("", "All"):
+                legacy = [cur]
+            elif isinstance(cur, list):
+                legacy = [x for x in cur if x and x != "All"]
+            for opt in legacy:
+                if opt in opt_list:
+                    st.session_state[_option_checkbox_key(vf, opt)] = True
+
+        # Auto-open the panel only when this builder already has checks saved.
+        prechecked = [
+            opt
+            for opt in opt_list
+            if st.session_state.get(_option_checkbox_key(vf, opt))
+        ]
+        if "so_panel_open" not in st.session_state and prechecked:
+            st.session_state["so_panel_open"] = True
+
+        of_list: list[str] = []
+        option_qty: dict[str, int] = {}
+        if vf != "All" and opt_list:
+            show_opts = st.checkbox(
+                "Options",
+                key="so_panel_open",
+                help="Show addon / finish option checkboxes. "
+                "Leave off for base retail.",
+            )
+            if show_opts:
+                with st.container(border=True):
+                    head_l, head_r = st.columns([4.5, 1.2])
+                    with head_l:
+                        st.markdown(
+                            '<div class="faf-option-panel-title">Check options to stack '
+                            "upcharges "
+                            "<span title='Each checked option adds its charge to "
+                            "eligible items.' "
+                            "style='cursor:help;opacity:0.65;font-size:0.85em'>ⓘ</span>"
+                            "</div>",
+                            unsafe_allow_html=True,
+                        )
+                    with head_r:
+                        if st.button(
+                            "Clear",
+                            key="so_clear_options",
+                            use_container_width=True,
+                            help="Uncheck all Options",
+                        ):
+                            for opt in opt_list:
+                                st.session_state[_option_checkbox_key(vf, opt)] = False
+                                st.session_state[_option_qty_key(vf, opt)] = 1
+                            st.rerun()
+                    n_cols = 2 if len(opt_list) <= 6 else 3
+                    cb_cols = st.columns(n_cols)
+                    for i, opt in enumerate(opt_list):
+                        with cb_cols[i % n_cols]:
+                            checked = st.checkbox(opt, key=_option_checkbox_key(vf, opt))
+                            if checked:
+                                of_list.append(opt)
+                                if PriceBookService._option_qty_allowed(opt):
+                                    qkey = _option_qty_key(vf, opt)
+                                    if qkey not in st.session_state:
+                                        st.session_state[qkey] = 1
+                                    qty = st.number_input(
+                                        "How many?",
+                                        min_value=1,
+                                        max_value=20,
+                                        step=1,
+                                        key=qkey,
+                                        help="Charge × count — casegoods with "
+                                        "several drawers/doors need more than one.",
+                                    )
+                                    option_qty[opt] = int(qty)
+                    if of_list:
+                        bits = []
+                        for o in of_list:
+                            q = option_qty.get(o, 1)
+                            bits.append(f"{o} ×{q}" if q > 1 else o)
+                        st.markdown(
+                            '<div class="faf-option-selected"><strong>Selected:</strong> '
+                            + " · ".join(bits)
+                            + "</div>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.caption("None checked — base retail (no option upcharge).")
+            elif prechecked:
+                # Panel closed but prior checks remain — remind without taking space.
+                st.caption(
+                    f"Options off · {len(prechecked)} saved "
+                    f"({', '.join(prechecked[:3])}{'…' if len(prechecked) > 3 else ''}) "
+                    "— turn **Options** on to apply."
+                )
+        elif vf == "All":
+            pass  # no option chrome until a builder is chosen
+        elif vf != "All" and not opt_list:
+            st.caption("No options parsed for this builder.")
+
+        q_col, clear_col = st.columns([5.5, 1.0], gap="small")
+        with q_col:
+            q = st.text_input(
+                "Search the master book",
+                placeholder="Part # or product words…",
+                key="sq",
+                label_visibility="collapsed",
+            )
+        with clear_col:
+            has_query = bool((st.session_state.get("sq") or "").strip())
+            if st.button(
+                "Clear",
+                key="sq_clear",
+                use_container_width=True,
+                disabled=not has_query,
+                help="Clear the search box",
+            ):
+                st.session_state["_clear_search"] = True
+                st.rerun()
 
         # Don't dump the whole book when search is empty — unless a builder is chosen
         if not (q or "").strip() and vf == "All":
@@ -650,7 +881,8 @@ with tab_search:
                     collection=None,  # Collection filter hidden on floor UI
                     finish_state=None if ff == "All" else ff,
                     species=None if wf == "All" else wf,
-                    option_key=None if of == "All" else of,
+                    option_key=of_list or None,
+                    option_qty=option_qty or None,
                     limit=DEFAULT_SEARCH_LIMIT,
                 )
                 empty_reason = "none" if results.empty else ""
@@ -675,15 +907,15 @@ with tab_search:
             elif empty_reason == "error":
                 pass  # error already shown
             else:
-                if ff == "finished" and vf != "All":
+                if vf != "All":
                     st.info(
-                        "No **finished** hits for this builder — try **Finish → All** "
-                        "(or **unfinished**), or clear the search box."
+                        "No hits for this builder — try clearing the **Wood** or "
+                        "**Option** filter, or the search box."
                     )
                 else:
                     st.info(
-                        "No hits — try fewer words, Boolean **OR**, or check "
-                        "**Builder** / **Finish** / **Option** filters."
+                        "No hits — try fewer words, Boolean **OR**, or check the "
+                        "**Builder** / **Wood** / **Option** filters."
                     )
         else:
             hit_note = f"**{len(display):,}** hits"
@@ -691,13 +923,14 @@ with tab_search:
                 hit_note += f" (showing first {DEFAULT_SEARCH_LIMIT})"
             st.markdown(
                 f"{hit_note} · "
-                f"<span style='color:#2d4a30;font-weight:700'>Retail is what the customer pays</span>",
+                f"<span style='color:#244a2e;font-weight:700'>Retail is what the customer pays</span>",
                 unsafe_allow_html=True,
             )
             # Floor view: retail only (wholesale/mult managed on Vendors tab)
             show_cols = [
                 c
                 for c in [
+                    "image_path",
                     "collection",
                     "part_number",
                     "description",
@@ -709,13 +942,45 @@ with tab_search:
                 ]
                 if c in display.columns
             ]
+            # Keep Image in place for any builder that has photos, so the column
+            # doesn't appear and vanish as the search narrows to un-photographed SKUs.
+            has_images = False
+            if "image_path" in show_cols:
+                # Blank (not None) for un-photographed SKUs — ImageColumn prints
+                # the literal "None" otherwise.
+                thumbs = [
+                    _catalog_thumb(raw) or "" for raw in display["image_path"].tolist()
+                ]
+                display = display.copy()
+                display["image_path"] = thumbs
+                photo_vendors = _vendors_with_catalog_images()
+                shown_vendors = (
+                    set(display["vendor"].dropna().astype(str))
+                    if "vendor" in display.columns
+                    else set()
+                )
+                has_images = any(thumbs) or bool(shown_vendors & photo_vendors)
+                if not has_images:
+                    show_cols = [c for c in show_cols if c != "image_path"]
             if (
                 "option_key" in show_cols
                 and display["option_key"].fillna("").astype(str).str.strip().eq("").all()
             ):
                 show_cols = [c for c in show_cols if c != "option_key"]
+            # When Option(s) are applied, surface the per-item upcharge detail
+            # (matched category / "approx") from notes so the floor can verify.
+            option_applied = (
+                bool(of_list)
+                and "option_key" in display.columns
+                and display["option_key"].fillna("").astype(str).str.strip().ne("").any()
+                and "collection" in display.columns
+                and (display["collection"].astype(str) != "Addons").any()
+            )
+            if option_applied and "notes" in display.columns and "notes" not in show_cols:
+                show_cols = show_cols + ["notes"]
             view = display[show_cols].rename(
                 columns={
+                    "image_path": "Image",
                     "part_number": "Part #",
                     "description": "Description",
                     "vendor": "Builder",
@@ -724,6 +989,7 @@ with tab_search:
                     "species": "Wood",
                     "finish_state": "Finish",
                     "adjusted_price": "RETAIL",
+                    "notes": "Option detail",
                 }
             )
             if wf and wf != "All":
@@ -731,7 +997,13 @@ with tab_search:
                     f"Wood filter: **{wf}** · Wood column shows only this selection "
                     f"(other woods in the builder’s price tier are hidden)."
                 )
-            # Content-based widths so headers + values fully show (scrolls if needed)
+            if option_applied:
+                opt_label = ", ".join(of_list)
+                st.caption(
+                    f"**RETAIL includes {opt_label}** — upcharge(s) already "
+                    f"added to each eligible item’s price."
+                )
+            # Keep descriptions compact; taller rows make long text wrap.
             st.dataframe(
                 view,
                 use_container_width=True,
@@ -740,13 +1012,17 @@ with tab_search:
                     view,
                     money_cols={"RETAIL"},
                     number_formats={"RETAIL": "$%.0f"},
+                    image_cols={"Image"} if has_images else set(),
                     help_text={
                         "RETAIL": "Customer price — wholesale × mult, rolled up to next even dollar",
                         "Wood": "Wood species / option — use the Wood dropdown above to pick one",
                         "Option": "Addon charge or finish/size option",
+                        "Image": "Catalog photo for this SKU",
                     },
                     overrides={
+                        "Image": 72,
                         "Part #": 110,
+                        "Description": 230,
                         "Option": 90,
                         "Wood": 160,
                         "Finish": 100,
@@ -754,6 +1030,7 @@ with tab_search:
                     },
                 ),
                 height=480,
+                row_height=64,
             )
 
             if SHOW_ORDERTRAC_QUOTE:
@@ -843,21 +1120,21 @@ with tab_search:
     # ---- Separate pinned-builders column (collapsible) ----
     if pin_col is not None:
         with pin_col:
-            head_l, head_r = st.columns([3.2, 1.0])
+            head_l, head_r = st.columns([5.0, 1.0], vertical_alignment="center")
             with head_l:
-                st.markdown("##### Pinned builders")
+                st.markdown("#### Pinned")
             with head_r:
                 if st.button(
-                    "‹ Hide",
+                    "‹",
                     key="hide_pin_panel",
                     use_container_width=True,
-                    help="Collapse pinned builders column",
+                    help="Hide pinned builders",
                 ):
                     st.session_state["pin_panel_open"] = False
                     st.rerun()
-            st.caption("Tap to filter search · pin from the Builder menu")
+            st.caption("Tap builder to filter · manage pins on **Vendors**")
             if not favorites:
-                st.info("No pins yet. Choose a **Builder**, then **Pin builder**.")
+                st.info("No pins yet. Tick **Pinned** on the **Vendors** tab.")
             else:
                 for i, name in enumerate(favorites[:24]):
                     active = (
@@ -2034,6 +2311,7 @@ with tab_vendors:
     if summary.empty:
         st.info("No builders in master yet — import files under **Drop files** first.")
     else:
+        favorites = [v for v in _load_favorites() if v]
         edit_df = summary[
             [
                 c
@@ -2068,9 +2346,17 @@ with tab_vendors:
                 "collections": "Collections",
             }
         )
+        edit_df["Pinned"] = edit_df["Builder"].astype(str).isin(set(favorites))
+        # Pinned builders first so the floor can spot them quickly
+        edit_df = edit_df.sort_values(
+            by=["Pinned", "Builder"],
+            ascending=[False, True],
+            kind="mergesort",
+        ).reset_index(drop=True)
         show_cols = [
             c
             for c in [
+                "Pinned",
                 "Builder",
                 "Phone",
                 "Items",
@@ -2084,9 +2370,15 @@ with tab_vendors:
             use_container_width=True,
             hide_index=True,
             num_rows="fixed",
-            # Lock stats columns; Phone + Multiplier are editable
+            # Lock stats columns; Pinned + Phone + Multiplier are editable
             disabled=["Builder", "Items", "Collections"],
             column_config={
+                "Pinned": st.column_config.CheckboxColumn(
+                    "Pinned",
+                    help="Pin for Search — pinned builders sort first in the Builder menu",
+                    default=False,
+                    width="small",
+                ),
                 "Builder": st.column_config.TextColumn(disabled=True),
                 "Phone": st.column_config.TextColumn(
                     "Phone",
@@ -2107,6 +2399,28 @@ with tab_vendors:
                 ),
             },
             key="vendor_mult_editor",
+        )
+
+        # Pins save immediately (same list Search uses); mult/phone still need Save.
+        if "Pinned" in edited.columns and "Builder" in edited.columns:
+            new_pins = [
+                str(b).strip()
+                for b, pinned in zip(edited["Builder"], edited["Pinned"])
+                if pinned and str(b).strip()
+            ]
+            if set(new_pins) != set(favorites):
+                _save_favorites(new_pins)
+                st.session_state.pop("vendor_mult_editor", None)
+                st.toast(
+                    f"Pins updated · {len(new_pins)} builder"
+                    f"{'s' if len(new_pins) != 1 else ''}",
+                )
+                st.rerun()
+
+        st.caption(
+            "**Pinned** = quick picks on Search (Builder menu). "
+            "Toggle the checkbox — pins save right away. "
+            "Phone & multiplier still need **Save** below."
         )
 
         if not SHOW_SIMPLE_UI:
@@ -2187,12 +2501,9 @@ with tab_admin:
     s1, s2 = st.columns(2)
     s1.metric("Rows", f"{stats['rows']:,}")
     s2.metric("Builders", stats["vendors"])
-    st.caption(f"Database: `{svc.path}`")
     st.caption(f"Last backup: {_last_backup_hint()}")
     if SHOW_VIZTECH:
         st.caption(f"Viztech sync: {_viztech_sync_hint()}")
-    else:
-        st.caption("Accuracy mode · **manual Drop import only** · Viztech sync hidden")
 
     st.markdown("### Thin catalogs")
     st.caption(
@@ -2641,35 +2952,3 @@ with tab_admin:
         if st.button("Delete all rows from this source"):
             n = svc.delete_by_source(src)
             st.warning(f"Removed {n:,} rows")
-
-    st.markdown("##### Deploy")
-    st.caption(
-        "Permanent hosting: Streamlit Community Cloud from GitHub "
-        "`Koffeekinggamer/pricebook-system` · main file `pricebook_app.py`. "
-        "See **DEPLOY.md**. Public tunnel (this Mac on): `scripts/public_tunnel.sh`."
-    )
-
-    st.markdown("##### CLI")
-    _cli = """
-source ~/FAF-pricelist-2.0/.venv/bin/activate
-python -m backend.cli stats
-python -m backend.cli search "oak nightstand"
-python scripts/backup_db.py backup
-python scripts/backup_db.py list
-python scripts/backup_db.py restore --file master_pricebook-YYYYMMDD-HHMMSS.db
-""".strip()
-    if SHOW_VIZTECH:
-        _cli += """
-python scripts/viztech_sync.py --dry-run
-python scripts/viztech_sync.py
-""".rstrip()
-    st.code(_cli)
-
-st.caption(
-    "FAF Price Book · Search · Drop files · Vendors · Admin · "
-    + (
-        "one builder = one catalog · Viztech sync every ~30 days"
-        if SHOW_VIZTECH
-        else "one builder = one catalog · manual Drop while verifying accuracy"
-    )
-)

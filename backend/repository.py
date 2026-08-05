@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union  # noqa: F401 — Optional used throughout
+from typing import Optional, Sequence, Union  # noqa: F401 — Optional used throughout
 
 import pandas as pd
 
@@ -538,7 +539,7 @@ class PriceBookRepository:
         vendor: Optional[str] = None,
         finish_state: Optional[str] = None,
         species: Optional[str] = None,
-        option_key: Optional[str] = None,
+        option_key: Optional[Union[str, list]] = None,
         limit: int = DEFAULT_SEARCH_LIMIT,
     ) -> pd.DataFrame:
         """
@@ -553,6 +554,8 @@ class PriceBookRepository:
         species: exact match, or multi-wood tier containing that wood
         (e.g. filter "Cherry" matches "Elm / Cherry / Maple / QSWO").
 
+        option_key: one label, or a list (OR — match any).
+
         Ranking (best first):
           1. Exact part_number match
           2. Part number starts with query / term
@@ -566,15 +569,31 @@ class PriceBookRepository:
         q_lower = q.lower()
 
         # ADR-0008: hide addon charges unless Option filter targets them
-        opt_filter = option_key.strip() if option_key and option_key != "All" else None
-        if not opt_filter:
+        opt_filters: list[str] = []
+        if isinstance(option_key, (list, tuple)):
+            opt_filters = [
+                str(o).strip()
+                for o in option_key
+                if o and str(o).strip() and str(o).strip() != "All"
+            ]
+        elif option_key and option_key != "All":
+            opt_filters = [option_key.strip()]
+        has_opt = bool(opt_filters)
+        if not has_opt:
             clauses.append("lower(COALESCE(line_kind, 'item')) != 'addon'")
 
         bare_terms: list[str] = []
         if q:
             bool_sql, bool_params, bare_terms = self._boolean_to_sql(q)
             if bool_sql:
-                clauses.append(bool_sql)
+                if has_opt:
+                    # Add-on rows (Option lookups) are catalog-wide — a product
+                    # text query must not hide the selected add-on charge (ADR-0008).
+                    clauses.append(
+                        "(lower(COALESCE(line_kind, 'item')) = 'addon' OR (" + bool_sql + "))"
+                    )
+                else:
+                    clauses.append(bool_sql)
                 params.extend(bool_params)
             else:
                 # User typed something that parsed to no real terms (e.g. "AND OR NOT")
@@ -593,7 +612,7 @@ class PriceBookRepository:
         if species and species != "All":
             # Exact tier/label, or multi-wood tier that includes this wood as a token
             sp = species.strip()
-            clauses.append(
+            species_cond = (
                 "("
                 "trim(coalesce(species,'')) = ? OR "
                 "trim(coalesce(species,'')) LIKE ? ESCAPE '\\' OR "
@@ -601,6 +620,14 @@ class PriceBookRepository:
                 "trim(coalesce(species,'')) LIKE ? ESCAPE '\\'"
                 ")"
             )
+            if has_opt:
+                # Add-on rows have no wood — a Wood filter must not hide the
+                # selected option's charge (ADR-0008).
+                clauses.append(
+                    "(lower(COALESCE(line_kind, 'item')) = 'addon' OR " + species_cond + ")"
+                )
+            else:
+                clauses.append(species_cond)
             esc = self._like_escape(sp)
             params.extend(
                 [
@@ -610,11 +637,21 @@ class PriceBookRepository:
                     "% / " + esc,  # "… / Cherry"
                 ]
             )
-        if opt_filter:
+        if has_opt:
             # Match option_key column OR species stored as an option tier
-            # (Patio Kraft colors, LuxHome leather, etc.)
-            clauses.append("(trim(coalesce(option_key,'')) = ? OR trim(coalesce(species,'')) = ?)")
-            params.extend([opt_filter, opt_filter])
+            # (Patio Kraft colors, LuxHome leather, etc.). Multi = OR.
+            if len(opt_filters) == 1:
+                clauses.append(
+                    "(trim(coalesce(option_key,'')) = ? OR trim(coalesce(species,'')) = ?)"
+                )
+                params.extend([opt_filters[0], opt_filters[0]])
+            else:
+                ph = ",".join("?" * len(opt_filters))
+                clauses.append(
+                    f"(trim(coalesce(option_key,'')) IN ({ph}) "
+                    f"OR trim(coalesce(species,'')) IN ({ph}))"
+                )
+                params.extend(list(opt_filters) + list(opt_filters))
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         cols = ", ".join(SELECT_COLS)
 
@@ -677,6 +714,187 @@ class PriceBookRepository:
 
         with self._conn() as conn:
             return pd.read_sql_query(sql, conn, params=params)
+
+    def list_part_numbers_for_vendor(self, vendor: str) -> set[str]:
+        """Distinct part_number values for a builder (items + addons)."""
+        if not vendor:
+            return set()
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT trim(part_number) AS pn
+                FROM pricebook
+                WHERE vendor = ?
+                  AND part_number IS NOT NULL
+                  AND trim(part_number) != ''
+                """,
+                (vendor,),
+            ).fetchall()
+        return {str(r[0]) for r in rows if r[0]}
+
+    def upsert_catalog_image(
+        self,
+        *,
+        vendor: str,
+        part_number: str,
+        image_path: str,
+        source_file: Optional[str] = None,
+        page: Optional[int] = None,
+        match_method: Optional[str] = None,
+        updated_at: Optional[str] = None,
+    ) -> None:
+        """Insert or replace one catalog image row for (vendor, part_number)."""
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO catalog_images (
+                    vendor, part_number, image_path, source_file,
+                    page, match_method, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(vendor, part_number) DO UPDATE SET
+                    image_path = excluded.image_path,
+                    source_file = excluded.source_file,
+                    page = excluded.page,
+                    match_method = excluded.match_method,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    vendor,
+                    part_number,
+                    image_path,
+                    source_file,
+                    page,
+                    match_method,
+                    updated_at,
+                ),
+            )
+            conn.commit()
+
+    def catalog_image_paths(
+        self, pairs: Sequence[tuple[str, str]]
+    ) -> dict[tuple[str, str], str]:
+        """Map (vendor, part_number) → image_path for the given pairs."""
+        if not pairs:
+            return {}
+        # Deduplicate while preserving order for stable queries.
+        uniq: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for v, p in pairs:
+            key = (str(v or ""), str(p or ""))
+            if not key[0] or not key[1] or key in seen:
+                continue
+            seen.add(key)
+            uniq.append(key)
+        if not uniq:
+            return {}
+        out: dict[tuple[str, str], str] = {}
+        # Chunk IN queries to stay under SQLite variable limits.
+        chunk = 400
+        with self._conn() as conn:
+            for i in range(0, len(uniq), chunk):
+                batch = uniq[i : i + chunk]
+                placeholders = ",".join("(?, ?)" for _ in batch)
+                params: list = []
+                for v, p in batch:
+                    params.extend([v, p])
+                rows = conn.execute(
+                    f"""
+                    SELECT vendor, part_number, image_path
+                    FROM catalog_images
+                    WHERE (vendor, part_number) IN ({placeholders})
+                    """,
+                    params,
+                ).fetchall()
+                for r in rows:
+                    path = r["image_path"] if isinstance(r, sqlite3.Row) else r[2]
+                    vendor = r["vendor"] if isinstance(r, sqlite3.Row) else r[0]
+                    pn = r["part_number"] if isinstance(r, sqlite3.Row) else r[1]
+                    if path:
+                        out[(str(vendor), str(pn))] = str(path)
+        return out
+
+    def vendors_with_catalog_images(self) -> set[str]:
+        """Builders that have at least one catalog photo."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT vendor FROM catalog_images WHERE image_path <> ''"
+            ).fetchall()
+        out: set[str] = set()
+        for r in rows:
+            vendor = r["vendor"] if isinstance(r, sqlite3.Row) else r[0]
+            if vendor:
+                out.add(str(vendor))
+        return out
+
+    def get_addon_charge(
+        self, vendor: str, option_key: str
+    ) -> Optional[dict]:
+        """Return one addon (upcharge) row for a builder's Option, or None.
+
+        Prefers the *flat* form whose part_number equals the option label
+        (e.g. "Undermount Drawer Slides") over per-category rows
+        (e.g. "9 Drawer Dresser - Paint"). Fields: base_price, adjusted_price,
+        addon_pct, part_number, is_flat.
+        """
+        if not vendor or not option_key:
+            return None
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT base_price, adjusted_price, addon_pct, part_number
+                FROM pricebook
+                WHERE vendor = ? AND option_key = ?
+                  AND lower(COALESCE(line_kind, '')) = 'addon'
+                ORDER BY (CASE WHEN trim(COALESCE(part_number,'')) = ? THEN 0 ELSE 1 END),
+                         COALESCE(adjusted_price, 0)
+                LIMIT 1
+                """,
+                (vendor, option_key, option_key),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "base_price": row["base_price"],
+            "adjusted_price": row["adjusted_price"],
+            "addon_pct": row["addon_pct"],
+            "part_number": row["part_number"],
+            "is_flat": (row["part_number"] or "").strip() == option_key.strip(),
+        }
+
+    def get_addon_rows(self, vendor: str, option_key: str) -> list[dict]:
+        """All addon (upcharge) rows for a builder's Option.
+
+        Each row: category (the part_number minus the " - <option>" suffix, or
+        the whole label when flat), base_price, adjusted_price, addon_pct, is_flat.
+        Finish options (Paint, …) return many per-category rows; flat options
+        (Undermount Drawer Slides) return a single is_flat row.
+        """
+        if not vendor or not option_key:
+            return []
+        opt = option_key.strip()
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT part_number, base_price, adjusted_price, addon_pct
+                FROM pricebook
+                WHERE vendor = ? AND option_key = ?
+                  AND lower(COALESCE(line_kind, '')) = 'addon'
+                """,
+                (vendor, opt),
+            ).fetchall()
+        out: list[dict] = []
+        for r in rows:
+            pn = (r["part_number"] or "").strip()
+            is_flat = pn == opt
+            category = pn if is_flat else pn.rsplit(" - ", 1)[0]
+            out.append({
+                "category": category,
+                "base_price": r["base_price"],
+                "adjusted_price": r["adjusted_price"],
+                "addon_pct": r["addon_pct"],
+                "is_flat": is_flat,
+            })
+        return out
 
     # ------------------------------------------------------------------ write
     def insert_rows(self, rows: list[dict]) -> int:
@@ -984,13 +1202,20 @@ class PriceBookRepository:
         """Set mult and recompute retail (even whole dollars)."""
         # 2 * CEIL((base * mult) / 2) — next even dollar up
         retail_expr = "2 * CEIL((base_price * ?) / 2.0 - 1e-12)"
+        no_markup = """
+            lower(trim(COALESCE(line_kind, 'item'))) = 'addon'
+            AND lower(trim(COALESCE(option_key, ''))) = 'undermount drawer slides'
+        """
         with self._conn() as conn:
             if vendor:
                 cur = conn.execute(
                     f"""
                     UPDATE pricebook
-                    SET multiplier = ?,
-                        adjusted_price = {retail_expr}
+                    SET multiplier = CASE WHEN {no_markup} THEN 1.0 ELSE ? END,
+                        adjusted_price = CASE
+                            WHEN {no_markup} THEN base_price
+                            ELSE {retail_expr}
+                        END
                     WHERE base_price IS NOT NULL AND vendor = ?
                     """,
                     (new_mult, new_mult, vendor),
@@ -999,8 +1224,11 @@ class PriceBookRepository:
                 cur = conn.execute(
                     f"""
                     UPDATE pricebook
-                    SET multiplier = ?,
-                        adjusted_price = {retail_expr}
+                    SET multiplier = CASE WHEN {no_markup} THEN 1.0 ELSE ? END,
+                        adjusted_price = CASE
+                            WHEN {no_markup} THEN base_price
+                            ELSE {retail_expr}
+                        END
                     WHERE base_price IS NOT NULL
                     """,
                     (new_mult, new_mult),
@@ -1011,12 +1239,20 @@ class PriceBookRepository:
     def recompute_adjusted(self, vendor: Optional[str] = None) -> int:
         """Recompute retail from each row's own multiplier (even whole dollars)."""
         retail_expr = "2 * CEIL((base_price * multiplier) / 2.0 - 1e-12)"
+        no_markup = """
+            lower(trim(COALESCE(line_kind, 'item'))) = 'addon'
+            AND lower(trim(COALESCE(option_key, ''))) = 'undermount drawer slides'
+        """
         with self._conn() as conn:
             if vendor:
                 cur = conn.execute(
                     f"""
                     UPDATE pricebook
-                    SET adjusted_price = {retail_expr}
+                    SET multiplier = CASE WHEN {no_markup} THEN 1.0 ELSE multiplier END,
+                        adjusted_price = CASE
+                            WHEN {no_markup} THEN base_price
+                            ELSE {retail_expr}
+                        END
                     WHERE base_price IS NOT NULL AND multiplier IS NOT NULL
                       AND vendor = ?
                     """,
@@ -1026,7 +1262,11 @@ class PriceBookRepository:
                 cur = conn.execute(
                     f"""
                     UPDATE pricebook
-                    SET adjusted_price = {retail_expr}
+                    SET multiplier = CASE WHEN {no_markup} THEN 1.0 ELSE multiplier END,
+                        adjusted_price = CASE
+                            WHEN {no_markup} THEN base_price
+                            ELSE {retail_expr}
+                        END
                     WHERE base_price IS NOT NULL AND multiplier IS NOT NULL
                     """
                 )

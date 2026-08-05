@@ -10,7 +10,6 @@ from backend.config import DEFAULT_MULTIPLIER
 from backend.import_service import ImportService
 from backend.repository import PriceBookRepository
 
-
 EXCEL_EXT = {".xlsx", ".xls", ".xlsm"}
 PDF_EXT = {".pdf"}
 SKIP_NAME_BITS = ("~$", ".ds_store")
@@ -173,14 +172,21 @@ class BatchImporter:
                     )
                     continue
 
-                from backend.pricing import retail_from_wholesale
+                from backend.pricing import catalog_multiplier, catalog_retail
 
                 for r in rows:
                     r["vendor"] = vendor
-                    r["multiplier"] = mult_used
+                    r["multiplier"] = catalog_multiplier(
+                        mult_used,
+                        line_kind=r.get("line_kind"),
+                        option_key=r.get("option_key"),
+                    )
                     if r.get("base_price") is not None:
-                        r["adjusted_price"] = retail_from_wholesale(
-                            r["base_price"], mult_used
+                        r["adjusted_price"] = catalog_retail(
+                            r["base_price"],
+                            mult_used,
+                            line_kind=r.get("line_kind"),
+                            option_key=r.get("option_key"),
                         )
 
                 # One builder = one catalog. replace_* is atomic (one transaction).

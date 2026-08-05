@@ -34,6 +34,10 @@ _Avoid_: `col_N`, bare `FINISHED`, raw column headers
 A builder upcharge or specialty adder — e.g. +% over base for certain woods, or a listed specialty change that is not the main SKU×wood×finish sellable row. Stored as `line_kind=addon` (ADR-0008). Floor **Option** dropdown surfaces these when present; Search hides them unless Option is filtered to that adder.
 _Avoid_: treating finish Cat.N / fabric _tier labels_ as the only meaning of Option; treating raw adder dollars as full chair retail
 
+**Builder Profile**:
+Persistent, per-builder record of what we've learned about a builder — option **charge shapes** (flat `$`, `%`, or per-category), **category synonyms**, **item→category overrides**, and **parse hints** — stored as versioned JSON at `config/builder_profiles/<vendor>.json`. Written/refreshed by the **Drop files** import and read by the search/upcharge helper, so re-importing or updating that builder later is seamless (ADR-0011). J&M Woodworking is the first profile.
+_Avoid_: hardcoding one builder's vocabulary in code; storing profile rules in the gitignored DB.
+
 **Finish state**:
 Only `finished` or `unfinished` (default `finished` for floor search).
 _Avoid_: free-text finish names in this field

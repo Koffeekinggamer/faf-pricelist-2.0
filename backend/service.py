@@ -6,12 +6,18 @@ UI and scripts should prefer this over touching repository/importers directly.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence, Union
 
 import pandas as pd
 
 from backend.batch import BatchImporter, BatchResult
+from backend.builder_profiles import (
+    category_matches_override,
+    load_builder_profile,
+    override_applies,
+)
 from backend.config import (
     DB_PATH,
     DEFAULT_MULTIPLIER,
@@ -81,19 +87,435 @@ class PriceBookService:
         vendor: Optional[str] = None,
         finish_state: Optional[str] = None,
         species: Optional[str] = None,
-        option_key: Optional[str] = None,
+        option_key: Optional[Union[str, Sequence[str]]] = None,
+        option_qty: Optional[dict[str, int]] = None,
         limit: int = DEFAULT_SEARCH_LIMIT,
     ) -> pd.DataFrame:
         self.ensure_ready()
-        return self.repo.search(
+        opts = self._normalize_option_keys(option_key)
+        if (
+            opts
+            and vendor
+            and vendor != "All"
+        ):
+            upcharged = self._search_with_item_option_upcharge(
+                query,
+                vendor=vendor,
+                finish_state=finish_state,
+                species=species,
+                option_keys=opts,
+                option_qty=option_qty or {},
+                limit=limit,
+            )
+            if upcharged is not None:
+                return self._with_catalog_images(upcharged)
+        # Repo accepts a single key or a list (IN filter).
+        repo_opt: Optional[Union[str, Sequence[str]]] = None
+        if len(opts) == 1:
+            repo_opt = opts[0]
+        elif len(opts) > 1:
+            repo_opt = opts
+        return self._with_catalog_images(
+            self.repo.search(
+                query,
+                collection=collection,
+                vendor=vendor,
+                finish_state=finish_state,
+                species=species,
+                option_key=repo_opt,
+                limit=limit,
+            )
+        )
+
+    def vendors_with_catalog_images(self) -> set[str]:
+        """Builders that have catalog photos, so the UI can keep the column."""
+        return self.repo.vendors_with_catalog_images()
+
+    def _with_catalog_images(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Attach ``image_path`` from catalog_images for each row's vendor+SKU."""
+        if df is None or df.empty:
+            if df is not None and "image_path" not in df.columns:
+                df = df.copy()
+                df["image_path"] = pd.Series(dtype=object)
+            return df
+        if "vendor" not in df.columns or "part_number" not in df.columns:
+            out = df.copy()
+            out["image_path"] = None
+            return out
+        pairs = list(
+            zip(
+                df["vendor"].fillna("").astype(str),
+                df["part_number"].fillna("").astype(str),
+            )
+        )
+        paths = self.repo.catalog_image_paths(pairs)
+        out = df.copy()
+        out["image_path"] = [
+            paths.get((v, p)) for v, p in pairs
+        ]
+        return out
+
+    @staticmethod
+    def _normalize_option_keys(
+        option_key: Optional[Union[str, Sequence[str]]],
+    ) -> list[str]:
+        """Flatten UI/API option selection into a de-duped list (no All/blank)."""
+        if option_key is None:
+            return []
+        if isinstance(option_key, str):
+            raw = [option_key]
+        else:
+            raw = list(option_key)
+        out: list[str] = []
+        seen: set[str] = set()
+        for o in raw:
+            s = (o or "").strip()
+            if not s or s.lower() == "all":
+                continue
+            if s not in seen:
+                seen.add(s)
+                out.append(s)
+        return out
+
+    @staticmethod
+    def _option_qty_allowed(option_key: str) -> bool:
+        """True when floor may pick how many of this option to stack.
+
+        Extra drawers/doors and undermount slides are per-opening charges on
+        casegoods that may have more than one drawer or door.
+        """
+        o = (option_key or "").lower()
+        if "extra" in o and ("drawer" in o or "door" in o):
+            return True
+        if "slide" in o and "drawer" in o:
+            return True
+        return False
+
+    @staticmethod
+    def _clamp_option_qty(qty: Any, *, default: int = 1) -> int:
+        try:
+            n = int(qty)
+        except (TypeError, ValueError):
+            return default
+        return max(1, min(n, 20))
+
+    # Options whose upcharge modifies the price of eligible ITEMS (drawered /
+    # doored goods) rather than showing a standalone addon row. Vocabulary for
+    # keywords / synonym overrides lives in Builder Profiles (ADR-0011); the
+    # default profile preserves pre-profile search behaviour.
+
+    @staticmethod
+    def _addon_dollar_or_pct(
+        addon: dict,
+        *,
+        item_base: Any,
+        item_retail: Any,
+        option_key: str = "",
+    ) -> tuple[Optional[float], Optional[float], Optional[str]]:
+        """Resolve flat $ or addon_pct into (base_add, retail_add, pct_tag).
+
+        Percent adders apply to the item's own wholesale/retail (ADR-0008).
+        When both pct and dollar amounts exist, dollars win (legacy flat rows).
+        """
+        base_add = addon.get("base_price")
+        retail_add = addon.get("adjusted_price")
+        pct = addon.get("addon_pct")
+        has_dollar = (base_add is not None and float(base_add) != 0.0) or (
+            retail_add is not None and float(retail_add) != 0.0
+        )
+        if has_dollar:
+            from backend.pricing import is_no_markup_option
+
+            if is_no_markup_option(option_key) and base_add is not None:
+                amount = float(base_add)
+                return amount, amount, None
+            return (
+                float(base_add) if base_add is not None else None,
+                float(retail_add) if retail_add is not None else None,
+                None,
+            )
+        if pct is not None:
+            p = float(pct)
+            b = round(float(item_base or 0.0) * p / 100.0, 2)
+            a = round(float(item_retail or 0.0) * p / 100.0, 2)
+            return b, a, f"+{p:g}%"
+        return (
+            float(base_add) if base_add is not None else None,
+            float(retail_add) if retail_add is not None else None,
+            None,
+        )
+
+    def _is_item_upcharge_option(self, option_key: str, profile: Optional[dict] = None) -> bool:
+        o = (option_key or "").lower()
+        profile = profile or load_builder_profile(None)
+        keys = profile.get("item_upcharge_option_keywords") or []
+        return any(k in o for k in keys)
+
+    def _match_addon_category(
+        self,
+        item_text: str,
+        categories: list[dict],
+        profile: Optional[dict] = None,
+    ) -> tuple[Optional[dict], bool]:
+        """Best-matching addon category for an item, and whether it's confident.
+
+        Heuristic (ADR-0008 follow-up): distinctive-synonym overrides first, then
+        furniture-type token scoring. `confident` is False for ambiguous ties
+        (plain "Dresser", generic "Chest") and compound goods ("5 Piece Set"), so
+        the caller can flag the charge as approximate rather than imply certainty.
+        Returns (None, False) when nothing matches.
+        """
+        profile = profile or load_builder_profile(None)
+        low = (item_text or "").lower()
+
+        def find(pred) -> Optional[dict]:
+            for c in categories:
+                if pred((c.get("category") or "").lower()):
+                    return c
+            return None
+
+        for rule in profile.get("category_synonym_overrides") or []:
+            if not override_applies(low, rule):
+                continue
+            c = find(lambda cat: category_matches_override(cat, rule))
+            if c is not None:
+                return c, True
+
+        t = " " + re.sub(r"[^a-z0-9\"/ ]+", " ", low) + " "
+        if "nightstand" in low:
+            t += " night stand "
+        words = set(t.split())
+        scored: list[tuple[int, dict]] = []
+        for cat in categories:
+            toks = [w for w in re.split(r"[^a-z0-9\"]+", (cat.get("category") or "").lower()) if w]
+            score = 0
+            for w in toks:
+                if w in words:
+                    score += 1 if w.isdigit() else 2
+                elif len(w) > 3 and w in t:
+                    score += 1
+            scored.append((score, cat))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        if not scored or scored[0][0] == 0:
+            return None, False
+        best_score, best = scored[0]
+        second = scored[1][0] if len(scored) > 1 else 0
+        confident = best_score > second
+        for marker in profile.get("compound_item_markers") or []:
+            if marker in low:
+                confident = False  # compound: upcharge would be the sum of several categories
+                break
+        return best, confident
+
+    def _apply_one_option_upcharge(
+        self,
+        df: pd.DataFrame,
+        *,
+        option_key: str,
+        addons: list[dict],
+        profile: dict,
+        qty: int = 1,
+    ) -> tuple[pd.DataFrame, pd.Series]:
+        """Stack one Option's charge onto eligible rows. Returns (df, applied_mask).
+
+        Ineligible rows are left unchanged (needed so multi-select can stack
+        paint onto a bed while drawer slides only hit drawered goods).
+        `qty` multiplies flat drawer/door extras (casegoods with several openings).
+        """
+        if df.empty or not addons:
+            return df, pd.Series(False, index=df.index)
+
+        qty = self._clamp_option_qty(qty)
+        flat = [a for a in addons if a.get("is_flat")]
+        cats = [a for a in addons if not a.get("is_flat")]
+        is_drawer_door = self._is_item_upcharge_option(option_key, profile)
+        drawer_keywords = profile.get("drawer_door_item_keywords") or []
+        drawer_exclude = profile.get("drawer_door_exclude_keywords") or []
+
+        text = (
+            df.get("description").fillna("").astype(str) + " | "
+            + df.get("collection").fillna("").astype(str) + " | "
+            + df.get("part_number").fillna("").astype(str)
+        ).str.lower()
+
+        df = df.copy()
+        applied = pd.Series(False, index=df.index)
+        notes = df.get("notes").fillna("").astype(str)
+
+        if is_drawer_door and flat:
+            eligible = text.apply(
+                lambda s: any(k in s for k in drawer_keywords)
+                and not any(x in s for x in drawer_exclude)
+            )
+            if not eligible.any():
+                return df, applied
+            for idx in df.index[eligible]:
+                r = df.loc[idx]
+                b, a, pct_tag = self._addon_dollar_or_pct(
+                    flat[0],
+                    item_base=r.get("base_price"),
+                    item_retail=r.get("adjusted_price"),
+                    option_key=option_key,
+                )
+                if a is not None:
+                    a = float(a) * qty
+                    cur = r.get("adjusted_price")
+                    df.at[idx, "adjusted_price"] = (float(cur) if cur is not None else 0.0) + a
+                if b is not None:
+                    b = float(b) * qty
+                    cur = r.get("base_price")
+                    df.at[idx, "base_price"] = (float(cur) if cur is not None else 0.0) + b
+                tag = f"+ {option_key}"
+                if qty > 1:
+                    tag += f" ×{qty}"
+                if pct_tag:
+                    tag += f" ({pct_tag}"
+                    if a is not None:
+                        tag += f" +${float(a):,.0f}"
+                    tag += ")"
+                elif a is not None:
+                    tag += f" (+${float(a):,.0f})"
+                n = notes.at[idx] if idx in notes.index else ""
+                df.at[idx, "notes"] = f"{n} · {tag}".strip(" ·") if n else tag
+                applied.at[idx] = True
+            return df, applied
+
+        # Finish / per-category (or non-drawer flat): every physical WOOD item.
+        # Qty does not apply to finish options — only extras.
+        has_wood = df.get("species").fillna("").astype(str).str.strip() != ""
+        if not has_wood.any():
+            return df, applied
+
+        rc = sorted(
+            a["adjusted_price"] for a in cats
+            if a.get("adjusted_price") is not None and float(a["adjusted_price"] or 0) != 0
+        )
+        bc = sorted(
+            a["base_price"] for a in cats
+            if a.get("base_price") is not None and float(a["base_price"] or 0) != 0
+        )
+        med_retail = rc[len(rc) // 2] if rc else (flat[0].get("adjusted_price") if flat else None)
+        med_base = bc[len(bc) // 2] if bc else (flat[0].get("base_price") if flat else None)
+        med_addon = None
+        if not rc and not bc:
+            for a in cats + flat:
+                if a.get("addon_pct") is not None:
+                    med_addon = a
+                    break
+
+        for idx in df.index[has_wood]:
+            r = df.loc[idx]
+            itext = f"{r.get('description') or ''} {r.get('collection') or ''} {r.get('part_number') or ''}"
+            if cats:
+                m, confident = self._match_addon_category(itext, cats, profile)
+            else:
+                m, confident = (flat[0], True) if flat else (None, False)
+            op = r.get("adjusted_price")
+            ob = r.get("base_price")
+            pct_tag = None
+            if m is not None:
+                b, a, pct_tag = self._addon_dollar_or_pct(
+                    m, item_base=ob, item_retail=op, option_key=option_key
+                )
+                label = None if m.get("is_flat") else m.get("category")
+                approx = not confident
+            elif med_addon is not None:
+                b, a, pct_tag = self._addon_dollar_or_pct(
+                    med_addon,
+                    item_base=ob,
+                    item_retail=op,
+                    option_key=option_key,
+                )
+                label, approx = None, True
+            else:
+                b, a, label, approx = med_base, med_retail, None, True
+            if a is not None:
+                df.at[idx, "adjusted_price"] = (float(op) if op is not None else 0.0) + float(a)
+            if b is not None:
+                df.at[idx, "base_price"] = (float(ob) if ob is not None else 0.0) + float(b)
+            if pct_tag and a is not None:
+                amt = f" {pct_tag} +${float(a):,.0f}"
+            elif pct_tag:
+                amt = f" {pct_tag}"
+            elif a is not None:
+                amt = f" +${float(a):,.0f}"
+            else:
+                amt = ""
+            if approx:
+                inner = f"approx: {label}{amt}" if label else f"approx{amt}"
+            elif label:
+                inner = f"{label}{amt}"
+            else:
+                inner = amt.strip(" +")
+            tag = f"+ {option_key} ({inner})" if inner else f"+ {option_key}"
+            n = str(df.at[idx, "notes"] or "") if "notes" in df.columns else ""
+            df.at[idx, "notes"] = f"{n} · {tag}".strip(" ·") if n else tag
+            applied.at[idx] = True
+        return df, applied
+
+    def _search_with_item_option_upcharge(
+        self,
+        query: str,
+        *,
+        vendor: str,
+        finish_state: Optional[str],
+        species: Optional[str],
+        option_keys: Sequence[str],
+        limit: int,
+        option_qty: Optional[dict[str, int]] = None,
+    ) -> Optional[pd.DataFrame]:
+        """Show eligible items with retail raised by selected Option charge(s).
+
+        Multiple Options stack: each adder applies only to items eligible for it
+        (drawer slides → drawered goods; finish options → every wood item).
+
+        Returns None (caller falls back to normal search) when none of the
+        Options have addon charge rows for this builder.
+        """
+        keys = [k for k in option_keys if k]
+        if not keys:
+            return None
+
+        qtys = option_qty or {}
+        profile = load_builder_profile(vendor)
+        addon_by_opt: list[tuple[str, list[dict]]] = []
+        for opt in keys:
+            addons = self.repo.get_addon_rows(vendor, opt)
+            if addons:
+                addon_by_opt.append((opt, addons))
+        if not addon_by_opt:
+            return None
+
+        df = self.repo.search(
             query,
-            collection=collection,
             vendor=vendor,
             finish_state=finish_state,
             species=species,
-            option_key=option_key,
-            limit=limit,
+            option_key=None,
+            limit=max(int(limit) * 6, 400),
         )
+        if df.empty:
+            return df
+
+        any_applied = pd.Series(False, index=df.index)
+        for opt, addons in addon_by_opt:
+            q = self._clamp_option_qty(qtys.get(opt, 1)) if self._option_qty_allowed(opt) else 1
+            df, mask = self._apply_one_option_upcharge(
+                df, option_key=opt, addons=addons, profile=profile, qty=q
+            )
+            any_applied = any_applied | mask.reindex(df.index, fill_value=False)
+
+        if not any_applied.any():
+            return df.iloc[0:0].copy()
+
+        df = df.loc[any_applied].copy()
+        # Label with all selected upcharge options (stable order from UI).
+        label_bits = []
+        for opt, _ in addon_by_opt:
+            q = self._clamp_option_qty(qtys.get(opt, 1)) if self._option_qty_allowed(opt) else 1
+            label_bits.append(f"{opt} ×{q}" if q > 1 else opt)
+        df["option_key"] = ", ".join(label_bits)
+        return df.head(int(limit)).reset_index(drop=True)
 
     def get_row(self, row_id: int) -> Optional[dict]:
         self.ensure_ready()
@@ -632,9 +1054,19 @@ class PriceBookService:
                 bp = r.get("base_price")
                 if bp is not None:
                     try:
-                        from backend.pricing import retail_from_wholesale
+                        from backend.pricing import catalog_multiplier, catalog_retail
 
-                        r["adjusted_price"] = retail_from_wholesale(bp, mult)
+                        r["multiplier"] = catalog_multiplier(
+                            mult,
+                            line_kind=r.get("line_kind"),
+                            option_key=r.get("option_key"),
+                        )
+                        r["adjusted_price"] = catalog_retail(
+                            bp,
+                            mult,
+                            line_kind=r.get("line_kind"),
+                            option_key=r.get("option_key"),
+                        )
                     except (TypeError, ValueError):
                         pass
 
