@@ -2335,7 +2335,6 @@ with tab_admin:
     s1, s2 = st.columns(2)
     s1.metric("Rows", f"{stats['rows']:,}")
     s2.metric("Builders", stats["vendors"])
-    st.caption(f"Database: `{svc.path}`")
     st.caption(f"Last backup: {_last_backup_hint()}")
     if SHOW_VIZTECH:
         st.caption(f"Viztech sync: {_viztech_sync_hint()}")
