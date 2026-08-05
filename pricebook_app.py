@@ -2143,6 +2143,7 @@ with tab_vendors:
     if summary.empty:
         st.info("No builders in master yet — import files under **Drop files** first.")
     else:
+        favorites = [v for v in _load_favorites() if v]
         edit_df = summary[
             [
                 c
@@ -2177,9 +2178,17 @@ with tab_vendors:
                 "collections": "Collections",
             }
         )
+        edit_df["Pinned"] = edit_df["Builder"].astype(str).isin(set(favorites))
+        # Pinned builders first so the floor can spot them quickly
+        edit_df = edit_df.sort_values(
+            by=["Pinned", "Builder"],
+            ascending=[False, True],
+            kind="mergesort",
+        ).reset_index(drop=True)
         show_cols = [
             c
             for c in [
+                "Pinned",
                 "Builder",
                 "Phone",
                 "Items",
@@ -2193,9 +2202,15 @@ with tab_vendors:
             use_container_width=True,
             hide_index=True,
             num_rows="fixed",
-            # Lock stats columns; Phone + Multiplier are editable
+            # Lock stats columns; Pinned + Phone + Multiplier are editable
             disabled=["Builder", "Items", "Collections"],
             column_config={
+                "Pinned": st.column_config.CheckboxColumn(
+                    "Pinned",
+                    help="Pin for Search — pinned builders sort first in the Builder menu",
+                    default=False,
+                    width="small",
+                ),
                 "Builder": st.column_config.TextColumn(disabled=True),
                 "Phone": st.column_config.TextColumn(
                     "Phone",
@@ -2216,6 +2231,28 @@ with tab_vendors:
                 ),
             },
             key="vendor_mult_editor",
+        )
+
+        # Pins save immediately (same list Search uses); mult/phone still need Save.
+        if "Pinned" in edited.columns and "Builder" in edited.columns:
+            new_pins = [
+                str(b).strip()
+                for b, pinned in zip(edited["Builder"], edited["Pinned"])
+                if pinned and str(b).strip()
+            ]
+            if set(new_pins) != set(favorites):
+                _save_favorites(new_pins)
+                st.session_state.pop("vendor_mult_editor", None)
+                st.toast(
+                    f"Pins updated · {len(new_pins)} builder"
+                    f"{'s' if len(new_pins) != 1 else ''}",
+                )
+                st.rerun()
+
+        st.caption(
+            "**Pinned** = quick picks on Search (Builder menu). "
+            "Toggle the checkbox — pins save right away. "
+            "Phone & multiplier still need **Save** below."
         )
 
         if not SHOW_SIMPLE_UI:
