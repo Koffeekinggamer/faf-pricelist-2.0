@@ -248,6 +248,11 @@ def _option_checkbox_key(vendor_key: str, option_label: str) -> str:
     return f"so_cb_{slug(vendor_key)}_{slug(option_label)}"
 
 
+def _option_qty_key(vendor_key: str, option_label: str) -> str:
+    """Session key for Extra Drawers/Doors quantity."""
+    return _option_checkbox_key(vendor_key, option_label) + "_qty"
+
+
 svc = _svc()
 
 # ---------------------------------------------------------------------------
@@ -665,6 +670,7 @@ with tab_search:
             st.session_state["so_panel_open"] = True
 
         of_list: list[str] = []
+        option_qty: dict[str, int] = {}
         if vf != "All" and opt_list:
             show_opts = st.checkbox(
                 "Options",
@@ -694,17 +700,37 @@ with tab_search:
                         ):
                             for opt in opt_list:
                                 st.session_state[_option_checkbox_key(vf, opt)] = False
+                                st.session_state[_option_qty_key(vf, opt)] = 1
                             st.rerun()
                     n_cols = 2 if len(opt_list) <= 6 else 3
                     cb_cols = st.columns(n_cols)
                     for i, opt in enumerate(opt_list):
                         with cb_cols[i % n_cols]:
-                            if st.checkbox(opt, key=_option_checkbox_key(vf, opt)):
+                            checked = st.checkbox(opt, key=_option_checkbox_key(vf, opt))
+                            if checked:
                                 of_list.append(opt)
+                                if PriceBookService._option_qty_allowed(opt):
+                                    qkey = _option_qty_key(vf, opt)
+                                    if qkey not in st.session_state:
+                                        st.session_state[qkey] = 1
+                                    qty = st.number_input(
+                                        "How many extras?",
+                                        min_value=1,
+                                        max_value=20,
+                                        step=1,
+                                        key=qkey,
+                                        help="Some casegoods need more than one "
+                                        "extra drawer or door — charge × count.",
+                                    )
+                                    option_qty[opt] = int(qty)
                     if of_list:
+                        bits = []
+                        for o in of_list:
+                            q = option_qty.get(o, 1)
+                            bits.append(f"{o} ×{q}" if q > 1 else o)
                         st.markdown(
                             '<div class="faf-option-selected"><strong>Selected:</strong> '
-                            + " · ".join(of_list)
+                            + " · ".join(bits)
                             + "</div>",
                             unsafe_allow_html=True,
                         )
@@ -742,6 +768,7 @@ with tab_search:
                     finish_state=None if ff == "All" else ff,
                     species=None if wf == "All" else wf,
                     option_key=of_list or None,
+                    option_qty=option_qty or None,
                     limit=DEFAULT_SEARCH_LIMIT,
                 )
                 empty_reason = "none" if results.empty else ""

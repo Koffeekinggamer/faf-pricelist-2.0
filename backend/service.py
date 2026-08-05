@@ -88,6 +88,7 @@ class PriceBookService:
         finish_state: Optional[str] = None,
         species: Optional[str] = None,
         option_key: Optional[Union[str, Sequence[str]]] = None,
+        option_qty: Optional[dict[str, int]] = None,
         limit: int = DEFAULT_SEARCH_LIMIT,
     ) -> pd.DataFrame:
         self.ensure_ready()
@@ -103,6 +104,7 @@ class PriceBookService:
                 finish_state=finish_state,
                 species=species,
                 option_keys=opts,
+                option_qty=option_qty or {},
                 limit=limit,
             )
             if upcharged is not None:
@@ -144,6 +146,20 @@ class PriceBookService:
                 seen.add(s)
                 out.append(s)
         return out
+
+    @staticmethod
+    def _option_qty_allowed(option_key: str) -> bool:
+        """True when floor may pick how many of this option to stack (extras)."""
+        o = (option_key or "").lower()
+        return "extra" in o and ("drawer" in o or "door" in o)
+
+    @staticmethod
+    def _clamp_option_qty(qty: Any, *, default: int = 1) -> int:
+        try:
+            n = int(qty)
+        except (TypeError, ValueError):
+            return default
+        return max(1, min(n, 20))
 
     # Options whose upcharge modifies the price of eligible ITEMS (drawered /
     # doored goods) rather than showing a standalone addon row. Vocabulary for
@@ -254,15 +270,18 @@ class PriceBookService:
         option_key: str,
         addons: list[dict],
         profile: dict,
+        qty: int = 1,
     ) -> tuple[pd.DataFrame, pd.Series]:
         """Stack one Option's charge onto eligible rows. Returns (df, applied_mask).
 
         Ineligible rows are left unchanged (needed so multi-select can stack
         paint onto a bed while drawer slides only hit drawered goods).
+        `qty` multiplies flat drawer/door extras (casegoods with several openings).
         """
         if df.empty or not addons:
             return df, pd.Series(False, index=df.index)
 
+        qty = self._clamp_option_qty(qty)
         flat = [a for a in addons if a.get("is_flat")]
         cats = [a for a in addons if not a.get("is_flat")]
         is_drawer_door = self._is_item_upcharge_option(option_key, profile)
@@ -294,12 +313,16 @@ class PriceBookService:
                     item_retail=r.get("adjusted_price"),
                 )
                 if a is not None:
+                    a = float(a) * qty
                     cur = r.get("adjusted_price")
-                    df.at[idx, "adjusted_price"] = (float(cur) if cur is not None else 0.0) + float(a)
+                    df.at[idx, "adjusted_price"] = (float(cur) if cur is not None else 0.0) + a
                 if b is not None:
+                    b = float(b) * qty
                     cur = r.get("base_price")
-                    df.at[idx, "base_price"] = (float(cur) if cur is not None else 0.0) + float(b)
+                    df.at[idx, "base_price"] = (float(cur) if cur is not None else 0.0) + b
                 tag = f"+ {option_key}"
+                if qty > 1:
+                    tag += f" ×{qty}"
                 if pct_tag:
                     tag += f" ({pct_tag}"
                     if a is not None:
@@ -313,6 +336,7 @@ class PriceBookService:
             return df, applied
 
         # Finish / per-category (or non-drawer flat): every physical WOOD item.
+        # Qty does not apply to finish options — only extras.
         has_wood = df.get("species").fillna("").astype(str).str.strip() != ""
         if not has_wood.any():
             return df, applied
@@ -388,6 +412,7 @@ class PriceBookService:
         species: Optional[str],
         option_keys: Sequence[str],
         limit: int,
+        option_qty: Optional[dict[str, int]] = None,
     ) -> Optional[pd.DataFrame]:
         """Show eligible items with retail raised by selected Option charge(s).
 
@@ -401,6 +426,7 @@ class PriceBookService:
         if not keys:
             return None
 
+        qtys = option_qty or {}
         profile = load_builder_profile(vendor)
         addon_by_opt: list[tuple[str, list[dict]]] = []
         for opt in keys:
@@ -423,8 +449,9 @@ class PriceBookService:
 
         any_applied = pd.Series(False, index=df.index)
         for opt, addons in addon_by_opt:
+            q = self._clamp_option_qty(qtys.get(opt, 1)) if self._option_qty_allowed(opt) else 1
             df, mask = self._apply_one_option_upcharge(
-                df, option_key=opt, addons=addons, profile=profile
+                df, option_key=opt, addons=addons, profile=profile, qty=q
             )
             any_applied = any_applied | mask.reindex(df.index, fill_value=False)
 
@@ -433,8 +460,11 @@ class PriceBookService:
 
         df = df.loc[any_applied].copy()
         # Label with all selected upcharge options (stable order from UI).
-        label = ", ".join(opt for opt, _ in addon_by_opt)
-        df["option_key"] = label
+        label_bits = []
+        for opt, _ in addon_by_opt:
+            q = self._clamp_option_qty(qtys.get(opt, 1)) if self._option_qty_allowed(opt) else 1
+            label_bits.append(f"{opt} ×{q}" if q > 1 else opt)
+        df["option_key"] = ", ".join(label_bits)
         return df.head(int(limit)).reset_index(drop=True)
 
     def get_row(self, row_id: int) -> Optional[dict]:

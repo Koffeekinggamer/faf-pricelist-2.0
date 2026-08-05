@@ -189,3 +189,26 @@ def test_mirrors_exempt_from_drawer_door_options(tmp_path):
     assert "D1" in set(doors["part_number"])
     assert "M1" not in set(doors["part_number"])
     assert "M2" not in set(doors["part_number"])
+
+
+def test_extra_drawers_qty_multiplies_flat_charge(tmp_path):
+    """Qty N stacks the Extra Drawers or Doors flat charge N times."""
+    svc = _svc(tmp_path)
+    V = "Test Builder"
+    svc.repo.insert_rows([
+        _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
+        _addon(V, "Extra Drawers or Doors", 30.0, 81.0),
+    ])
+
+    one = svc.search("", vendor=V, option_key="Extra Drawers or Doors")
+    assert float(one.iloc[0]["adjusted_price"]) == 1081.0
+
+    three = svc.search(
+        "",
+        vendor=V,
+        option_key="Extra Drawers or Doors",
+        option_qty={"Extra Drawers or Doors": 3},
+    )
+    dresser = three.iloc[0]
+    assert float(dresser["adjusted_price"]) == 1000.0 + 81.0 * 3
+    assert "×3" in str(dresser["notes"])
