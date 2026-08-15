@@ -20,6 +20,8 @@ class ExcelImportPreview:
     notes: str = ""
     rows: list[dict] = field(default_factory=list)
     multiplier_used: float = DEFAULT_MULTIPLIER
+    detected_importer: str = ""
+    parser_source: str = ""
 
 
 @dataclass
@@ -45,6 +47,7 @@ class ImportService:
         sheet_filter: Optional[list[str]] = None,
         use_workbook_markup: bool = False,
         species_keep: Optional[list[str]] = None,
+        preferred_parser: str = "",
     ) -> ExcelImportPreview:
         from wide_import import import_workbook
 
@@ -54,6 +57,7 @@ class ImportService:
             default_collection=default_collection,
             sheet_filter=sheet_filter,
             filename=filename,
+            preferred_parser=preferred_parser,
         )
         mult = float(multiplier)
         if use_workbook_markup and wb.detected_markup:
@@ -80,6 +84,8 @@ class ImportService:
             notes=wb.notes,
             rows=rows,
             multiplier_used=mult,
+            detected_importer=getattr(wb, "detected_importer", "") or "",
+            parser_source=getattr(wb, "parser_source", "") or "",
         )
 
     def preview_excel_manual(

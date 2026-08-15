@@ -1329,6 +1329,19 @@ class WorkbookImportResult:
     detected_markup: Optional[float]
     sheet_names: list[str]
     notes: str = ""
+    detected_importer: str = ""
+    parser_source: str = ""  # "saved" | "guessed"
+
+
+def tag_import_result(
+    result: WorkbookImportResult,
+    importer: str,
+    *,
+    source: str = "guessed",
+) -> WorkbookImportResult:
+    result.detected_importer = importer
+    result.parser_source = source
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -3318,106 +3331,110 @@ def import_workbook(
     default_collection: str = "",
     sheet_filter: Optional[list[str]] = None,
     filename: str = "",
+    preferred_parser: str = "",
 ) -> WorkbookImportResult:
     """
     Read all product sheets from an Excel workbook, unpivot wide matrices,
     return long-form DataFrame ready for master insert.
+
+    If this builder already has a locked named parser, try that first.
+    Zero rows falls through to the filename/sheet guesser.
     """
     names = list_excel_sheets(data)
+    common = {
+        "vendor": vendor,
+        "default_collection": default_collection,
+        "sheet_filter": sheet_filter,
+        "filename": filename,
+    }
+
+    chosen = (preferred_parser or "").strip().lower()
+    if not chosen:
+        from backend.builder_parsers import preferred_parser_for
+
+        chosen = (preferred_parser_for(vendor, filename=filename) or "").strip().lower()
+    if chosen and chosen not in {"generic", "pdf"}:
+        from backend.builder_parsers import run_named_parser
+
+        locked = run_named_parser(chosen, data, **common)
+        if locked is not None and not locked.long_df.empty:
+            return tag_import_result(locked, chosen, source="saved")
 
     # FN Chair Level One Blue — PL Print matrix (style × chair × Unf/Cat × wood)
     from backend.fn_chair_import import import_fn_chair_workbook, looks_like_fn_level_one
 
     if looks_like_fn_level_one(filename, names):
-        return import_fn_chair_workbook(
-            data,
-            vendor=vendor or "FN Chair",
-            default_collection=default_collection,
-            sheet_filter=sheet_filter,
-            filename=filename,
+        return tag_import_result(
+            import_fn_chair_workbook(
+                data,
+                vendor=vendor or "FN Chair",
+                default_collection=default_collection,
+                sheet_filter=sheet_filter,
+                filename=filename,
+            ),
+            "fn_chair",
         )
 
     # J & M Woodworking — Br. Maple base + Percentage wood adders + finish addons
     from backend.jmw_import import import_jmw_workbook, looks_like_jmw
 
     if looks_like_jmw(filename, names):
-        return import_jmw_workbook(
-            data,
-            vendor=vendor or "J & M Woodworking",
-            default_collection=default_collection,
-            sheet_filter=sheet_filter,
-            filename=filename,
+        return tag_import_result(
+            import_jmw_workbook(
+                data,
+                vendor=vendor or "J & M Woodworking",
+                default_collection=default_collection,
+                sheet_filter=sheet_filter,
+                filename=filename,
+            ),
+            "jmw",
         )
 
     # Specialized outdoor poly layout (multi-section color tiers)
     if looks_like_patio_kraft(filename, names, data):
-        return import_patio_kraft_workbook(
-            data,
-            vendor=vendor,
-            default_collection=default_collection,
-            sheet_filter=sheet_filter,
-            filename=filename,
+        return tag_import_result(
+            import_patio_kraft_workbook(data, **common),
+            "patio_kraft",
         )
 
     if looks_like_amish_aspen(filename):
-        return import_amish_aspen_workbook(
-            data,
-            vendor=vendor,
-            default_collection=default_collection,
-            sheet_filter=sheet_filter,
-            filename=filename,
+        return tag_import_result(
+            import_amish_aspen_workbook(data, **common),
+            "amish_aspen",
         )
     if looks_like_hillside_chair(filename, names):
-        return import_hillside_chair_workbook(
-            data,
-            vendor=vendor,
-            default_collection=default_collection,
-            sheet_filter=sheet_filter,
-            filename=filename,
+        return tag_import_result(
+            import_hillside_chair_workbook(data, **common),
+            "hillside_chair",
         )
     if looks_like_maple_lane(filename):
-        return import_maple_lane_workbook(
-            data,
-            vendor=vendor,
-            default_collection=default_collection,
-            sheet_filter=sheet_filter,
-            filename=filename,
+        return tag_import_result(
+            import_maple_lane_workbook(data, **common),
+            "maple_lane",
         )
 
     if looks_like_hw_chair_markup(filename, names):
-        return import_hw_chair_workbook(
-            data,
-            vendor=vendor,
-            default_collection=default_collection,
-            sheet_filter=sheet_filter,
-            filename=filename,
+        return tag_import_result(
+            import_hw_chair_workbook(data, **common),
+            "hw_chair_markup",
         )
 
     if looks_like_lamb(filename, names):
-        return import_lamb_workbook(
-            data,
-            vendor=vendor,
-            default_collection=default_collection,
-            sheet_filter=sheet_filter,
-            filename=filename,
+        return tag_import_result(
+            import_lamb_workbook(data, **common),
+            "lamb",
         )
 
     if looks_like_luxhome(filename, names):
-        return import_luxhome_workbook(
-            data,
-            vendor=vendor,
-            default_collection=default_collection,
-            sheet_filter=sheet_filter,
-            filename=filename,
+        return tag_import_result(
+            import_luxhome_workbook(data, **common),
+            "luxhome",
         )
 
     if looks_like_windy_acres(filename):
-        return import_windy_acres_workbook(
-            data,
-            vendor=vendor,
-            default_collection=default_collection,
-            sheet_filter=sheet_filter,
-            filename=filename,
+        return tag_import_result(
+            import_windy_acres_workbook(data, **common),
+            "windy_acres",
         )
 
     markup = detect_markup_from_workbook(data, names)
@@ -3653,10 +3670,13 @@ def import_workbook(
     if filename:
         note = f"{filename}: " + note
 
-    return WorkbookImportResult(
-        sheets_tried=tried,
-        long_df=out,
-        detected_markup=markup,
-        sheet_names=names,
-        notes=note,
+    return tag_import_result(
+        WorkbookImportResult(
+            sheets_tried=tried,
+            long_df=out,
+            detected_markup=markup,
+            sheet_names=names,
+            notes=note,
+        ),
+        "generic",
     )

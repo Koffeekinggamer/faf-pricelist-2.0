@@ -407,6 +407,63 @@ _VENDOR_DEFAULT_COLLECTION = {
 # Legacy imports left Part # = "Cat. 1" with style in collection — heal below.
 _FN_CAT_RE = re.compile(r"(?i)^cat\.?\s*(\d+)$")
 
+# Whole-word catalog typos seen on builder uploads. Grow this when a new
+# misspelling shows up. Do not general-spellcheck SKUs or builder names.
+_CATALOG_TYPOS = {
+    "occasonial": "occasional",
+    "occasonials": "occasionals",
+    "occasonal": "occasional",
+    "occassional": "occasional",
+    "occassionals": "occasionals",
+    "occational": "occasional",
+    "bedrom": "bedroom",
+    "bedroms": "bedrooms",
+    "dinnig": "dining",
+    "dineing": "dining",
+    "furnture": "furniture",
+}
+_CATALOG_TYPO_RE = re.compile(
+    r"\b("
+    + "|".join(re.escape(k) for k in sorted(_CATALOG_TYPOS, key=len, reverse=True))
+    + r")\b",
+    re.I,
+)
+_REPEATED_FUNCTION_WORD = re.compile(
+    r"\b(and|the|of|or|a|an)\s+\1\b",
+    re.I,
+)
+
+
+def fix_catalog_typos(text: str) -> str:
+    """Correct known catalog misspellings; preserve the source word's case."""
+    if not text:
+        return text
+
+    def _repl(match: re.Match[str]) -> str:
+        word = match.group(0)
+        fixed = _CATALOG_TYPOS.get(word.lower())
+        if not fixed:
+            return word
+        if word.isupper():
+            return fixed.upper()
+        if word[:1].isupper():
+            return fixed[:1].upper() + fixed[1:]
+        return fixed
+
+    return _CATALOG_TYPO_RE.sub(_repl, text)
+
+
+def fix_catalog_grammar(text: str) -> str:
+    """Light catalog grammar: collapse repeated function words."""
+    if not text:
+        return text
+    return _REPEATED_FUNCTION_WORD.sub(lambda m: m.group(1), text)
+
+
+def clean_catalog_label(text: str) -> str:
+    """Typo + light grammar pass used on every Drop / folder import."""
+    return fix_catalog_grammar(fix_catalog_typos(text))
+
 
 def standardize_collection(val: Any, *, vendor: str = "") -> Optional[str]:
     if val is None:
@@ -459,6 +516,7 @@ def standardize_collection(val: Any, *, vendor: str = "") -> Optional[str]:
     if s.isupper() and 3 < len(s) < 40:
         s = s.title()
 
+    s = clean_catalog_label(s)
     return s or _VENDOR_DEFAULT_COLLECTION.get(vendor or "")
 
 
@@ -484,7 +542,7 @@ def standardize_text(val: Any) -> Optional[str]:
         .replace("\u00a0", " ")
     )
     s = re.sub(r"\s+", " ", s)
-    return s
+    return clean_catalog_label(s)
 
 
 # SKU-like tokens often land in description when id_col was missed

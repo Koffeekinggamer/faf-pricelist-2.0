@@ -270,14 +270,24 @@ def _wood_dropdown_options(vendor_key: str) -> list:
     return woods
 
 
+def _catalog_stamp() -> str:
+    """Bust Option/Wood caches when the live catalog changes."""
+    try:
+        s = _svc().stats()
+        return f"{s.get('rows', 0)}:{s.get('source_files', 0)}"
+    except Exception:
+        return "0"
+
+
 @st.cache_data(ttl=60, show_spinner=False)
-def _option_dropdown_options(vendor_key: str) -> list:
+def _option_dropdown_options(vendor_key: str, catalog_stamp: str = "") -> list:
     """
-    Options for the Search dropdown — only for the selected builder.
+    Live Options for the selected builder only — not a static list.
 
     Builder = All → empty (no cross-vendor option soup).
-    Specific builder → that builder's options (addon charges + option_key /
-    option-like species: FN Cat.N, fabric adders, Hillside sizes, …).
+    Specific builder → whatever that builder's catalog currently has
+    (addon charges + that builder's option_key / option-like species).
+    ``catalog_stamp`` refreshes the list after Drop / re-import.
     """
     if not vendor_key or vendor_key == "All":
         return []
@@ -748,7 +758,7 @@ with tab_search:
                             st.rerun()
 
         # Option — hidden until the floor opts in (keeps Search clean).
-        opt_list = _option_dropdown_options(vf if vf else "All")
+        opt_list = _option_dropdown_options(vf if vf else "All", _catalog_stamp())
         # Migrate legacy select / multiselect session value into checkbox keys once.
         if "so" in st.session_state:
             cur = st.session_state.pop("so")
@@ -776,8 +786,8 @@ with tab_search:
             show_opts = st.checkbox(
                 "Options",
                 key="so_panel_open",
-                help="Show addon / finish option checkboxes. "
-                "Leave off for base retail.",
+                help="This builder's live options from the catalog — not a "
+                "fixed list. Leave off for base retail.",
             )
             if show_opts:
                 with st.container(border=True):
@@ -1890,7 +1900,10 @@ with tab_import:
     st.subheader("Drop builder price lists")
     if SHOW_SIMPLE_UI:
         st.caption(
-            "Upload Excel or PDF · set **builder** + **multiplier** · replaces that builder’s catalog."
+            "Upload Excel or PDF · set **builder** + **multiplier**. "
+            "A **new** builder is added to the book. "
+            "Re-drop of an existing builder replaces **that** catalog only. "
+            "Parse looks for that builder's woods, stains, upcharges, and layout."
         )
     else:
         st.markdown(
@@ -1908,7 +1921,8 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
     st.caption(
         "Large Drop: use **http://127.0.0.1:8501** on the Mac (not the Cloudflare "
         "tunnel). Parsed rows stay on disk so the browser session doesn’t disconnect "
-        "while you set multipliers."
+        "while you set multipliers. Every file in a drop or folder is checked for "
+        "catalog typos and light grammar (`Occasonial` → `Occasional`)."
     )
 
     uploads = st.file_uploader(
@@ -1916,7 +1930,25 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
         type=["xlsx", "xls", "xlsm", "pdf"],
         accept_multiple_files=True,
         key="drop_files",
-        help="You can select multiple files at once.",
+        help="Drop one file, several files, or the contents of a folder. "
+        "Each file is typo-checked on parse. After a good Load, that builder "
+        "gets a named parser for the next update.",
+    )
+    locked_parsers = svc.list_builder_parsers()
+    if locked_parsers:
+        bits = [f"{p['vendor']} ({p['importer']})" for p in locked_parsers if p.get("vendor")]
+        st.caption("Named parsers ready for updates: " + " · ".join(bits))
+    else:
+        st.caption(
+            "After you Load a perfected builder, Drop saves a named parser "
+            "for that factory so the next book takes the same path."
+        )
+    folder_path = st.text_input(
+        "Or a folder on this Mac",
+        key="drop_folder_path",
+        placeholder="/Users/…/builder-pricelists",
+        help="Reads every Excel/PDF in that folder and subfolders. "
+        "Same typo/grammar pass as a file drop.",
     )
 
     commit_mode = "replace_vendor"
@@ -1967,11 +1999,34 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
         if log:
             st.dataframe(pd.DataFrame(log), use_container_width=True, hide_index=True)
 
-    if not uploads:
+    folder_uploads: list[DropUpload] = []
+    folder_root = Path(str(folder_path or "").strip()).expanduser()
+    if str(folder_path or "").strip():
+        if not folder_root.is_dir():
+            st.warning(f"Folder not found: `{folder_root}`")
+        else:
+            found = svc.discover_batch_files(folder_root, recursive=True)
+            if not found:
+                st.warning(f"No Excel/PDF price lists in `{folder_root}`.")
+            else:
+                st.caption(
+                    f"Folder: {len(found)} file(s) — each will get the typo/grammar pass."
+                )
+                for p in found:
+                    folder_uploads.append(
+                        DropUpload(
+                            str(p.relative_to(folder_root)),
+                            b"",
+                            size=p.stat().st_size,
+                        )
+                    )
+
+    if not uploads and not folder_uploads:
         # Clear Drop parse session when the uploader is emptied (CONTEXT: Clear).
         sid = st.session_state.pop("drop_session_id", None)
         if sid:
             svc.clear_drop_parse_session(sid)
+            st.session_state.pop("drop_vendor_overrides", None)
             _clear_drop_widget_state()
         st.info("Drop one or more builder price files above to begin.")
     else:
@@ -1982,14 +2037,25 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
             s = int(getattr(up, "size", 0) or 0)
             return s if s > 0 else None
 
+        def _folder_bytes() -> dict[str, bytes]:
+            data_by_name: dict[str, bytes] = {}
+            if folder_root.is_dir():
+                for p in svc.discover_batch_files(folder_root, recursive=True):
+                    data_by_name[str(p.relative_to(folder_root))] = p.read_bytes()
+            return data_by_name
+
         def _drop_idents(with_bytes: bool) -> list:
             out = []
-            for up in uploads:
+            for up in uploads or []:
                 size = _upload_size(up)
                 data = _bytes(up) if with_bytes else b""
                 if with_bytes and size is None:
                     size = len(data)
                 out.append(DropUpload(up.name, data, size=size))
+            folder_data = _folder_bytes() if with_bytes else {}
+            for fu in folder_uploads:
+                data = folder_data.get(fu.filename, b"") if with_bytes else b""
+                out.append(DropUpload(fu.filename, data, size=fu.size))
             return out
 
         sizes_ok = all(_upload_size(up) is not None for up in uploads)
@@ -2015,6 +2081,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                     prefer_workbook_markup=prefer_wb_markup,
                     force=force_reparse,
                     progress=lambda p, t: progress.progress(p, text=t),
+                    vendor_overrides=st.session_state.get("drop_vendor_overrides") or {},
                 )
             except Exception as exc:
                 progress.empty()
@@ -2034,12 +2101,20 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
             r1, r2 = st.columns([1, 3])
             with r1:
                 if st.button("Re-parse", key="drop_reparse_btn"):
+                    st.session_state["drop_vendor_overrides"] = {
+                        f.filename: (
+                            st.session_state.get(f"drop_vend_{f.file_index}")
+                            or f.suggested_builder
+                        )
+                        for f in session.files
+                    }
                     st.session_state["drop_force_reparse"] = True
                     st.rerun()
             with r2:
                 st.caption(
                     "Parsed rows stay on disk (Drop parse session). "
-                    "Builder / multiplier bind when you load — widget edits do not re-parse."
+                    "Set the builder name, then Re-parse to use that factory's "
+                    "named parser. Multiplier binds when you load."
                 )
 
             st.markdown("### Per-file builder & multiplier")
@@ -2070,10 +2145,31 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                         if f.error and not f.row_count:
                             st.error(str(f.error))
                         elif f.notes:
-                            st.caption(str(f.notes)[:200])
+                            st.caption(str(f.notes)[:280])
+                    variants = getattr(f, "variants", None) or {}
+                    if variants and (variants.get("woods") or variants.get("addons") or variants.get("stains")):
+                        bits = []
+                        if variants.get("woods"):
+                            bits.append("Woods: " + ", ".join(variants["woods"][:8]))
+                        if variants.get("stains"):
+                            bits.append("Stains: " + ", ".join(variants["stains"][:6]))
+                        if variants.get("addons"):
+                            bits.append("Upcharges: " + ", ".join(variants["addons"][:6]))
+                        if variants.get("customizations"):
+                            bits.append(
+                                "Options: " + ", ".join(variants["customizations"][:6])
+                            )
+                        st.caption("Smart parse · " + " · ".join(bits))
                     with h2:
                         st.metric("Parsed rows", f"{int(f.row_count):,}")
-                        st.caption((f.kind or "excel").upper())
+                        importer = (getattr(f, "detected_importer", "") or "").strip()
+                        source = (getattr(f, "parser_source", "") or "").strip()
+                        if importer and source == "saved":
+                            st.caption(f"Parser **{importer}** · locked")
+                        elif importer:
+                            st.caption(f"Parser **{importer}** · locks on Load")
+                        else:
+                            st.caption((f.kind or "excel").upper())
 
                     c1, c2, c3 = st.columns([1.6, 1.0, 1.0])
                     with c1:
@@ -2203,7 +2299,8 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                     )
 
                 st.caption(
-                    "Loading **replaces each builder’s whole catalog** (one builder = one book)."
+                    "Loading **adds** a new builder, or **replaces that builder only** "
+                    "if the name already exists. Other builders stay."
                 )
                 st.dataframe(
                     pd.DataFrame(summary_rows),
@@ -2262,6 +2359,33 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                                 notes=f"Set from drop import of {p['filename']}",
                             )
                             svc.reapply_multiplier(float(p["multiplier"]), vendor=p["vendor"])
+                            wf_meta = next(
+                                (w for w in wholesale_files if w.filename == p["filename"]),
+                                None,
+                            )
+                            layouts = []
+                            sess_file = next(
+                                (sf for sf in session.files if sf.filename == p["filename"]),
+                                None,
+                            )
+                            if sess_file and getattr(sess_file, "variants", None):
+                                layouts = list((sess_file.variants or {}).get("layouts") or [])
+                            importer = ""
+                            if wf_meta is not None:
+                                importer = getattr(wf_meta, "detected_importer", "") or ""
+                            if not importer and sess_file is not None:
+                                importer = getattr(sess_file, "detected_importer", "") or ""
+                            parser_path = svc.lock_builder_parser(
+                                p["vendor"],
+                                importer=importer,
+                                source_file=p["filename"],
+                                layouts=layouts,
+                            )
+                            parser_note = (
+                                f"parser {importer or 'generic'}"
+                                if parser_path
+                                else "parser not saved (production reads shipped profiles)"
+                            )
                             results_log.append(
                                 {
                                     "Builder": p["vendor"],
@@ -2271,7 +2395,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                                     "Updated": result.get("updated", 0),
                                     "Removed old": result.get("deleted", 0),
                                     "Total": result.get("total", 0),
-                                    "Status": "ok",
+                                    "Status": f"ok · {parser_note}",
                                 }
                             )
                         except Exception as exc:
@@ -2288,15 +2412,31 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                                 }
                             )
                     bar.progress(1.0, text="Done")
-                    ok_n = sum(1 for r in results_log if r.get("Status") == "ok")
+                    ok_n = sum(
+                        1
+                        for r in results_log
+                        if str(r.get("Status") or "").startswith("ok")
+                    )
                     # Successful Load clears the Drop parse session (keep on total failure).
                     if ok_n > 0:
                         sid = st.session_state.pop("drop_session_id", None)
                         svc.clear_drop_parse_session(sid)
+                        st.session_state.pop("drop_vendor_overrides", None)
                         _clear_drop_widget_state()
+                    saved_n = sum(
+                        1
+                        for r in results_log
+                        if str(r.get("Status") or "").startswith("ok · parser")
+                        and "not saved" not in str(r.get("Status") or "")
+                    )
+                    extra = (
+                        f" Named parser saved for **{saved_n}** builder(s)."
+                        if saved_n
+                        else ""
+                    )
                     st.session_state["drop_load_msg"] = (
                         f"Loaded **{ok_n}** of **{len(items)}** builder(s). "
-                        f"Master now has **{svc.row_count():,}** rows."
+                        f"Master now has **{svc.row_count():,}** rows.{extra}"
                     )
                     st.session_state["drop_load_log"] = results_log
                     st.rerun()
@@ -2922,6 +3062,12 @@ with tab_admin:
         st.caption("No backups yet — click **Backup DB now**.")
 
     st.markdown("##### Maintenance")
+    st.caption(
+        "Duplicate scan verifies wood, size/description, and wholesale before "
+        "anything can be deleted. One SKU × species is the catalog — not a "
+        "duplicate. Queen vs Full sharing a part number is kept. Cleanup only "
+        "removes verified copies of the same sellable row."
+    )
     m1, m2, m3 = st.columns(3)
     with m1:
         if st.button("Re-standardize master"):
@@ -2932,7 +3078,7 @@ with tab_admin:
         if st.button("Scan duplicates"):
             dups = svc.find_duplicates(50)
             if dups.empty:
-                st.success("No duplicate identity groups.")
+                st.success("No verified duplicate copies.")
             else:
                 st.dataframe(dups, use_container_width=True)
     with m3:

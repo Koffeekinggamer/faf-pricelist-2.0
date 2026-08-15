@@ -57,6 +57,10 @@ def test_ensure_returns_session_with_file_preview_not_full_rows(svc):
     assert f.error == ""
     assert f.suggested_builder
     assert f.suggested_mult > 0
+    assert f.variants
+    assert f.variants.get("item_count", 0) >= 2
+    assert f.detected_importer
+    assert f.parser_source in {"guessed", "saved"}
     # UI-safe: sample only, not the full catalog
     assert len(f.sample) <= 8
     assert not hasattr(f, "rows") or not getattr(f, "rows", None)

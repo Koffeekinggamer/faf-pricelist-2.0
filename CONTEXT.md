@@ -15,8 +15,8 @@ DB / code name for a **builder**. One builder = one vendor forever.
 _Avoid_: second vendor row for the same factory under a different spelling
 
 **Master price book**:
-The long-form SQLite catalog (`master_pricebook.db`) — one sellable row per SKU × species × finish.
-_Avoid_: wide workbook as source of truth, “pricelist file” after import
+The long-form SQLite catalog (`master_pricebook.db`) — **many builders** in one app. One sellable row per SKU × species × finish. A new builder Drop **adds** that factory; re-import **replaces that builder only**.
+_Avoid_: treating the app as a single-builder book; wiping the whole catalog to add someone; wide workbook as source of truth after import
 
 **Part number**:
 Canonical SKU / item code on a row (or full item name when the builder has no SKU).
@@ -31,12 +31,12 @@ Wood tier **or** color/fabric option on the row (slash-separated woods, Title Ca
 _Avoid_: `col_N`, bare `FINISHED`, raw column headers
 
 **Option** / **addon charge**:
-A builder upcharge or specialty adder — e.g. +% over base for certain woods, or a listed specialty change that is not the main SKU×wood×finish sellable row. Stored as `line_kind=addon` (ADR-0008). Floor **Option** dropdown surfaces these when present; Search hides them unless Option is filtered to that adder.
-_Avoid_: treating finish Cat.N / fabric _tier labels_ as the only meaning of Option; treating raw adder dollars as full chair retail
+A builder upcharge or specialty adder — e.g. +% over base for certain woods, or a listed specialty change that is not the main SKU×wood×finish sellable row. Stored as `line_kind=addon` (ADR-0008). The Search **Options** list is **live and per-builder**: whatever that builder's catalog currently has (addon rows + that builder's `option_key` / option-species). Builder = All → no Options.
+_Avoid_: a static/global Options menu; leaking one builder's options onto another; treating finish Cat.N / fabric _tier labels_ as the only meaning of Option; treating raw adder dollars as full chair retail
 
 **Builder Profile**:
-Persistent, per-builder record of what we've learned about a builder — option **charge shapes** (flat `$`, `%`, or per-category), **category synonyms**, **item→category overrides**, and **parse hints** — stored as versioned JSON at `config/builder_profiles/<vendor>.json`. Written/refreshed by the **Drop files** import and read by the search/upcharge helper, so re-importing or updating that builder later is seamless (ADR-0011). J&M Woodworking is the first profile.
-_Avoid_: hardcoding one builder's vocabulary in code; storing profile rules in the gitignored DB.
+Persistent, per-builder record of what we've learned about a builder — option **charge shapes** (flat `$`, `%`, or per-category), **category synonyms**, **item→category overrides**, **parse hints**, and a **named parser** (which importer to run on the next Drop) — stored as versioned JSON at `config/builder_profiles/<vendor>.json`. A successful Drop Load locks that builder's parser under their canonical name; the next file for that factory reuses it. Search/upcharge also reads the profile. J&M Woodworking is the first profile (`parser: jmw`).
+_Avoid_: hardcoding one builder's vocabulary in code; storing profile rules in the gitignored DB; re-guessing a perfected builder's layout on every update.
 
 **Finish state**:
 Only `finished` or `unfinished` (default `finished` for floor search).
@@ -51,8 +51,8 @@ Per-vendor markup factor. Default **2.7**; **Genuine Oak 1.7**.
 _Avoid_: hardcoded global 2.7 ignoring vendor overrides, workbook markup as silent default over saved mult
 
 **Retail** / **adjusted price**:
-Customer price = `round(wholesale × multiplier, 2)`. What Search shows as RETAIL.
-_Avoid_: calling wholesale “price” in floor-facing copy
+Price shown on Search (RETAIL) = wholesale (cost) × multiplier, then rolled up to the next even whole dollar. Exact even dollars stay put. Undermount Drawer Slides: no markup (retail = wholesale).
+_Avoid_: calling wholesale “price” in floor-facing copy; documenting `round(base × mult, 2)` — that is not the rule
 
 **Replace vendor**:
 Default re-import mode: delete that builder’s rows, then load the new book. One builder = one catalog.
@@ -73,12 +73,12 @@ Floor lookup with boolean query + builder/collection/finish filters; pinned buil
 _Avoid_: putting business logic only in Streamlit widgets
 
 **Drop files**:
-Manager import path for Excel/PDF builder books into the master price book.
+Manager import path for Excel/PDF builder books into the master price book. A single file, several files, or a **folder** of lists all go through the same parse — including the catalog typo/grammar pass (`Occasonial` → `Occasional`).
 _Avoid_: floor staff using Drop for day-to-day lookups
 
 **Drop parse session**:
-One parse of a Drop batch: post-standardize wholesale rows on disk behind an opaque session id; UI keeps only the id plus per-file builder/multiplier widget defaults. Multiplier and builder bind at commit (via the write path), not by rewriting the session. Invalidated by new upload set, markup-preference toggle, explicit Re-parse, successful Load/Clear, or TTL (~24h).
-_Avoid_: holding full row lists in Streamlit session state; re-parsing when builder/mult widgets change; baking retail into the parse cache; a separate write path that only Drop uses
+One parse of a Drop batch: post-standardize wholesale rows on disk behind an opaque session id; UI keeps only the id plus per-file builder/multiplier widget defaults. The parser is **layout-smart**: if that builder already has a **named parser** locked on their profile, Drop runs it first; otherwise it picks a builder-specific importer when the file matches, or classifies each sheet (wide woods / wide finish / long list). It then inventories that builder's **variants** (items, woods, stains, upcharges, customizations). A successful Load writes/refreshes the named parser (local/Mac only). Set the builder name and Re-parse to apply a locked parser. Multiplier and builder bind at commit (via the write path), not by rewriting the session. Invalidated by new upload set, markup-preference toggle, explicit Re-parse, successful Load/Clear, or TTL (~24h).
+_Avoid_: holding full row lists in Streamlit session state; re-parsing when only the multiplier widget changes; baking retail into the parse cache; a separate write path that only Drop uses; assuming every builder uses the J&M sheet shape; guessing a locked builder from scratch on every update
 
 **Vendors tab**:
 Edit per-builder multiplier and phone; items/collections counts are informational.

@@ -114,3 +114,22 @@ def test_service_add_rows_replace_vendor_atomic(tmp_path: Path):
     assert out["deleted"] == 2
     assert out["inserted"] == 1
     assert svc.stats()["rows"] == 1
+
+
+def test_new_vendor_drop_does_not_wipe_j_and_m(tmp_path: Path):
+    db = tmp_path / "t.db"
+    svc = PriceBookService(db)
+    svc.init()
+    svc.add_rows(
+        [_row("J & M Woodworking", "JM1", 200, source="JMW_2026.xlsx")],
+        mode="replace_vendor",
+    )
+    # Typed new builder + a filename that looks like J&M must not retarget J&M.
+    out = svc.add_rows(
+        [_row("North River Furniture", "NR1", 150, source="JMW_lookalike.xlsx")],
+        mode="replace_vendor",
+    )
+    assert out["inserted"] == 1
+    names = set(svc.repo.list_vendors())
+    assert names == {"J & M Woodworking", "North River Furniture"}
+    assert svc.row_count() == 2

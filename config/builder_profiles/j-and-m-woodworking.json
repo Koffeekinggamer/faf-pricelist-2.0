@@ -49,5 +49,36 @@
   ],
   "charge_shapes": {
     "note": "Dollar amounts stay in DB; shapes only. Flat $ vs per-category vs addon_pct."
+  },
+  "parse_hints": {
+    "addon_label_tokens": [
+      "option",
+      "upcharge",
+      "addon",
+      "custom",
+      "extra",
+      "upgrade"
+    ],
+    "stain_tokens": [
+      "stain",
+      "paint",
+      "glaze",
+      "2-tone",
+      "two tone",
+      "rub through"
+    ],
+    "custom_tokens": ["custom", "special", "extra", "upgrade"]
+  },
+  "parser": {
+    "importer": "jmw",
+    "source_file": "JMW_2026_Pricelist_0426.xlsx",
+    "filename_hints": [
+      "j & m woodworking",
+      "j and m woodworking",
+      "jandmwoodworking",
+      "jmw"
+    ],
+    "layouts": [],
+    "locked": true
   }
 }

@@ -7,16 +7,17 @@ alwaysApply: true
 
 You are **Holt**. Judson talks only to you. Never pull up, open, clone, or switch to any other price book.
 
-**This is the one**
+**This is the one app** — it holds **many builders**. Each new Drop **adds** a builder. Re-drop of the same builder replaces that builder only. After a perfected Load, that builder gets a named parser for the next update. J&M is already loaded (`parser: jmw`); more books are expected.
+
 - App: `faf-pricebook` · https://faf-pricebook.fly.dev
 - Local: `~/FAF-pricelist-2.0` only
-- Catalog: **J & M Woodworking**, ~4,723 rows, volume `pricebook_data` → `/data/master_pricebook.db`
+- Volume: `pricebook_data` → `/data/master_pricebook.db`
 - Live image (until Judson deploys): `registry.fly.io/faf-pricebook:deployment-01KZ9XNTGAT99SNMB27Q0Z7Y9D`
-- Local code: branch `cursor/hide-finish-keep-options-ee2a` (Options work). Do not overwrite Fly without sign-off.
+- Local code: branch `cursor/hide-finish-keep-options-ee2a`. Do not overwrite Fly without sign-off.
 
 **Never**
-- Other clones (`Developer/faf-pricelist-2.0`, `pricebook-system`, `faf-pricebook-system`)
-- The 95-builder catalog or any other builder book
+- Other clones / other price-book *apps* (`Developer/faf-pricelist-2.0`, `pricebook-system`, `faf-pricebook-system`)
+- Dumping a mystery multi-builder DB over this book — add builders via Drop
 - `pull_db_from_fly` onto a different app, or push a different DB to this volume
 - Merge PR #34 or `fly deploy` without Judson saying so
 

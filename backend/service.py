@@ -13,6 +13,13 @@ from typing import Any, Callable, Optional, Sequence, Union
 import pandas as pd
 
 from backend.batch import BatchImporter, BatchResult
+from backend.builder_parsers import (
+    infer_importer,
+    list_locked_parsers,
+    match_vendor_from_saved_parsers,
+    preferred_parser_for,
+    save_named_parser,
+)
 from backend.builder_profiles import (
     category_matches_override,
     load_builder_profile,
@@ -535,7 +542,7 @@ class PriceBookService:
         return self.repo.list_species(vendor=vendor)
 
     def list_option_keys(self, vendor: Optional[str] = None) -> list[str]:
-        """Selectable Option values for a builder — addon charges + finish codes (ADR-0008)."""
+        """Live Option list for one builder from that builder's catalog (not a static menu)."""
         self.ensure_ready()
         return self.repo.list_option_keys(vendor=vendor)
 
@@ -622,10 +629,17 @@ class PriceBookService:
 
         from backend.standardize import resolve_builder_vendor
 
-        # Canonical vendor on every row (prevents filename twins)
+        # Canonical vendor on every row (prevents filename twins).
+        # An explicit builder name wins over a filename hint so a new Drop
+        # cannot retarget J&M / Hope Wood / etc. by accident.
         vend_raw = rows[0].get("vendor") or ""
         source = rows[0].get("source_file") or ""
-        vend = resolve_builder_vendor(vend_raw, filename=str(source)) or vend_raw
+        vend_from_name = resolve_builder_vendor(vend_raw) or ""
+        vend_from_file = resolve_builder_vendor(vend_raw, filename=str(source)) or ""
+        if vend_from_name and vend_from_file and vend_from_name != vend_from_file:
+            vend = vend_from_name
+        else:
+            vend = vend_from_file or vend_from_name or vend_raw
         for r in rows:
             r["vendor"] = vend
 
@@ -732,14 +746,25 @@ class PriceBookService:
         default_collection: str = "",
         pdf_max_pages: Optional[int] = None,
         pdf_strategy_index: int = 0,
+        vendor_override: str = "",
     ) -> dict:
         """Single-pass parse → post-Standardize wholesale rows + suggested mult metadata."""
         from backend.drop_parse_session import wholesale_row
+        from backend.smart_parse import summarize_parse_variants, variants_caption
         from backend.standardize import resolve_builder_vendor
 
         name = filename or "upload"
-        vend = resolve_builder_vendor(name, filename=name) or Path(name).stem
+        typed = (vendor_override or "").strip()
+        vend = resolve_builder_vendor(typed or name, filename=name)
+        if not vend or not preferred_parser_for(vend):
+            hinted = match_vendor_from_saved_parsers(name)
+            if hinted:
+                vend = hinted
+        if typed and not preferred_parser_for(vend or ""):
+            vend = resolve_builder_vendor(typed, filename=name) or typed
+        vend = vend or Path(name).stem
         kind = "pdf" if name.lower().endswith(".pdf") else "excel"
+        locked_parser = preferred_parser_for(vend, filename=name)
         out: dict = {
             "filename": name,
             "kind": kind,
@@ -750,6 +775,9 @@ class PriceBookService:
             "notes": "",
             "error": "",
             "row_count": 0,
+            "variants": {},
+            "detected_importer": locked_parser or ("pdf" if kind == "pdf" else ""),
+            "parser_source": "saved" if locked_parser else "",
         }
         try:
             if kind == "pdf":
@@ -778,7 +806,16 @@ class PriceBookService:
                     r["price_basis"] = r.get("price_basis") or "wholesale"
                 out["rows"] = rows
                 out["row_count"] = len(rows)
-                out["notes"] = f"PDF strategy · {len(rows)} rows"
+                out["variants"] = summarize_parse_variants(
+                    rows, vendor=vend, sheets_tried=[{"layout": "pdf"}]
+                )
+                out["detected_importer"] = locked_parser or "pdf"
+                out["parser_source"] = "saved" if locked_parser else "guessed"
+                cap = variants_caption(out["variants"])
+                out["notes"] = (
+                    f"PDF strategy · {len(rows)} rows"
+                    + (f" · {cap}" if cap else "")
+                )
                 out["suggested_mult"] = float(mult_hint)
             else:
                 # One Excel pass — markup detection piggybacks; no second parse.
@@ -789,6 +826,7 @@ class PriceBookService:
                     default_collection=default_collection,
                     multiplier=DEFAULT_MULTIPLIER,
                     use_workbook_markup=False,
+                    preferred_parser=locked_parser,
                 )
                 detected = prev.detected_markup
                 out["detected_markup"] = detected
@@ -808,6 +846,24 @@ class PriceBookService:
                     r["price_basis"] = r.get("price_basis") or "wholesale"
                 out["rows"] = rows
                 out["row_count"] = len(rows)
+                out["variants"] = summarize_parse_variants(
+                    rows,
+                    vendor=vend,
+                    sheets_tried=getattr(prev, "sheets_tried", None),
+                )
+                out["detected_importer"] = infer_importer(
+                    getattr(prev, "detected_importer", "") or locked_parser,
+                    out["variants"].get("layouts"),
+                )
+                # Locked generic still counts as saved — same classifier, no re-guess.
+                out["parser_source"] = (
+                    "saved" if locked_parser else (getattr(prev, "parser_source", "") or "guessed")
+                )
+                cap = variants_caption(out["variants"])
+                if cap:
+                    out["notes"] = (
+                        (out["notes"] + " · " if out["notes"] else "") + cap
+                    )
                 if not rows:
                     out["error"] = "0 rows parsed — check file layout."
         except Exception as e:
@@ -822,6 +878,7 @@ class PriceBookService:
         prefer_workbook_markup: bool = False,
         force: bool = False,
         progress: Optional[Callable[[float, str], None]] = None,
+        vendor_overrides: Optional[dict[str, str]] = None,
     ):
         """
         Create or reuse a Drop parse session for one upload batch.
@@ -877,6 +934,7 @@ class PriceBookService:
                 up.data,
                 filename=up.filename,
                 prefer_workbook_markup=prefer_workbook_markup,
+                vendor_override=(vendor_overrides or {}).get(up.filename, ""),
             )
             files_payload.append(parsed)
         if progress:
@@ -902,6 +960,33 @@ class PriceBookService:
         if not session_id:
             return
         self._drop_parse_store().delete(session_id)
+
+    def list_builder_parsers(self, *, root: Optional[Path] = None) -> list[dict[str, str]]:
+        """Named parsers locked after a perfected Drop (ADR-0011)."""
+        return list_locked_parsers(root=root)
+
+    def lock_builder_parser(
+        self,
+        vendor: str,
+        *,
+        importer: str = "",
+        source_file: str = "",
+        layouts: Optional[list] = None,
+        root: Optional[Path] = None,
+    ) -> Optional[Path]:
+        """Persist this builder's parser after a successful Drop Load."""
+        from backend.standardize import resolve_builder_vendor
+
+        vend = resolve_builder_vendor(vendor) or (vendor or "").strip()
+        if not vend:
+            return None
+        return save_named_parser(
+            vend,
+            importer=importer,
+            source_file=source_file,
+            layouts=list(layouts or []),
+            root=root,
+        )
 
     def wholesale_from_drop_parse_session(self, session_id: str):
         """Read post-Standardize wholesale rows for commit binding (outside this module)."""

@@ -12,6 +12,7 @@ import pandas as pd
 
 from backend.config import DEFAULT_MULTIPLIER, DEFAULT_SEARCH_LIMIT, IDENTITY_FIELDS
 from backend.db import get_connection
+from backend.duplicate_verify import VERIFY_SELECT, verify_duplicate_group
 from backend.models import PRICEBOOK_COLS, SELECT_COLS
 
 
@@ -163,15 +164,16 @@ class PriceBookRepository:
 
     def list_option_keys(self, vendor: Optional[str] = None) -> list[str]:
         """
-        Distinct Option dropdown values for one builder (ADR-0008).
+        Live Option list for one builder — never a static/global menu.
 
-        Includes:
+        Built only from that builder's current catalog rows (ADR-0008):
           - addon charge labels (`line_kind = 'addon'`) — primary meaning of Option
-          - non-empty option_key on item rows (FN Cat.N, Hillside sizes, …)
+          - non-empty option_key on item rows (FN Cat.N, J&M Crypton/Fabric, …)
           - species labels that are options (color/fabric/poly/leather tiers),
             not wood species
 
-        Builder = All/None → empty (options are always per-vendor).
+        A label appears only if this builder has it. Builder profile keywords
+        are eligibility rules, not the menu. Builder = All/None → empty.
         """
         if not vendor or vendor in ("All", ""):
             return []
@@ -1082,26 +1084,46 @@ class PriceBookRepository:
         }
 
     def find_duplicate_groups(self, limit: int = 100) -> pd.DataFrame:
-        """Groups sharing the same identity key with count > 1."""
+        """Identity collisions that verify as the same sellable row.
+
+        SKU × wood, or the same part with a different size/description, is
+        the catalog — those groups are skipped, not listed as duplicates.
+        """
         fields = ", ".join(IDENTITY_FIELDS)
         coalesce_parts = [f"COALESCE(LOWER(TRIM({f})), '')" for f in IDENTITY_FIELDS]
         group_expr = " || '|' || ".join(coalesce_parts)
         sql = f"""
-            SELECT {fields}, COUNT(*) AS dup_count
+            SELECT {fields}, {group_expr} AS gkey, COUNT(*) AS dup_count
             FROM pricebook
-            GROUP BY {group_expr}
+            GROUP BY gkey
             HAVING COUNT(*) > 1
             ORDER BY dup_count DESC
-            LIMIT ?
         """
         with self._conn() as conn:
-            return pd.read_sql_query(sql, conn, params=(limit,))
+            candidates = pd.read_sql_query(sql, conn)
+            if candidates.empty:
+                return candidates.drop(columns=["gkey"], errors="ignore")
+            verified: list[dict] = []
+            for rec in candidates.to_dict("records"):
+                rows = conn.execute(
+                    f"SELECT {VERIFY_SELECT} FROM pricebook WHERE {group_expr} = ?",
+                    (rec["gkey"],),
+                ).fetchall()
+                ok, _reason = verify_duplicate_group([dict(r) for r in rows])
+                if not ok:
+                    continue
+                rec.pop("gkey", None)
+                verified.append(rec)
+                if len(verified) >= limit:
+                    break
+            return pd.DataFrame(verified)
 
     def cleanup_duplicates(self, *, dry_run: bool = True) -> dict:
         """
-        Keep newest imported_at (then highest id) per identity group; delete rest.
+        Keep newest imported_at (then highest id) per *verified* copy group.
 
-        Returns counts and optional sample of deleted ids when dry_run.
+        Identity collisions that differ by wood, size/description, or
+        wholesale are distinct catalog rows and are never deleted.
         """
         coalesce_parts = [f"COALESCE(LOWER(TRIM({f})), '')" for f in IDENTITY_FIELDS]
         group_expr = " || '|' || ".join(coalesce_parts)
@@ -1117,13 +1139,16 @@ class PriceBookRepository:
             ).fetchall()
 
             to_delete: list[int] = []
+            verified_groups = 0
+            skipped_distinct = 0
+            skip_reasons: list[str] = []
             for g in groups:
                 # empty identity keys — skip mass delete
                 if not g["gkey"] or set(g["gkey"].split("|")) <= {""}:
                     continue
                 rows = conn.execute(
                     f"""
-                    SELECT id, imported_at FROM pricebook
+                    SELECT {VERIFY_SELECT} FROM pricebook
                     WHERE {group_expr} = ?
                     ORDER BY
                         CASE WHEN imported_at IS NULL OR imported_at = '' THEN 0 ELSE 1 END DESC,
@@ -1132,20 +1157,33 @@ class PriceBookRepository:
                     """,
                     (g["gkey"],),
                 ).fetchall()
-                # keep first
-                for r in rows[1:]:
+                mapped = [dict(r) for r in rows]
+                ok, reason = verify_duplicate_group(mapped)
+                if not ok:
+                    skipped_distinct += 1
+                    if reason and len(skip_reasons) < 8:
+                        skip_reasons.append(reason)
+                    continue
+                verified_groups += 1
+                for r in mapped[1:]:
                     to_delete.append(int(r["id"]))
 
+            report = {
+                "identity_collisions": len(groups),
+                "verified_groups": verified_groups,
+                "skipped_distinct": skipped_distinct,
+                "skip_reasons": skip_reasons,
+            }
             if dry_run:
                 return {
+                    **report,
                     "dry_run": True,
-                    "groups": len(groups),
+                    "groups": verified_groups,
                     "would_delete": len(to_delete),
                     "sample_ids": to_delete[:30],
                 }
 
             deleted = 0
-            # chunk deletes
             chunk = 500
             for i in range(0, len(to_delete), chunk):
                 batch = to_delete[i : i + chunk]
@@ -1154,8 +1192,9 @@ class PriceBookRepository:
                 deleted += cur.rowcount
             conn.commit()
             return {
+                **report,
                 "dry_run": False,
-                "groups": len(groups),
+                "groups": verified_groups,
                 "deleted": deleted,
             }
 

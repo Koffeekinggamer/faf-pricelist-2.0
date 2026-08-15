@@ -45,6 +45,9 @@ class DropFilePreview:
     sample: tuple[dict, ...]
     error: str
     notes: str
+    variants: dict = None
+    detected_importer: str = ""
+    parser_source: str = ""
 
 
 @dataclass(frozen=True)
@@ -64,6 +67,8 @@ class DropFileWholesale:
     rows: list[dict]
     error: str
     row_count: int
+    detected_importer: str = ""
+    parser_source: str = ""
 
 
 def batch_key(
@@ -106,6 +111,9 @@ def view_from_payload(payload: dict) -> DropParseSessionView:
                 sample=sample,
                 error=str(f.get("error") or ""),
                 notes=str(f.get("notes") or ""),
+                variants=dict(f.get("variants") or {}),
+                detected_importer=str(f.get("detected_importer") or ""),
+                parser_source=str(f.get("parser_source") or ""),
             )
         )
     return DropParseSessionView(
@@ -138,6 +146,8 @@ def wholesale_from_payload(payload: dict) -> list[DropFileWholesale]:
                 rows=rows,
                 error=str(f.get("error") or ""),
                 row_count=int(f.get("row_count") or len(rows)),
+                detected_importer=str(f.get("detected_importer") or ""),
+                parser_source=str(f.get("parser_source") or ""),
             )
         )
     return out

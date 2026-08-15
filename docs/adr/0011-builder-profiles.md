@@ -12,6 +12,8 @@ A profile holds the builder-specific bits that vary: option **charge shapes** (f
 
 J&M Woodworking is the first profile: today's hardcoded J&M option/category vocabulary migrates into it unchanged, so search-upcharge behavior does not regress while the system generalizes.
 
-**First slice (locked):** search/upcharge only — hand-authored `config/builder_profiles/j-and-m-woodworking.json` consumed by the upcharge helper. Drop-files read/write of profiles is a follow-up; kill test is unchanged Option upcharge behavior.
+**Named parser (locked):** after a builder is uploaded and the Drop looks right, Load writes `parser.importer` (plus filename hints and layouts seen) onto that builder's profile, keyed by the canonical vendor name. The next Drop for that factory runs the named parser first; zero rows falls through to the layout guesser and Load refreshes the lock. Fly Drop reads shipped profiles and does not write.
+
+**First slice (shipped):** search/upcharge reads `config/builder_profiles/j-and-m-woodworking.json`. **Drop read/write of the named parser is now live** — kill test: lock a parser on Load, re-drop a file that resolves to that builder, same importer runs without hand-picking a layout.
 
 **Status:** accepted

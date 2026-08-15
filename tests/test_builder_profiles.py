@@ -28,6 +28,7 @@ def test_load_j_and_m_profile_from_repo():
         "manschest" in (r.get("match_category_any") or [])
         for r in p["category_synonym_overrides"]
     )
+    assert (p.get("parser") or {}).get("importer") == "jmw"
 
 
 def test_unknown_vendor_gets_default_vocab():

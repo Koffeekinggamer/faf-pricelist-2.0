@@ -15,21 +15,28 @@ Every sellable row in `master_pricebook.db` is normalized to the same shape.
 
 CLI / UI defaults use `replace_vendor`. Avoid **append** unless you intend duplicates.
 
+## Duplicates — verify before cleanup
+
+SKU × wood species is the catalog, not a duplicate. Admin / CLI cleanup must
+inspect the actual rows (description, dimensions, species, wholesale) before
+listing or deleting. Same part number with a different size in the description
+(Queen vs Full, empty `dimensions`) is two beds — keep both.
+
 ## Canonical row
 
 | Field | Rule |
 |-------|------|
 | **vendor** | Clean display name (`Hope Wood`, `Genuine Oak`, …) |
-| **collection** | Product category only — not sheet names, not option/upcharge lines. Defaults: FN Chair → Seating, Genuine Oak → Casegoods. `Mult-Gun` → Gun Cabinets |
+| **collection** | Product category only — not sheet names, not option/upcharge lines. Defaults: FN Chair → Seating, Genuine Oak → Casegoods. `Mult-Gun` → Gun Cabinets. Drop / folder import auto-fixes known typos (`Occasonial` → `Occasional`) |
 | **part_number** | Trimmed SKU / item code (or full item name if builder has no SKU) |
 | **description** | Always filled (falls back to `part_number`) |
 | **species** | Wood tier **or** color/fabric option, slash-separated woods, Title Case. Never `col_N` / `FINISHED` |
 | **species_tier** | Optional 1…N |
 | **finish_state** | `finished` \| `unfinished` only (default `finished`) |
-| **base_price** | Builder **wholesale** list |
+| **base_price** | Builder **wholesale** (cost) |
 | **price_basis** | Always `wholesale` |
 | **multiplier** | Per-vendor (Genuine Oak **1.7**, others **2.7**) |
-| **adjusted_price** | `round(base × mult, 2)` |
+| **adjusted_price** | Price shown: wholesale (cost) × multiplier, then even-dollar ceil. Example: `715 × 2.7 = 1930.50` → **$1932** |
 
 ## Species examples
 

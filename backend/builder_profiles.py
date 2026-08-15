@@ -70,6 +70,27 @@ DEFAULT_PROFILE: dict[str, Any] = {
             "match_category_any": ["studio"],
         },
     ],
+    "parse_hints": {
+        "addon_label_tokens": [
+            "option",
+            "upcharge",
+            "addon",
+            "custom",
+            "extra",
+            "upgrade",
+        ],
+        "stain_tokens": [
+            "stain",
+            "paint",
+            "glaze",
+            "2-tone",
+            "two tone",
+            "rub through",
+        ],
+        "custom_tokens": ["custom", "special", "extra", "upgrade"],
+    },
+    # Named Drop parser — empty until a successful Load locks one (ADR-0011).
+    "parser": {},
 }
 
 
@@ -101,6 +122,14 @@ def _merge_profile(raw: dict[str, Any], vendor: str) -> dict[str, Any]:
             out[key] = list(DEFAULT_PROFILE[key])
         else:
             out[key] = raw[key]
+    if "parse_hints" not in raw or raw["parse_hints"] is None:
+        out["parse_hints"] = dict(DEFAULT_PROFILE["parse_hints"])
+    else:
+        out["parse_hints"] = {**DEFAULT_PROFILE["parse_hints"], **raw["parse_hints"]}
+    if "parser" not in raw or raw["parser"] is None:
+        out["parser"] = {}
+    else:
+        out["parser"] = dict(raw["parser"])
     return out
 
 
@@ -139,6 +168,8 @@ def load_builder_profile(
         out["drawer_door_item_keywords"] = list(DEFAULT_PROFILE["drawer_door_item_keywords"])
         out["drawer_door_exclude_keywords"] = list(DEFAULT_PROFILE["drawer_door_exclude_keywords"])
         out["compound_item_markers"] = list(DEFAULT_PROFILE["compound_item_markers"])
+        out["parse_hints"] = dict(DEFAULT_PROFILE["parse_hints"])
+        out["parser"] = {}
         return out
     raw = json.loads(cached[0])
     return _merge_profile(raw, vend)

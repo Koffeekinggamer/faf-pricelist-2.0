@@ -32,7 +32,8 @@ Sign out from the left sidebar when done.
 ## How pricing works
 
 ```
-RETAIL  =  wholesale  ×  multiplier
+RETAIL (price shown)  =  wholesale (cost)  ×  multiplier
+                         then up to the next even dollar
 ```
 
 | Builder type | Typical mult |
