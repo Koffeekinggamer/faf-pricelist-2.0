@@ -10,6 +10,7 @@ import openpyxl
 
 from backend.builder_parsers import (
     filename_hints_for,
+    guess_named_parser,
     infer_importer,
     match_vendor_from_saved_parsers,
     preferred_parser_for,
@@ -87,7 +88,18 @@ def test_fly_skips_write_to_default_dir(monkeypatch, tmp_path: Path):
 def test_infer_importer_from_layouts():
     assert infer_importer("", ["jmw_br_maple_expand"]) == "jmw"
     assert infer_importer("fn_chair", []) == "fn_chair"
+    assert infer_importer("", ["ashery_oak_master_wood_expand"]) == "ashery_oak"
     assert infer_importer("", ["wide_species"]) == "generic"
+
+
+def test_guess_named_parser_ashery_oak():
+    vend, pid = guess_named_parser(
+        "AO_Pricelist_070625.xlsx",
+        sheet_names=["Markup", "Master", "Options&Portal", "Products"],
+    )
+    assert vend == "Ashery Oak"
+    assert pid == "ashery_oak"
+    assert guess_named_parser("other.xlsx", sheet_names=["Sheet1"]) == ("", "")
 
 
 def test_filename_hints_strip_year_noise():

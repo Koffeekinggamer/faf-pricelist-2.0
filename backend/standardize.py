@@ -13,6 +13,7 @@ Goal: every vendor row looks the same shape for search / quotes / export.
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Optional
 
@@ -85,10 +86,13 @@ _WOOD_PHRASES = [
     "Character Walnut",
     "Character QSWO",
     "Character Maple",
+    "Plain Sawn White Oak",
     "Plain White Oak",
     "QS White Oak",
     "White Qtrsawn",
     "Quarter Sawn White Oak",
+    "Prime Walnut",
+    "Tiger Maple",
     "Rough Sawn Wormy Maple",
     "Rough Sawn White Oak",
     "Rough Sawn Maple",
@@ -145,7 +149,10 @@ _WOOD_ABBREV = [
     (re.compile(r"(?i)\bcharacter\s*walnut\b"), "Character Walnut"),
     (re.compile(r"(?i)\bcharacter\s*qsw[o0]\b"), "Character QSWO"),
     (re.compile(r"(?i)\bcharacter\s*white\s*oak\b"), "Character White Oak"),
+    (re.compile(r"(?i)\bplain\s*sawn\s*white\s*oak\b"), "Plain Sawn White Oak"),
     (re.compile(r"(?i)\bplain\s*white\s*oak\b"), "Plain White Oak"),
+    (re.compile(r"(?i)\bprime\s*walnut\b"), "Prime Walnut"),
+    (re.compile(r"(?i)\btiger\s*maple\b"), "Tiger Maple"),
     (re.compile(r"(?i)\brrs\.?\s*maple\b"), "Rough Sawn Maple"),
 ]
 
@@ -623,6 +630,9 @@ VENDOR_CANON = {
     "j&m woodworking": "J & M Woodworking",
     "j and m woodworking": "J & M Woodworking",
     "jmw": "J & M Woodworking",
+    "ashery oak": "Ashery Oak",
+    "asheryoak": "Ashery Oak",
+    "ao": "Ashery Oak",
 }
 
 # Substring matchers for messy filenames (order: more specific first)
@@ -644,6 +654,7 @@ _VENDOR_FILENAME_HINTS: list[tuple[re.Pattern, str]] = [
         "J & M Woodworking",
     ),
     (re.compile(r"(?i)hope\s*wood|hopewood|\bhw_2025\b|\bhw_"), "Hope Wood"),
+    (re.compile(r"(?i)ashery\s*oak|asheryoak|ao_pricelist"), "Ashery Oak"),
 ]
 
 
@@ -836,14 +847,31 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
     if not desc and part:
         desc = part
 
-    # Must have price and something searchable
+    # Must have price and something searchable. Percent addons may have
+    # no dollar amount — keep those when addon_pct is set.
     base = out.get("base_price")
     try:
         base_f = float(base) if base is not None else None
     except (TypeError, ValueError):
         base_f = None
+    if base_f is not None and (math.isnan(base_f) or math.isinf(base_f)):
+        base_f = None
+    kind_raw = standardize_text(out.get("line_kind")) or "item"
+    line_kind = kind_raw.lower() if kind_raw else "item"
+    if line_kind not in {"item", "addon"}:
+        line_kind = "item"
+    addon_raw = out.get("addon_pct")
+    try:
+        addon_pct = (
+            float(addon_raw) if addon_raw is not None and str(addon_raw).strip() != "" else None
+        )
+    except (TypeError, ValueError):
+        addon_pct = None
+    if addon_pct is not None and (math.isnan(addon_pct) or math.isinf(addon_pct)):
+        addon_pct = None
     if base_f is None or base_f <= 0:
-        return None
+        if not (line_kind == "addon" and addon_pct is not None and addon_pct > 0):
+            return None
     if not part and not desc:
         return None
     # Drop section banners that landed as product rows
@@ -875,18 +903,6 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
         if m:
             tier_i = int(m.group(1))
 
-    kind_raw = standardize_text(out.get("line_kind")) or "item"
-    line_kind = kind_raw.lower() if kind_raw else "item"
-    if line_kind not in {"item", "addon"}:
-        line_kind = "item"
-    addon_raw = out.get("addon_pct")
-    try:
-        addon_pct = (
-            float(addon_raw) if addon_raw is not None and str(addon_raw).strip() != "" else None
-        )
-    except (TypeError, ValueError):
-        addon_pct = None
-
     out.update(
         {
             "vendor": vendor,
@@ -898,10 +914,8 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
             "species": species,
             "species_tier": tier_i,
             "finish_state": finish,
-            "base_price": round(base_f, 4)
-            if base_f != int(base_f)
-            else float(int(base_f))
-            if abs(base_f - int(base_f)) < 1e-9
+            "base_price": None
+            if base_f is None
             else round(base_f, 2),
             "price_basis": "wholesale",
             "multiplier": mult_f,
@@ -916,7 +930,7 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
     # nicer base_price: 2 decimal for money; retail = even whole dollars
     from backend.pricing import catalog_multiplier, catalog_retail
 
-    out["base_price"] = round(float(base_f), 2)
+    out["base_price"] = None if base_f is None else round(float(base_f), 2)
     out["multiplier"] = catalog_multiplier(
         mult_f,
         line_kind=line_kind,

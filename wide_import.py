@@ -103,7 +103,7 @@ SKIP_SHEET_RE = re.compile(
     r"""(?ix)
     ^(markup|mark\s*up|multiplier|multipliers|instructions?|cover|index|index_?|
       settings?|information(\s*sheet)?|customer\s*letter|notes?|toc|
-      table\s*of\s*contents|percentage|controls?|options?\s*&\s*portal|
+      table\s*of\s*contents|controls?|
       title\s*page|dealer\s*info.*)$
     """
 )
@@ -3390,6 +3390,20 @@ def import_workbook(
             "jmw",
         )
 
+    from backend.ashery_oak_import import import_ashery_oak_workbook, looks_like_ashery_oak
+
+    if looks_like_ashery_oak(filename, names):
+        return tag_import_result(
+            import_ashery_oak_workbook(
+                data,
+                vendor=vendor or "Ashery Oak",
+                default_collection=default_collection,
+                sheet_filter=sheet_filter,
+                filename=filename,
+            ),
+            "ashery_oak",
+        )
+
     # Specialized outdoor poly layout (multi-section color tiers)
     if looks_like_patio_kraft(filename, names, data):
         return tag_import_result(
@@ -3437,6 +3451,9 @@ def import_workbook(
             "windy_acres",
         )
 
+    from backend.workbook_sheets import read_all_sheets
+
+    sheet_views = {v.name: v for v in read_all_sheets(data)}
     markup = detect_markup_from_workbook(data, names)
     frames = []
     tried = []
@@ -3464,13 +3481,14 @@ def import_workbook(
     for name in names:
         if sheet_filter is not None and name not in sheet_filter:
             continue
+        view = sheet_views.get(name)
         if skip_retail and name in retail_sheets:
             tried.append(
                 {
                     "sheet": name,
-                    "layout": "skip",
+                    "layout": "viewed_retail",
                     "rows": 0,
-                    "note": "skipped retail (wholesale sheet present)",
+                    "note": "viewed · not imported (wholesale sheet present)",
                 }
             )
             continue
@@ -3478,16 +3496,41 @@ def import_workbook(
             tried.append(
                 {
                     "sheet": name,
-                    "layout": "skip",
+                    "layout": "viewed_markup_twin",
                     "rows": 0,
-                    "note": "skipped markup twin (plain price list present)",
+                    "note": "viewed · not imported (plain price list present)",
                 }
             )
             continue
-        if SKIP_SHEET_RE.match(str(name).strip()) and (
-            sheet_filter is None or name not in (sheet_filter or [])
-        ):
-            tried.append({"sheet": name, "layout": "skip", "rows": 0, "note": "skipped"})
+        if view is not None and view.role in {"cover", "markup", "empty", "error"}:
+            tried.append(
+                {
+                    "sheet": name,
+                    "layout": f"viewed_{view.role}",
+                    "rows": 0,
+                    "note": view.note or f"viewed · {view.role} · {view.n_rows}×{view.n_cols}",
+                }
+            )
+            continue
+        if view is not None and view.role == "options" and view.raw is not None:
+            from backend.ashery_oak_import import (
+                parse_bookcase_door_addons,
+                parse_option_addons,
+            )
+
+            opt_rows = parse_option_addons(view.raw, vendor=vendor or "")
+            opt_rows.extend(parse_bookcase_door_addons(view.raw, vendor=vendor or ""))
+            long_opt = pd.DataFrame(opt_rows)
+            tried.append(
+                {
+                    "sheet": name,
+                    "layout": "viewed_options",
+                    "rows": 0 if long_opt.empty else len(long_opt),
+                    "note": f"viewed · options · {0 if long_opt.empty else len(long_opt)} addons",
+                }
+            )
+            if not long_opt.empty:
+                frames.append(long_opt)
             continue
         try:
             df = dataframe_from_sheet(data, name)

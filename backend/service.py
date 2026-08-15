@@ -17,6 +17,7 @@ from backend.builder_parsers import (
     infer_importer,
     list_locked_parsers,
     match_vendor_from_saved_parsers,
+    guess_named_parser,
     preferred_parser_for,
     save_named_parser,
 )
@@ -765,6 +766,12 @@ class PriceBookService:
         vend = vend or Path(name).stem
         kind = "pdf" if name.lower().endswith(".pdf") else "excel"
         locked_parser = preferred_parser_for(vend, filename=name)
+        if kind == "excel" and not locked_parser:
+            guessed_vend, guessed_parser = guess_named_parser(name, data=data)
+            if guessed_parser:
+                locked_parser = guessed_parser
+                if not typed:
+                    vend = resolve_builder_vendor(guessed_vend, filename=name) or guessed_vend
         out: dict = {
             "filename": name,
             "kind": kind,

@@ -23,6 +23,7 @@ from backend.builder_profiles import (
 PARSER_IDS = (
     "fn_chair",
     "jmw",
+    "ashery_oak",
     "patio_kraft",
     "amish_aspen",
     "hillside_chair",
@@ -40,6 +41,9 @@ LAYOUT_TO_PARSER: dict[str, str] = {
     "fn_chair": "fn_chair",
     "jmw": "jmw",
     "jmw_br_maple_expand": "jmw",
+    "ashery_oak": "ashery_oak",
+    "ashery_oak_master_wood_expand": "ashery_oak",
+    "ao_master_wood_expand": "ashery_oak",
     "patio_kraft": "patio_kraft",
     "amish_aspen": "amish_aspen",
     "hillside_chair": "hillside_chair",
@@ -100,6 +104,10 @@ def filename_hints_for(vendor: str, source_file: str = "") -> list[str]:
             hints.append(compact)
     if source_file:
         stem = Path(source_file).stem
+        raw = stem.lower()
+        initials = re.match(r"^([a-z]{2,4})[_-]pricelist", raw)
+        if initials:
+            hints.append(f"{initials.group(1)}_pricelist")
         stem = _YEAR_NOISE_RE.sub("", stem)
         stem = re.sub(r"[_\-]+", " ", stem).strip().lower()
         if len(stem) >= 3:
@@ -113,6 +121,36 @@ def filename_hints_for(vendor: str, source_file: str = "") -> list[str]:
         seen.add(h)
         out.append(h)
     return out
+
+
+def guess_named_parser(
+    filename: str = "",
+    *,
+    sheet_names: Optional[list[str]] = None,
+    data: Optional[bytes] = None,
+) -> tuple[str, str]:
+    """Built-in Drop detectors. Returns (vendor, parser_id) or ('', '')."""
+    names = list(sheet_names or [])
+    if not names and data and not str(filename or "").lower().endswith(".pdf"):
+        try:
+            from wide_import import list_excel_sheets
+
+            names = list_excel_sheets(data)
+        except Exception:
+            names = []
+    from backend.ashery_oak_import import looks_like_ashery_oak
+
+    if looks_like_ashery_oak(filename, names):
+        return "Ashery Oak", "ashery_oak"
+    from backend.jmw_import import looks_like_jmw
+
+    if looks_like_jmw(filename, names):
+        return "J & M Woodworking", "jmw"
+    from backend.fn_chair_import import looks_like_fn_level_one
+
+    if looks_like_fn_level_one(filename, names):
+        return "FN Chair", "fn_chair"
+    return "", ""
 
 
 def preferred_parser_for(
@@ -267,6 +305,10 @@ def run_named_parser(
         from backend.jmw_import import import_jmw_workbook
 
         return import_jmw_workbook(data, **kwargs)
+    if pid == "ashery_oak":
+        from backend.ashery_oak_import import import_ashery_oak_workbook
+
+        return import_ashery_oak_workbook(data, **kwargs)
 
     from wide_import import (
         import_amish_aspen_workbook,

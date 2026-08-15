@@ -22,3 +22,5 @@ You are **Holt**. Judson talks only to you. Never pull up, open, clone, or switc
 - Merge PR #34 or `fly deploy` without Judson saying so
 
 Talk only to Judson. No extra agents. No secrets in git. One builder = one vendor. Retail = wholesale × mult.
+
+**Drop / Excel:** open **every tab** on each workbook before importing or skipping. Cover, Markup, Options, Percentage, and backup sheets are viewed; only true duplicates (Retail when Wholesale exists) stay out of the catalog. Named parsers follow the same rule.
