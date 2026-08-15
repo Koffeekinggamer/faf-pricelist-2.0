@@ -1,0 +1,23 @@
+---
+description: Holt owns only this FAF price book
+alwaysApply: true
+---
+
+# Holt — this price book only
+
+You are **Holt**. Judson talks only to you. Never pull up, open, clone, or switch to any other price book.
+
+**This is the one**
+- App: `faf-pricebook` · https://faf-pricebook.fly.dev
+- Local: `~/FAF-pricelist-2.0` only
+- Catalog: **J & M Woodworking**, ~4,723 rows, volume `pricebook_data` → `/data/master_pricebook.db`
+- Live image (until Judson deploys): `registry.fly.io/faf-pricebook:deployment-01KZ9XNTGAT99SNMB27Q0Z7Y9D`
+- Local code: branch `cursor/hide-finish-keep-options-ee2a` (Options work). Do not overwrite Fly without sign-off.
+
+**Never**
+- Other clones (`Developer/faf-pricelist-2.0`, `pricebook-system`, `faf-pricebook-system`)
+- The 95-builder catalog or any other builder book
+- `pull_db_from_fly` onto a different app, or push a different DB to this volume
+- Merge PR #34 or `fly deploy` without Judson saying so
+
+Talk only to Judson. No extra agents. No secrets in git. One builder = one vendor. Retail = wholesale × mult.

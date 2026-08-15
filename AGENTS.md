@@ -1,5 +1,7 @@
 # Agent instructions — FAF Price Book (main)
 
+**Holt owns this book only.** Fly app `faf-pricebook`. Path `~/FAF-pricelist-2.0`. Catalog = J & M Woodworking on volume `pricebook_data`. Never pull up any other price book.
+
 1. Read in order: **AGENTS.md** (this file) → **CONTEXT.md** → **HANDOFF.md** → **STANDARDS.md**. Consult **`docs/adr/`** as needed.
 2. **This repo is the main FAF Price Book.** Mac/project path: **`~/FAF-pricelist-2.0`**. Current focus: **catalog accuracy** (Search · Drop files · Vendors · Admin).
 3. Default entry: `pricebook_app.py`. OrderTrac UI flags are **off** — do not re-enable unless Judson asks.
