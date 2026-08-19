@@ -29,7 +29,13 @@ from backend.config import (
     DEFAULT_SEARCH_LIMIT,
     THIN_CATALOG_MAX_ROWS,
 )
-from backend.drop_parse_session import DropSessionGone, DropUpload
+from backend.drop_parse_session import (
+    DropSessionGone,
+    DropUpload,
+    drop_upload_from_path,
+    is_drop_filename,
+)
+from backend.dropzone_widget import render_dropzone
 
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
@@ -68,13 +74,25 @@ st.markdown(
         color: #1f2937;
       }
       [data-testid="stHeader"] { background: rgba(255, 255, 255, 0.96); }
-      [data-testid="stSidebar"] { background: #f3f4f6; }
-      [data-testid="stSidebar"] * { color: #1f2937; }
+      [data-testid="stSidebar"] { background: #f3f4f6; color: #1f2937; }
+      [data-testid="stSidebar"] p,
+      [data-testid="stSidebar"] label,
+      [data-testid="stSidebar"] span,
+      [data-testid="stSidebar"] li { color: #1f2937; }
       .stApp a { color: #244a2e; }
       .stApp a:hover { color: #17351f; }
       .stApp [data-testid="stCaptionContainer"],
       .stApp [data-testid="stMarkdownContainer"] p {
         color: #374151;
+      }
+      /* Button labels are markdown <p>s — do not paint them body-gray. */
+      .stApp [data-testid="stButton"] [data-testid="stMarkdownContainer"] p,
+      .stApp [data-testid="stFormSubmitButton"] [data-testid="stMarkdownContainer"] p,
+      .stApp [data-testid="stDownloadButton"] [data-testid="stMarkdownContainer"] p,
+      .stApp [data-testid="stLinkButton"] [data-testid="stMarkdownContainer"] p,
+      [data-testid="stSidebar"] [data-testid="stButton"] [data-testid="stMarkdownContainer"] p,
+      [data-testid="stSidebar"] [data-testid="stButton"] span {
+        color: inherit !important;
       }
       .stApp div[data-baseweb="input"] > div,
       .stApp div[data-baseweb="select"] > div,
@@ -95,9 +113,11 @@ st.markdown(
       .stApp [data-baseweb="select"] span {
         color: #17233a;
       }
-      .stApp button[kind="primary"],
-      .stApp button[data-testid="stBaseButton-primary"] {
-        color: #ffffff;
+      /* Primary = white on forest green. kind= is not always on the DOM. */
+      .stApp button[data-testid^="stBaseButton-primary"],
+      .stApp button[data-testid^="stBaseButton-primary"] *,
+      .stApp button[data-testid^="stBaseButton-primary"] [data-testid="stMarkdownContainer"] p {
+        color: #ffffff !important;
       }
       .stApp [data-testid="stDataFrame"] {
         background: #ffffff;
@@ -641,34 +661,28 @@ else:
         )
 
 # ===========================================================================
-# TABS
+# NAV — segmented control so Drop is not trapped in an st.tabs panel
+# (Streamlit's file_uploader drag-drop is unreliable inside tabs).
 # ===========================================================================
 
+_NAV = ["Search", "Drop files", "Vendors", "Admin"]
 if SHOW_ORDERTRAC_QUOTE:
-    tab_search, tab_quote, tab_import, tab_vendors, tab_admin = st.tabs(
-        [
-            "Search",
-            "OrderTrac quote",
-            "Drop files",
-            "Vendors",
-            "Admin",
-        ]
-    )
-else:
-    tab_search, tab_import, tab_vendors, tab_admin = st.tabs(
-        [
-            "Search",
-            "Drop files",
-            "Vendors",
-            "Admin",
-        ]
-    )
-    tab_quote = None
+    _NAV = ["Search", "OrderTrac quote", "Drop files", "Vendors", "Admin"]
+nav = st.segmented_control(
+    "Section",
+    options=_NAV,
+    default="Search",
+    key="faf_nav",
+    label_visibility="collapsed",
+)
+if not nav:
+    nav = "Search"
+tab_quote = "OrderTrac quote" if SHOW_ORDERTRAC_QUOTE else None
 
 # ---------------------------------------------------------------------------
 # SEARCH
 # ---------------------------------------------------------------------------
-with tab_search:
+if nav == "Search":
     st.subheader("Find a price")
 
     # Apply pin / clear BEFORE any widgets with keys sq/sv/sf exist
@@ -1165,11 +1179,11 @@ with tab_search:
                     _save_favorites([])
                     st.rerun()
 
-if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
+if SHOW_ORDERTRAC_QUOTE and nav == "OrderTrac quote":
     # ---------------------------------------------------------------------------
     # ORDERTRAC QUOTE — FAF price book is source; OrderTrac is destination
     # ---------------------------------------------------------------------------
-    with tab_quote:
+    if True:
         st.subheader("OrderTrac quote (from FAF Price Book)")
         st.markdown(
             """
@@ -1896,7 +1910,7 @@ if SHOW_ORDERTRAC_QUOTE and tab_quote is not None:
 # ---------------------------------------------------------------------------
 # IMPORT — multi-file drop with per-builder multiplier
 # ---------------------------------------------------------------------------
-with tab_import:
+if nav == "Drop files":
     st.subheader("Drop builder price lists")
     if SHOW_SIMPLE_UI:
         st.caption(
@@ -1918,22 +1932,49 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
 **replace that builder’s catalog** so you never get duplicate builders.
             """
         )
-    st.caption(
-        "Large Drop: use **http://127.0.0.1:8501** on the Mac (not the Cloudflare "
-        "tunnel). Parsed rows stay on disk so the browser session doesn’t disconnect "
-        "while you set multipliers. Every file in a drop or folder is checked for "
-        "catalog typos and light grammar (`Occasonial` → `Occasional`)."
-    )
+    if not SHOW_SIMPLE_UI:
+        st.caption(
+            "Large Drop: use **http://127.0.0.1:8501** on the Mac (not the Cloudflare "
+            "tunnel). Parsed rows stay on disk so the browser session doesn’t disconnect "
+            "while you set multipliers. Every file in a drop or folder is checked for "
+            "catalog typos and light grammar (`Occasonial` → `Occasional`)."
+        )
 
-    uploads = st.file_uploader(
-        "Drop Excel or PDF price lists here",
-        type=["xlsx", "xls", "xlsm", "pdf"],
-        accept_multiple_files=True,
-        key="drop_files",
-        help="Drop one file, several files, or the contents of a folder. "
-        "Each file is typo-checked on parse. After a good Load, that builder "
-        "gets a named parser for the next update.",
+    zone_file = render_dropzone(key="faf_dropzone_main")
+    local_file = st.text_input(
+        "Or paste the file path",
+        key="drop_local_file",
+        placeholder="/Users/you/Downloads/Builder_2026.xlsx",
     )
+    if not SHOW_SIMPLE_UI:
+        st.caption(
+            "If the file will not land, **click Browse** (or use the folder path). "
+            "macOS sometimes blocks a drag when it labels Excel as a zip."
+        )
+    rejected_names: list[str] = []
+    uploads = []
+    disk_file = zone_file
+    local_raw = str(local_file or "").strip()
+    if local_raw:
+        from_path = drop_upload_from_path(local_raw)
+        if from_path is None:
+            p = Path(local_raw).expanduser()
+            if not p.is_file():
+                st.error(f"File not found: `{p}`")
+            else:
+                rejected_names.append(p.name)
+        else:
+            disk_file = from_path
+    if rejected_names:
+        st.warning(
+            "Not an Excel/PDF price list — skipped: "
+            + ", ".join(rejected_names)
+        )
+    if uploads or disk_file:
+        names = [getattr(u, "name", "") for u in uploads]
+        if disk_file:
+            names.append(disk_file.filename)
+        st.caption("Received **" + "**, **".join(n for n in names if n) + "**")
     locked_parsers = svc.list_builder_parsers()
     if locked_parsers:
         bits = [f"{p['vendor']} ({p['importer']})" for p in locked_parsers if p.get("vendor")]
@@ -1943,13 +1984,16 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
             "After you Load a perfected builder, Drop saves a named parser "
             "for that factory so the next book takes the same path."
         )
-    folder_path = st.text_input(
-        "Or a folder on this Mac",
-        key="drop_folder_path",
-        placeholder="/Users/…/builder-pricelists",
-        help="Reads every Excel/PDF in that folder and subfolders. "
-        "Same typo/grammar pass as a file drop.",
-    )
+    if SHOW_SIMPLE_UI:
+        folder_path = ""
+    else:
+        folder_path = st.text_input(
+            "Or a folder on this Mac",
+            key="drop_folder_path",
+            placeholder="/Users/…/builder-pricelists",
+            help="Reads every Excel/PDF in that folder and subfolders. "
+            "Same typo/grammar pass as a file drop.",
+        )
 
     commit_mode = "replace_vendor"
     if SHOW_SIMPLE_UI:
@@ -1967,6 +2011,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
             if isinstance(k, str) and (
                 k.startswith("drop_vend_")
                 or k.startswith("drop_mult_")
+                or k.startswith("drop_pending_mult_")
                 or k.startswith("drop_wb_")
                 or k.startswith("m27_")
                 or k.startswith("m17_")
@@ -2021,14 +2066,15 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                         )
                     )
 
-    if not uploads and not folder_uploads:
+    if not uploads and not folder_uploads and disk_file is None:
         # Clear Drop parse session when the uploader is emptied (CONTEXT: Clear).
         sid = st.session_state.pop("drop_session_id", None)
         if sid:
             svc.clear_drop_parse_session(sid)
             st.session_state.pop("drop_vendor_overrides", None)
             _clear_drop_widget_state()
-        st.info("Drop one or more builder price files above to begin.")
+        if not SHOW_SIMPLE_UI:
+            st.info("Drop one or more builder price files above to begin.")
     else:
         force_reparse = bool(st.session_state.pop("drop_force_reparse", False))
         prior_sid = st.session_state.get("drop_session_id")
@@ -2056,6 +2102,13 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
             for fu in folder_uploads:
                 data = folder_data.get(fu.filename, b"") if with_bytes else b""
                 out.append(DropUpload(fu.filename, data, size=fu.size))
+            if disk_file is not None:
+                if with_bytes:
+                    out.append(disk_file)
+                else:
+                    out.append(
+                        DropUpload(disk_file.filename, b"", size=disk_file.size)
+                    )
             return out
 
         sizes_ok = all(_upload_size(up) is not None for up in uploads)
@@ -2133,6 +2186,9 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
 
                 vend_key = f"drop_vend_{i}"
                 mult_key = f"drop_mult_{i}"
+                pending_mult = st.session_state.pop(f"drop_pending_mult_{i}", None)
+                if pending_mult is not None:
+                    st.session_state[mult_key] = float(pending_mult)
                 if vend_key not in st.session_state:
                     st.session_state[vend_key] = default_vend
                 if mult_key not in st.session_state:
@@ -2145,7 +2201,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                         if f.error and not f.row_count:
                             st.error(str(f.error))
                         elif f.notes:
-                            st.caption(str(f.notes)[:280])
+                            st.caption(str(f.notes)[:480])
                     variants = getattr(f, "variants", None) or {}
                     if variants and (variants.get("woods") or variants.get("addons") or variants.get("stains")):
                         bits = []
@@ -2200,23 +2256,23 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                                 f"Use workbook {det_f:g}",
                                 key=f"drop_wb_{i}",
                             ):
-                                st.session_state[mult_key] = float(det_f)
+                                st.session_state[f"drop_pending_mult_{i}"] = float(det_f)
                                 st.rerun()
                         else:
                             st.caption("No markup sheet found")
                         if SHOW_SIMPLE_UI:
                             if st.button("Use 2.7", key=f"m27_{i}"):
-                                st.session_state[mult_key] = 2.7
+                                st.session_state[f"drop_pending_mult_{i}"] = 2.7
                                 st.rerun()
                         else:
                             b_a, b_b = st.columns(2)
                             with b_a:
                                 if st.button("2.7", key=f"m27_{i}"):
-                                    st.session_state[mult_key] = 2.7
+                                    st.session_state[f"drop_pending_mult_{i}"] = 2.7
                                     st.rerun()
                             with b_b:
                                 if st.button("1.7", key=f"m17_{i}"):
-                                    st.session_state[mult_key] = 1.7
+                                    st.session_state[f"drop_pending_mult_{i}"] = 1.7
                                     st.rerun()
 
                     vend_final = (vend_edit or default_vend).strip()
@@ -2312,8 +2368,13 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                     },
                 )
 
+                _load_n = len(by_vendor_idx)
+                _load_label = (
+                    f"Standardize & load {_load_n} builder"
+                    f"{'' if _load_n == 1 else 's'} into master"
+                )
                 if st.button(
-                    f"Standardize & load {len(by_vendor_idx)} builder(s) into master",
+                    _load_label,
                     type="primary",
                     use_container_width=True,
                     key="drop_load_master",
@@ -2444,7 +2505,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
 # ---------------------------------------------------------------------------
 # VENDORS — edit multipliers
 # ---------------------------------------------------------------------------
-with tab_vendors:
+if nav == "Vendors":
     st.subheader("Modify builder multipliers")
 
     summary = svc.vendor_summary()
@@ -2636,7 +2697,7 @@ with tab_vendors:
 # ---------------------------------------------------------------------------
 # ADMIN
 # ---------------------------------------------------------------------------
-with tab_admin:
+if nav == "Admin":
     st.subheader("Admin / data quality")
     s1, s2 = st.columns(2)
     s1.metric("Rows", f"{stats['rows']:,}")

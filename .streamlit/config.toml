@@ -1,8 +1,9 @@
 [server]
 headless = true
 enableXsrfProtection = true
-# Keep WebSocket alive through Fly proxy (shorter than default 30s)
-websocketPingInterval = 15
+# Tornado 6.5 sets ping timeout = this value. 15s killed large Excel drops
+# (upload looked like it was rejected). 60s keeps Fly proxies and local Drop.
+websocketPingInterval = 60
 # Survive brief proxy blips without wiping session/login
 disconnectedSessionTTL = 3600
 # Large Drop previews / tables; still keep row payloads off session (drop_cache)

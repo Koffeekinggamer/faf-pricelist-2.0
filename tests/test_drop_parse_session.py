@@ -8,8 +8,32 @@ import time
 import openpyxl
 import pytest
 
-from backend.drop_parse_session import DropSessionGone, DropUpload
+from backend.drop_parse_session import (
+    DropSessionGone,
+    DropUpload,
+    drop_upload_from_path,
+    is_drop_filename,
+)
 from backend.service import PriceBookService
+
+
+def test_is_drop_filename_accepts_excel_and_pdf():
+    assert is_drop_filename("JMW_2026_Pricelist.xlsx")
+    assert is_drop_filename("list.XLSM")
+    assert is_drop_filename("book.pdf")
+    assert not is_drop_filename("notes.docx")
+    assert not is_drop_filename("sheet.csv")
+
+
+def test_drop_upload_from_path(tmp_path):
+    xlsx = tmp_path / "NorthRiver_2026.xlsx"
+    xlsx.write_bytes(_simple_book())
+    got = drop_upload_from_path(xlsx)
+    assert got is not None
+    assert got.filename == "NorthRiver_2026.xlsx"
+    assert got.size >= 2
+    assert drop_upload_from_path(tmp_path / "missing.xlsx") is None
+    assert drop_upload_from_path(tmp_path / "notes.txt") is None
 
 
 def _xlsx_bytes(rows: list[list], sheet: str = "Price List") -> bytes:

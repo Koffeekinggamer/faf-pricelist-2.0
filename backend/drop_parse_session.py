@@ -17,6 +17,23 @@ from typing import Optional, Sequence
 DEFAULT_TTL_SECONDS = 24 * 3600
 _CACHE_DIRNAME = "faf_drop_parse_sessions"
 _SAMPLE_SIZE = 8
+# Widget type= filters by MIME; macOS often reports xlsx as zip/octet-stream
+# and react-dropzone then rejects the drag. Accept first, filter here.
+DROP_FILE_EXTS = {".xlsx", ".xls", ".xlsm", ".pdf"}
+
+
+def is_drop_filename(name: str) -> bool:
+    """True when this filename is an Excel/PDF price list we can parse."""
+    return Path(name or "").suffix.lower() in DROP_FILE_EXTS
+
+
+def drop_upload_from_path(path: str | Path) -> DropUpload | None:
+    """Read a local Excel/PDF into a DropUpload. None if missing or wrong type."""
+    p = Path(path).expanduser()
+    if not p.is_file() or not is_drop_filename(p.name):
+        return None
+    data = p.read_bytes()
+    return DropUpload(p.name, data, size=len(data))
 
 
 class DropSessionGone(Exception):
