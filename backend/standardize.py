@@ -104,6 +104,7 @@ _WOOD_PHRASES = [
     "Prime Walnut",
     "Tiger Maple",
     "Rough Sawn Wormy Maple",
+    "Rough Sawn Brown Maple",
     "Rough Sawn White Oak",
     "Rough Sawn Maple",
     "Wormy Maple",

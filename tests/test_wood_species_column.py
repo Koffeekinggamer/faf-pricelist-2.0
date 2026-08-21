@@ -38,6 +38,12 @@ def test_split_wood_names_the_catalog_already_uses_are_left_alone():
     )
 
 
+def test_roughsawn_brown_maple_is_one_wood_not_three():
+    """AJ's prints it as one word. It is a real species column, not Rough + Sawn."""
+    assert standardize_species("Roughsawn Brown Maple") == "Rough Sawn Brown Maple"
+    assert standardize_species("Rough Sawn Brown Maple") == "Rough Sawn Brown Maple"
+
+
 def test_price_header_is_not_a_wood():
     assert standardize_species("Fin.Retail") is None
     assert standardize_species("Unfin.Retail") is None

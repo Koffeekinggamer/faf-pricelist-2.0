@@ -55,6 +55,9 @@ class CatalogSpec:
     vendor: str
     extra_tokens: tuple[str, ...] = ()
     xml_needles: tuple[bytes, ...] = ()
+    # Dotted path to a shape-specific reader. Detection and the lock stay here
+    # so the folder name still resolves the builder; only parsing moves out.
+    reader: str = ""
 
     def tokens(self) -> tuple[str, ...]:
         vend = self.vendor.lower().replace("&", " and ").replace("'", " ")
@@ -82,7 +85,12 @@ class CatalogSpec:
 # Shape-specific readers (FN, Artisan, Criswell, J&M, Ashery, Patio Kraft,
 # LAMB, Windy Acres) stay in builder_reader_registry and are not listed here.
 CATALOG_SPECS: tuple[CatalogSpec, ...] = (
-    CatalogSpec("ajs_furniture", "AJ's Furniture", extra_tokens=("ajs furniture", "aj furniture")),
+    CatalogSpec(
+        "ajs_furniture",
+        "AJ's Furniture",
+        extra_tokens=("ajs furniture", "aj furniture"),
+        reader="backend.ajs_import:import_ajs_workbook",
+    ),
     CatalogSpec("black_horse_furniture", "Black Horse Furniture"),
     CatalogSpec("brookside_home_furnishings", "Brookside Home Furnishings", extra_tokens=("brookside",)),
     CatalogSpec("crystal_valley_hardwoods", "Crystal Valley Hardwoods", extra_tokens=("cvh",)),
@@ -343,6 +351,14 @@ def import_catalog_workbook(
     return tag_import_result(result, spec.parser_id)
 
 
+def _spec_reader(spec: CatalogSpec):
+    if not spec.reader:
+        return partial(import_catalog_workbook, spec)
+    from backend.builder_reader_registry import _symbol
+
+    return _symbol(spec.reader)
+
+
 def catalog_reader_entries() -> tuple[ReaderEntry, ...]:
     return tuple(
         ReaderEntry(
@@ -350,7 +366,7 @@ def catalog_reader_entries() -> tuple[ReaderEntry, ...]:
             spec.vendor,
             layouts=(spec.parser_id,),
             detect_fn=spec.matches,
-            reader_fn=partial(import_catalog_workbook, spec),
+            reader_fn=_spec_reader(spec),
         )
         for spec in CATALOG_SPECS
     )
