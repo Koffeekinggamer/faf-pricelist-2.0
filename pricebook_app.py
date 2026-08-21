@@ -2089,15 +2089,6 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
         if disk_file:
             names.append(disk_file.filename)
         st.caption("Received **" + "**, **".join(n for n in names if n) + "**")
-    locked_parsers = svc.list_builder_parsers()
-    if locked_parsers:
-        bits = [f"{p['vendor']} ({p['importer']})" for p in locked_parsers if p.get("vendor")]
-        st.caption("Named parsers ready for updates: " + " · ".join(bits))
-    else:
-        st.caption(
-            "After you Load a perfected builder, Drop saves a named parser "
-            "for that factory so the next book takes the same path."
-        )
     if SHOW_SIMPLE_UI:
         folder_path = ""
     else:
