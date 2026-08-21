@@ -8,7 +8,7 @@
 4. Never commit `*.db`, `.env`, or `.streamlit/secrets.toml`.
 5. Local port **8501** (Fly: https://faf-pricebook.fly.dev).
 6. `pricebook_app.py` is the **only** app entrypoint. Old variations (`pricebook_app_slim.py`, `pricebook_app_legacy.py`) were purged; the slim experiment history remains on branch `backup/phase1-slim-2026-07-26` if ever needed.
-7. Thin UI; put logic in `backend.PriceBookService`. One builder = one vendor; retail = wholesale × mult (2.7 default, Genuine Oak 1.7).
+7. Thin UI; put logic in `backend.PriceBookService`. One builder = one vendor; retail = wholesale × mult (2.7 default, Genuine Oak 1.7). Every builder Excel encodes Options; empty Search Options is a capture miss, not “no Options.” Never unhide a sheet or row (hidden leftovers are often duplicates). Duplicate cleanup reads the full row first.
 
 ## Fast ops (Mac)
 

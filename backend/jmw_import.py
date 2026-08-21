@@ -14,7 +14,6 @@ and treats Crypton banners as Collection — hence empty Option / one wood.
 
 from __future__ import annotations
 
-import io
 import re
 from typing import Any, Optional
 
@@ -412,9 +411,9 @@ def import_jmw_workbook(
     pct_name = next((n for n in names if _PCT_SHEET.search(str(n).strip())), None)
     if pct_name:
         try:
-            raw = pd.read_excel(
-                io.BytesIO(data), sheet_name=pct_name, header=None, engine="openpyxl"
-            )
+            from backend.workbook_sheets import read_sheet
+
+            raw = read_sheet(data, pct_name, header=None)
             wood_pct = parse_wood_percentages(raw)
             tried.append(
                 {
@@ -444,7 +443,9 @@ def import_jmw_workbook(
             continue
 
         try:
-            raw = pd.read_excel(io.BytesIO(data), sheet_name=name, header=None, engine="openpyxl")
+            from backend.workbook_sheets import read_sheet
+
+            raw = read_sheet(data, name, header=None)
         except Exception as e:
             tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)[:200]})
             continue

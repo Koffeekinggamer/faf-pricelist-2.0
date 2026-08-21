@@ -56,6 +56,15 @@ def test_true_copies_verify():
     assert reason == ""
 
 
+def test_same_sku_different_retail_is_not_a_duplicate():
+    a = _row(desc="Nightstand", base=200.0)
+    b = dict(a)
+    b["adjusted_price"] = 2000.0
+    ok, reason = verify_duplicate_group([a, b])
+    assert ok is False
+    assert "differs" in reason
+
+
 def test_cleanup_skips_queen_full_and_deletes_only_true_copies(tmp_path):
     db = tmp_path / "t.db"
     init_db(db)

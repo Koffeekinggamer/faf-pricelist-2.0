@@ -134,3 +134,29 @@ def test_fn_chair_still_lists_cats(tmp_path):
         ]
     )
     assert repo.list_option_keys("FN Chair") == ["Cat. 1", "Cat. 2"]
+
+
+def test_standard_premium_wood_columns_are_wood_not_options(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    repo = PriceBookRepository(db)
+    repo.insert_rows(
+        [
+            _row("Millcraft Co", species="Standard Wood", part="NS1"),
+            _row("Millcraft Co", species="Premium Wood", part="NS2"),
+            _row(
+                "Millcraft Co",
+                species=None,
+                option_key="Two-tone",
+                part="Two-tone",
+                line_kind="addon",
+            ),
+        ]
+    )
+    opts = repo.list_option_keys("Millcraft Co")
+    woods = repo.list_species(vendor="Millcraft Co")
+    assert "Two-tone" in opts
+    assert "Standard Wood" not in opts
+    assert "Premium Wood" not in opts
+    assert "Standard Wood" in woods
+    assert "Premium Wood" in woods

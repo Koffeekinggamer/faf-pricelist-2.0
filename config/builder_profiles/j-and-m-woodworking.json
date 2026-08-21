@@ -1,7 +1,11 @@
 {
   "version": 1,
   "vendor": "J & M Woodworking",
-  "item_upcharge_option_keywords": ["drawer", "door", "slide"],
+  "item_upcharge_option_keywords": [
+    "drawer",
+    "door",
+    "slide"
+  ],
   "drawer_door_item_keywords": [
     "drawer",
     "dresser",
@@ -21,30 +25,67 @@
     "console",
     "door"
   ],
-  "drawer_door_exclude_keywords": ["mirror"],
-  "compound_item_markers": ["piece set", "pc set", "piece bedroom"],
+  "drawer_door_exclude_keywords": [
+    "mirror"
+  ],
+  "compound_item_markers": [
+    "piece set",
+    "pc set",
+    "piece bedroom"
+  ],
   "category_synonym_overrides": [
     {
-      "when_all": ["man", "chest"],
-      "match_category_any": ["manschest"],
-      "match_category_all": ["man", "chest"]
+      "when_all": [
+        "man",
+        "chest"
+      ],
+      "match_category_any": [
+        "manschest"
+      ],
+      "match_category_all": [
+        "man",
+        "chest"
+      ]
     },
     {
-      "when_any": ["chifferobe", "wardrobe"],
-      "match_category_any": ["armoire"]
+      "when_any": [
+        "chifferobe",
+        "wardrobe"
+      ],
+      "match_category_any": [
+        "armoire"
+      ]
     },
     {
-      "when_any": ["tri-view", "triview", "tri view"],
-      "match_category_any": ["triview"],
-      "match_category_all": ["tri", "view"]
+      "when_any": [
+        "tri-view",
+        "triview",
+        "tri view"
+      ],
+      "match_category_any": [
+        "triview"
+      ],
+      "match_category_all": [
+        "tri",
+        "view"
+      ]
     },
     {
-      "when_any": ["lingerie"],
-      "match_category_any": ["lingerie"]
+      "when_any": [
+        "lingerie"
+      ],
+      "match_category_any": [
+        "lingerie"
+      ]
     },
     {
-      "when_all": ["studio", "chest"],
-      "match_category_any": ["studio"]
+      "when_all": [
+        "studio",
+        "chest"
+      ],
+      "match_category_any": [
+        "studio"
+      ]
     }
   ],
   "charge_shapes": {
@@ -67,18 +108,29 @@
       "two tone",
       "rub through"
     ],
-    "custom_tokens": ["custom", "special", "extra", "upgrade"]
+    "custom_tokens": [
+      "custom",
+      "special",
+      "extra",
+      "upgrade"
+    ]
   },
   "parser": {
     "importer": "jmw",
-    "source_file": "JMW_2026_Pricelist_0426.xlsx",
+    "source_file": "Downloads/JMW_2026_Pricelist_0426.xlsx",
     "filename_hints": [
       "j & m woodworking",
       "j and m woodworking",
+      "jmwoodworking",
       "jandmwoodworking",
       "jmw"
     ],
-    "layouts": [],
+    "layouts": [
+      "jmw_br_maple_expand",
+      "jmw_custom_addons",
+      "jmw_specialty_finish_addons",
+      "jmw_wood_percentages"
+    ],
     "locked": true
   }
 }

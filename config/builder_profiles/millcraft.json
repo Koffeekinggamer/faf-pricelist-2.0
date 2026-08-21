@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "vendor": "Millcraft",
+  "parser": {
+    "importer": "millcraft",
+    "source_file": "Millcraft/Download_2026_Pricelist_94838.xlsx",
+    "filename_hints": [
+      "millcraft"
+    ],
+    "layouts": [
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

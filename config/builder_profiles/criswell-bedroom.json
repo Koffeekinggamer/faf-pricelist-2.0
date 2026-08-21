@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "vendor": "Criswell Bedroom",
+  "parser": {
+    "importer": "criswell",
+    "source_file": "Download_2025_Pricelists_35092_unzipped/Beds A-F.xlsx + Download_2025_Pricelists_35092_unzipped/Beds H-W.xlsx + Download_2025_Pricelists_35092_unzipped/Wholesale Price List.xlsx + Download_2025_Pricelists_35092_unzipped/Living Rooms Price List.xlsx",
+    "filename_hints": [
+      "criswell bedroom",
+      "criswellbedroom",
+      "beds a-f",
+      "beds h-w",
+      "living rooms price list",
+      "cwf_pricelists",
+      "beds a f",
+      "beds h w",
+      "living rooms"
+    ],
+    "layouts": [
+      "criswell",
+      "viewed"
+    ],
+    "locked": true
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "vendor": "Five Star Tables",
+  "parser": {
+    "importer": "five_star_tables",
+    "source_file": "Five_Star_Tables/Download_2026_Dining_Furniture_Pricelist_296087.xlsx",
+    "filename_hints": [
+      "five star tables",
+      "fivestartables"
+    ],
+    "layouts": [
+      "multi_name_price",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

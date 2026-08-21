@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "vendor": "Red Barn Woodworking",
+  "parser": {
+    "importer": "red_barn_woodworking",
+    "source_file": "Red_Barn_Woodworking/Download_2026_Pricelist_173991.xls",
+    "filename_hints": [
+      "red barn woodworking",
+      "redbarnwoodworking"
+    ],
+    "layouts": [
+      "viewed_empty",
+      "viewed_markup",
+      "viewed_options",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

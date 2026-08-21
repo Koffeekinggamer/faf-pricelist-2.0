@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "vendor": "Hermies Table Shop",
+  "parser": {
+    "importer": "hermies_table_shop",
+    "source_file": "Download_2026_Pricelists_1006710_unzipped/HTS_2026_Pricelist_0326.xlsx",
+    "filename_hints": [
+      "hermies table shop",
+      "hermiestableshop",
+      "hermie",
+      "hts"
+    ],
+    "layouts": [
+      "viewed_markup",
+      "viewed_options",
+      "wide_finish"
+    ],
+    "locked": true
+  }
+}

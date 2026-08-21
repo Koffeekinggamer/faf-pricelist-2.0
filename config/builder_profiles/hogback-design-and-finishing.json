@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "vendor": "Hogback Design And Finishing",
+  "parser": {
+    "importer": "hogback_design_and_finishing",
+    "source_file": "Download_2026_Pricelist_2196.xlsx",
+    "filename_hints": [
+      "hogback design and finishing",
+      "hogbackdesignandfinishing",
+      "hogback"
+    ],
+    "layouts": [
+      "long_flat",
+      "unknown",
+      "viewed_cover",
+      "viewed_markup",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

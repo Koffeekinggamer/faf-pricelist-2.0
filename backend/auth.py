@@ -124,6 +124,22 @@ def check_login(
     return False
 
 
+def session_from_user(user: dict) -> dict:
+    """Floor session from an app_users row. Never includes password_hash."""
+    user_id = user.get("id") if user.get("id") is not None else user.get("user_id")
+    username = str(user.get("username") or "").strip()
+    return {
+        "user_id": int(user_id) if user_id is not None else None,
+        "username": username,
+        "display_name": user.get("display_name") or username,
+        "role": user.get("role") or "sales",
+        "must_change_password": bool(user.get("must_change_password")),
+        "source": user.get("source") or "local",
+        "ordertrac_user_guid": user.get("ordertrac_user_guid"),
+        "ordertrac_display_name": user.get("ordertrac_display_name"),
+    }
+
+
 def login_user(
     username: str,
     password: str,
@@ -144,16 +160,7 @@ def login_user(
             user = repo.authenticate(username, password)
             if not user:
                 return None
-            return {
-                "user_id": int(user["id"]),
-                "username": user["username"],
-                "display_name": user.get("display_name") or user["username"],
-                "role": user.get("role") or "sales",
-                "must_change_password": bool(user.get("must_change_password")),
-                "source": user.get("source") or "local",
-                "ordertrac_user_guid": user.get("ordertrac_user_guid"),
-                "ordertrac_display_name": user.get("ordertrac_display_name"),
-            }
+            return session_from_user(user)
     except Exception:
         pass
 
@@ -161,16 +168,16 @@ def login_user(
     if not check_login(username, password, db_path=db_path):
         return None
     exp_user, _, _ = get_expected_credentials()
-    return {
-        "user_id": None,
-        "username": exp_user,
-        "display_name": exp_user,
-        "role": "admin",
-        "must_change_password": False,
-        "source": "legacy",
-        "ordertrac_user_guid": None,
-        "ordertrac_display_name": None,
-    }
+    return session_from_user(
+        {
+            "id": None,
+            "username": exp_user,
+            "display_name": exp_user,
+            "role": "admin",
+            "must_change_password": False,
+            "source": "legacy",
+        }
+    )
 
 
 def credentials_source_hint() -> str:
@@ -196,6 +203,7 @@ def credentials_source_hint() -> str:
 __all__ = [
     "check_login",
     "login_user",
+    "session_from_user",
     "ensure_seed_admin",
     "get_expected_credentials",
     "credentials_source_hint",

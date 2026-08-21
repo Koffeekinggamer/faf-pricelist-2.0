@@ -116,6 +116,20 @@ def test_parse_options_addons_and_extra_woods():
     assert paint["base_price"] is None
 
 
+def test_bookcase_doors_parse_from_visible_options_tab():
+    df = pd.DataFrame(
+        [
+            ["Bookcase Options"],
+            ['1-48" High Doors on 24" Wide', 85],
+            ["Options"],
+            ["For painting , Add:", 0.35],
+        ]
+    )
+    doors = parse_bookcase_door_addons(df, vendor="Ashery Oak")
+    assert doors
+    assert any("24" in str(d["option_key"]) for d in doors)
+
+
 def test_uploaded_ao_links_woods_to_items():
     if not UPLOAD.is_file():
         return
@@ -178,7 +192,6 @@ def test_ao_dropdowns_after_insert(tmp_path):
     assert "Oak" in woods
     assert "QSWO" in woods
     assert "Paint" in opts
-    assert any("bookcase door" in o.lower() for o in opts)
 
 
 def test_ao_views_every_tab():
@@ -187,12 +200,12 @@ def test_ao_views_every_tab():
     data = UPLOAD.read_bytes()
     views = read_all_sheets(data)
     names = {v.name for v in views}
-    assert "Master" in names
     assert "Products" in names
     assert "Cover" in names
     assert "Markup" in names
     assert any("Options&Portal" == n for n in names)
-    assert any("bk" in n.lower() for n in names)
+    assert "Master" not in names
+    assert not any("bk" in n.lower() for n in names)
     assert all(v.role != "error" for v in views)
 
     result = import_ashery_oak_workbook(data, vendor="Ashery Oak", filename=UPLOAD.name)
@@ -200,14 +213,7 @@ def test_ao_views_every_tab():
     assert set(tried) == names
     assert all("viewed" in str(s.get("note") or s.get("layout") or "") or s.get("rows", 0) > 0
                for s in result.sheets_tried)
-    assert tried["Master"]["rows"] > 0
     assert tried["Products"]["layout"] == "ashery_oak_products_fill"
-    doors = parse_bookcase_door_addons(
-        next(v.raw for v in views if "bk" in v.name.lower()),
-        vendor="Ashery Oak",
-    )
-    assert doors
-    assert any("24" in str(d["option_key"]) for d in doors)
 
 
 def test_drop_session_uses_ashery_oak_parser(tmp_path):

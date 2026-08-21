@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "vendor": "Frog Pond Furniture",
+  "parser": {
+    "importer": "frog_pond_furniture",
+    "source_file": "Download_2026_Pricelist_2499.xlsx",
+    "filename_hints": [
+      "frog pond furniture",
+      "frogpondfurniture"
+    ],
+    "layouts": [
+      "long_flat",
+      "multi_name_price",
+      "unknown",
+      "viewed_cover",
+      "viewed_empty",
+      "viewed_markup",
+      "viewed_options",
+      "wide_finish",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

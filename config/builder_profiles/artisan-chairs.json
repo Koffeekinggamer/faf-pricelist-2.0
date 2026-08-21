@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "vendor": "Artisan Chairs",
+  "item_upcharge_option_keywords": [
+    "kick plate"
+  ],
+  "drawer_door_item_keywords": [
+    "bar stool",
+    "barstool"
+  ],
+  "drawer_door_exclude_keywords": [],
+  "option_groups": [
+    {
+      "name": "Upholstered seat",
+      "selection": "single",
+      "match": "^(Fabric Seat|Premium Seat \\+ Revolutionary \\+ Crypton|Faux or Ultra Leather Seat|Leather Seat)$"
+    },
+    {
+      "name": "Wood seat",
+      "selection": "single",
+      "match": "(Seat on Brown Maple|Seats on Brown Maple|Headrest and .* Seat)$"
+    }
+  ],
+  "finish_as_option": {
+    "option_key": "Unfinished",
+    "selects": "unfinished",
+    "default": "finished"
+  },
+  "parser": {
+    "importer": "artisan_chairs",
+    "source_file": "Downloads/AC_2026_Pricelist_0226.xlsx",
+    "filename_hints": [
+      "artisan chairs",
+      "artisanchairs",
+      "ac_20",
+      "ac_pricelist"
+    ],
+    "layouts": [
+      "viewed_retail",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

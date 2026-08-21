@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "vendor": "FN Chair",
+  "option_groups": [
+    {
+      "name": "Finish category",
+      "selection": "single",
+      "match": "^Cat\\.?\\s*\\d+$"
+    },
+    {
+      "name": "Fabric tier",
+      "selection": "single",
+      "match": "(fabric|leather|ultra|\\bCOM\\b)"
+    }
+  ],
+  "parser": {
+    "importer": "fn_chair",
+    "source_file": "Downloads/FNC_2027_Pricelist_0826.xlsm",
+    "filename_hints": [
+      "fn chair",
+      "fnchair",
+      "fnc"
+    ],
+    "layouts": [
+      "fn_level_one_pl_print"
+    ],
+    "locked": true
+  }
+}

@@ -22,6 +22,7 @@ class ExcelImportPreview:
     multiplier_used: float = DEFAULT_MULTIPLIER
     detected_importer: str = ""
     parser_source: str = ""
+    priced_option_count: int = 0
 
 
 @dataclass
@@ -86,6 +87,7 @@ class ImportService:
             multiplier_used=mult,
             detected_importer=getattr(wb, "detected_importer", "") or "",
             parser_source=getattr(wb, "parser_source", "") or "",
+            priced_option_count=int(getattr(wb, "expected_option_lines", 0) or 0),
         )
 
     def preview_excel_manual(

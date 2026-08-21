@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendor": "Signature Designs",
+  "parser": {
+    "importer": "signature_designs",
+    "source_file": "Signature_Designs/Download_2025_Pricelist_478597.xlsx",
+    "filename_hints": [
+      "signature designs",
+      "signaturedesigns"
+    ],
+    "layouts": [
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

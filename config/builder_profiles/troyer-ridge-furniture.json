@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "vendor": "Troyer Ridge Furniture",
+  "parser": {
+    "importer": "troyer_ridge_furniture",
+    "source_file": "Troyer_Ridge_Furniture/Download_2026_Pricelist_19590.xlsx",
+    "filename_hints": [
+      "troyer ridge furniture",
+      "troyerridgefurniture"
+    ],
+    "layouts": [
+      "multi_name_price",
+      "unknown",
+      "viewed_empty",
+      "wide_finish",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

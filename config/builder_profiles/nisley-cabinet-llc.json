@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "vendor": "Nisley Cabinet LLC",
+  "parser": {
+    "importer": "nisley_cabinet_llc",
+    "source_file": "Nisley_Cabinet_LLC/Download_2026_Pricelist_18179.xlsx",
+    "filename_hints": [
+      "nisley cabinet llc",
+      "nisleycabinetllc",
+      "nisley"
+    ],
+    "layouts": [
+      "long_flat",
+      "multi_name_price",
+      "unknown",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

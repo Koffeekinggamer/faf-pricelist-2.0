@@ -1,0 +1,316 @@
+"""Size-option pricing and finishes → Search Options (addon rows) for every builder.
+
+Factory books put +10%/+20% size changes, two-tone, glaze, paint, distressing,
+and flat $ adders in front matter or Options tabs. Those are Options, not
+catalog footnotes. Extract them as line_kind=addon so Search lists them.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any, Optional
+
+import pandas as pd
+
+from backend.workbook_sheets import read_all_sheets
+
+_ADD_PCT_HEADER = re.compile(r"(?i)^\s*ADD\s+(\d+(?:\.\d+)?)\s*%\s*$")
+_INLINE_ADD_PCT = re.compile(
+    r"(?i)(?:for\s+)?(?P<label>.{3,40}?)\s*[,:\-–]?\s*add(?:ing)?\s+(?P<pct>\d+(?:\.\d+)?)\s*%"
+)
+_INLINE_ADD_DOLLAR = re.compile(
+    r"(?i)(?:for\s+)?(?P<label>.{3,40}?)\s*[,:\-–]?\s*add(?:ing)?\s+\$?\s*(?P<amt>\d+(?:\.\d+)?)"
+)
+_LABELED_DOLLAR = re.compile(
+    r"(?i)^\s*(?:[•\-\*]\s*)?(?:(?P<sku>[A-Z]{2,8}\d+[A-Z]{0,6})[\s\-]+)?(?P<label>[^:$]{3,48}?)\s*:\s*\$?\s*(?P<amt>\d+(?:\.\d+)?)\s*(?:each)?\s*$"
+)
+_DASH_DOLLAR = re.compile(
+    r"(?i)(?P<label>.{3,40}?)\s*[\-–]\s*add\s+\$?\s*(?P<amt>\d+(?:\.\d+)?)"
+)
+
+_SKIP_LABEL = re.compile(
+    r"(?i)^(oak|maple|cherry|walnut|hickory|alder|qswo|standard wood|premium wood|"
+    r"description|item number|collection|wholesale|retail|cover|index|"
+    r"password|price|to|prices? for the year)$"
+)
+_JUNK_LABEL = re.compile(r"(?i)password|price list|option\s*:")
+_UNFINISHED_DEDUCT = re.compile(r"(?i)unfinish")
+_NO_UPCHARGE = re.compile(r"(?i)no\s+upcharge")
+_ADD_ON_BANNER = re.compile(r"(?i)add[\s\-]*on\s+options?")
+_FINISH_SECTION = re.compile(r"(?i)premium\s+finish|finish\s+choices|optional\s+finish")
+_SIZE_UP_TO = re.compile(r"(?i)size\s*changes?|up to\s*10|customized up to")
+_SIZE_OVER = re.compile(r"(?i)over\s*10")
+_TWO_TONE = re.compile(r"(?i)two[\s\-]*ton")
+_DISTRESS = re.compile(r"(?i)^distressing$")
+_OIL = re.compile(r"(?i)hand[\s\-]*rubbed\s*oil")
+_CATALOG_HDR = re.compile(r"(?i)item\s*(number|#)|standard\s*wood")
+_SKUISH = re.compile(r"^[A-Z]{2,6}\d{2,}")
+
+
+def _cell(v: Any) -> str:
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return ""
+    s = str(v).replace("\n", " ").strip()
+    if s.lower() in {"nan", "none"}:
+        return ""
+    return re.sub(r"\s+", " ", s)
+
+
+def _norm_label(raw: str) -> str:
+    s = re.sub(r"\s+", " ", (raw or "").strip(" -–:•*"))
+    s = re.sub(r"(?i)\s*add(?:ing)?\s*$", "", s).strip(" -–:")
+    aliases = {
+        r"(?i)^two[\s\-]*toning$": "Two-tone",
+        r"(?i)^two[\s\-]*tone$": "Two-tone",
+        r"(?i)^two[\s\-]*tone staining$": "Two-tone",
+        r"(?i)^hand[\s\-]*rubbed\s*oil$": "Hand-rubbed oil",
+        r"(?i)^glazing\s*&\s*painting$": "Glaze & paint",
+        r"(?i)^paint and glaze$": "Paint and glaze",
+        r"(?i)^size changes?$": 'Size change (up to 10")',
+    }
+    for pat, label in aliases.items():
+        if re.fullmatch(pat, s):
+            return label
+    if len(s) > 48:
+        s = s[:45].rstrip() + "…"
+    return s
+
+
+def _addon(
+    vendor: str,
+    label: str,
+    *,
+    dollars: Optional[float] = None,
+    pct: Optional[float] = None,
+    notes: str = "",
+) -> Optional[dict[str, Any]]:
+    name = _norm_label(label)
+    if not name or _SKIP_LABEL.fullmatch(name) or _UNFINISHED_DEDUCT.search(name):
+        return None
+    if _JUNK_LABEL.search(name):
+        return None
+    if name[:1].islower() or name[:1] in {",", '"', "'", "(", ")"}:
+        return None
+    if dollars is None and pct is None:
+        return None
+    rec: dict[str, Any] = {
+        "vendor": vendor,
+        "collection": "Addons",
+        "part_number": name,
+        "description": name,
+        "option_key": name,
+        "species": None,
+        "finish_state": "finished",
+        "price_basis": "wholesale",
+        "line_kind": "addon",
+        "notes": notes or "book options",
+    }
+    if dollars is not None:
+        rec["base_price"] = float(dollars)
+        rec["addon_pct"] = None
+    else:
+        rec["base_price"] = None
+        rec["addon_pct"] = float(pct)
+    return rec
+
+
+def _is_sku_price_row(cells: list[str]) -> bool:
+    nums = 0
+    sku = False
+    for c in cells:
+        if _SKUISH.match(c):
+            sku = True
+        try:
+            float(c.replace(",", ""))
+            nums += 1
+        except ValueError:
+            pass
+    return sku and nums >= 2
+
+
+def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict[str, Any]]:
+    if raw is None or raw.empty:
+        return []
+    df = raw.dropna(how="all").reset_index(drop=True)
+    out: list[dict[str, Any]] = []
+    current_pct: Optional[float] = None
+    finish_section = False
+    no_upcharge = False
+    in_addons = False
+
+    for i in range(len(df)):
+        cells = [_cell(df.iat[i, j]) for j in range(df.shape[1])]
+        cells = [c for c in cells if c]
+        if not cells:
+            continue
+        if _is_sku_price_row(cells):
+            continue
+        joined = " | ".join(cells)
+
+        if _NO_UPCHARGE.search(joined):
+            no_upcharge = True
+            current_pct = None
+            continue
+        if _ADD_ON_BANNER.search(joined):
+            in_addons = True
+            no_upcharge = False
+        if _FINISH_SECTION.search(joined):
+            finish_section = True
+            no_upcharge = False
+
+        hdr = None
+        for c in cells:
+            m = _ADD_PCT_HEADER.match(c)
+            if m:
+                hdr = m
+                break
+        if hdr:
+            current_pct = float(hdr.group(1))
+            no_upcharge = False
+            continue
+
+        if any(_CATALOG_HDR.search(c) for c in cells) and any(
+            re.search(r"(?i)premium\s*wood|standard\s*wood|item", c) for c in cells
+        ):
+            finish_section = False
+            current_pct = None
+            in_addons = False
+            continue
+
+        for c in cells:
+            if _UNFINISHED_DEDUCT.search(c) and re.search(r"(?i)deduct|less|%", c):
+                continue
+
+            labeled = _LABELED_DOLLAR.match(c) or _DASH_DOLLAR.search(c)
+            if labeled:
+                rec = _addon(
+                    vendor,
+                    labeled.group("label"),
+                    dollars=float(labeled.group("amt")),
+                    notes="flat add-on",
+                )
+                if rec:
+                    out.append(rec)
+                continue
+
+            inline_p = _INLINE_ADD_PCT.search(c)
+            if inline_p:
+                rec = _addon(
+                    vendor,
+                    inline_p.group("label"),
+                    pct=float(inline_p.group("pct")),
+                    notes="percent option",
+                )
+                if rec:
+                    out.append(rec)
+                continue
+
+            inline_d = _INLINE_ADD_DOLLAR.search(c)
+            if inline_d and "%" not in c:
+                rec = _addon(
+                    vendor,
+                    inline_d.group("label"),
+                    dollars=float(inline_d.group("amt")),
+                    notes="flat add-on",
+                )
+                if rec:
+                    out.append(rec)
+                continue
+
+            if no_upcharge and not in_addons:
+                continue
+
+            if current_pct is not None:
+                if _SIZE_OVER.search(c) or (
+                    current_pct >= 15 and _SIZE_OVER.search(joined) and _SIZE_UP_TO.search(c)
+                ):
+                    rec = _addon(
+                        vendor,
+                        'Size change (over 10")',
+                        pct=current_pct,
+                        notes="size option",
+                    )
+                    if rec:
+                        out.append(rec)
+                    continue
+                if _SIZE_UP_TO.search(c):
+                    rec = _addon(
+                        vendor,
+                        'Size change (up to 10")',
+                        pct=current_pct,
+                        notes="size option",
+                    )
+                    if rec:
+                        out.append(rec)
+                    continue
+                if _TWO_TONE.search(c):
+                    rec = _addon(vendor, "Two-tone", pct=current_pct, notes="finish option")
+                    if rec:
+                        out.append(rec)
+                    continue
+                if finish_section and _DISTRESS.search(c):
+                    rec = _addon(vendor, "Distressing", pct=current_pct, notes="finish option")
+                    if rec:
+                        out.append(rec)
+                    continue
+                if finish_section and _OIL.search(c):
+                    rec = _addon(vendor, "Hand-rubbed oil", pct=current_pct, notes="finish option")
+                    if rec:
+                        out.append(rec)
+                    continue
+
+    return _dedupe(out)
+
+
+def _dedupe(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        key = str(row.get("option_key") or "").strip().lower()
+        if not key:
+            continue
+        prev = seen.get(key)
+        if prev is None:
+            seen[key] = row
+            continue
+        if prev.get("base_price") is None and row.get("base_price") is not None:
+            seen[key] = row
+        elif prev.get("addon_pct") is None and row.get("addon_pct") is not None:
+            seen[key] = row
+    return list(seen.values())
+
+
+def extract_book_options(data: bytes, *, vendor: str = "") -> list[dict[str, Any]]:
+    """Pull size-option % and finish/flat adders from every tab."""
+    rows: list[dict[str, Any]] = []
+    try:
+        views = read_all_sheets(data)
+    except Exception:
+        return []
+    for view in views:
+        if view.role in {"cover", "markup", "empty", "error"}:
+            continue
+        rows.extend(extract_from_frame(view.raw, vendor=vendor))
+    return _dedupe(rows)
+
+
+def merge_book_options(result: Any, data: bytes, *, vendor: str = "") -> Any:
+    extra = extract_book_options(data, vendor=vendor)
+    if not extra:
+        return result
+    df = result.long_df
+    existing = set()
+    if df is not None and not df.empty and "option_key" in df.columns:
+        existing = {
+            str(x).strip().lower()
+            for x in df["option_key"].dropna()
+            if str(x).strip()
+        }
+    new = [r for r in extra if r["option_key"].lower() not in existing]
+    if not new:
+        return result
+    add = pd.DataFrame(new)
+    if df is None or df.empty:
+        result.long_df = add
+    else:
+        result.long_df = pd.concat([df, add], ignore_index=True)
+    return result

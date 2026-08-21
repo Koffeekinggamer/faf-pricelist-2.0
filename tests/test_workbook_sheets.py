@@ -6,7 +6,7 @@ import io
 
 import openpyxl
 
-from backend.workbook_sheets import classify_sheet_role, read_all_sheets
+from backend.workbook_sheets import classify_sheet_role, excel_engine, read_all_sheets, read_sheet
 from wide_import import import_workbook
 
 
@@ -66,3 +66,62 @@ def test_generic_drop_views_options_instead_of_skipping():
     if not result.long_df.empty and "line_kind" in result.long_df.columns:
         keys = set(addons["option_key"].astype(str))
         assert "Paint" in keys or "Drawer lock" in keys
+
+
+def test_read_sheet_uses_excel_engine_not_filename():
+    data = _book({"Wholesale": [["Item", "Oak"], ["T1", 100]]})
+    raw = read_sheet(data, "Wholesale", header=None)
+    assert not raw.empty
+    assert excel_engine(data) == "openpyxl"
+
+
+def test_excel_engine_picks_xlrd_for_ole_and_openpyxl_for_zip():
+    assert excel_engine(b"\xd0\xcf\x11\xe0" + b"\x00" * 20) == "xlrd"
+    assert excel_engine(b"PK\x03\x04" + b"\x00" * 20) == "openpyxl"
+    assert excel_engine(_book({"Sheet1": [["a"]]})) == "openpyxl"
+
+
+def test_hidden_sheet_is_left_hidden_and_not_imported():
+    wb = openpyxl.Workbook()
+    vis = wb.active
+    vis.title = "Pricelist"
+    vis.append(["Part #", "Description", "Oak"])
+    vis.append(["V1", "Visible Table", 100])
+    vis.append(["V2", "Visible Bench", 140])
+    vis.append(["V3", "Visible Chest", 220])
+    hid = wb.create_sheet("Master")
+    hid.sheet_state = "hidden"
+    hid.append(["Part #", "Description", "Oak"])
+    hid.append(["H1", "Hidden Dup Table", 100])
+    buf = io.BytesIO()
+    wb.save(buf)
+    data = buf.getvalue()
+
+    views = read_all_sheets(data)
+    assert [v.name for v in views] == ["Pricelist"]
+    result = import_workbook(data, vendor="Hide Test", filename="Hide.xlsx")
+    parts = set(result.long_df["part_number"].astype(str)) if not result.long_df.empty else set()
+    assert "V1" in parts
+    assert "H1" not in parts
+    tried = {s["sheet"] for s in result.sheets_tried}
+    assert "Master" not in tried or "hidden" in str(
+        next(s for s in result.sheets_tried if s["sheet"] == "Master").get("note", "")
+    ).lower()
+
+
+def test_hidden_rows_below_visible_catalog_are_not_imported():
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Pricelist"
+    ws.append(["Part #", "Description", "Oak"])
+    ws.append(["V1", "Visible Table", 100])
+    ws.append(["V2", "Visible Bench", 140])
+    ws.append(["V3", "Visible Chest", 220])
+    ws.append(["H2", "Dup hidden below", 100])
+    ws.row_dimensions[5].hidden = True
+    buf = io.BytesIO()
+    wb.save(buf)
+    result = import_workbook(buf.getvalue(), vendor="Hide Test", filename="HideRows.xlsx")
+    parts = set(result.long_df["part_number"].astype(str)) if not result.long_df.empty else set()
+    assert "V1" in parts
+    assert "H2" not in parts

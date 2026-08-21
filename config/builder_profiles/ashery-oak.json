@@ -3,16 +3,17 @@
   "vendor": "Ashery Oak",
   "parser": {
     "importer": "ashery_oak",
-    "source_file": "AO_Pricelist_070625.xlsx",
+    "source_file": "Downloads/AO_Pricelist_070625.xlsx",
     "filename_hints": [
       "ashery oak",
       "asheryoak",
       "ao_pricelist"
     ],
     "layouts": [
-      "ashery_oak_master_wood_expand",
       "ashery_oak_options",
-      "ashery_oak_bookcase_options"
+      "ashery_oak_products_fill",
+      "viewed_cover",
+      "viewed_markup"
     ],
     "locked": true
   }

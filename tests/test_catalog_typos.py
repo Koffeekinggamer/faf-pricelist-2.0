@@ -32,7 +32,10 @@ def test_typo_pass_does_not_touch_skus():
         }
     )
     assert row["collection"] == "Classic Shaker Occasional Tables"
-    assert row["description"] == "King Occasional night stand"
+    assert (
+        row["description"]
+        == "King Occasional night stand — Classic Shaker Occasional Tables"
+    )
     assert row["part_number"] == "1024"
 
 

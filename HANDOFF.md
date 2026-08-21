@@ -158,7 +158,9 @@ Only push when local catalog is the intended live book (this workspace: ~4.7k J&
 
 ## Known issues / next work
 
-1. **Raise J&M photo match rate** — Antique Mission and other collections still missing; improve caption geometry / re-run matcher on full catalog PDF.
+1. **Reminder — do not build yet:** per-user login/password; pins per user; invite link → email + temp password → force new password; admin (Judson only) shows users/passwords, per-user logs, usage %; billing tab; later plan a subscription sellable app.
+2. **Reminder — Drop:** built-in Drop parser must know how to run each builder (locked named parser per factory; no generic fall-through).
+2. **Raise J&M photo match rate** — Antique Mission and other collections still missing; improve caption geometry / re-run matcher on full catalog PDF.
 2. **Confirm full multi-builder DB** before treating this 4.7k-row J&M book as production forever — restore from `~/Documents/FAF-pricebook-backups/` if needed.
 3. **Merge feature branch → `main`** when ready so GitHub Actions auto-deploy + other machines default to the same tip.
 4. OrderTrac UI remains off by design.

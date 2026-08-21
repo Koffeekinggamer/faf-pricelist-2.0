@@ -145,7 +145,9 @@ class PriceBookRepository:
         r"^black$|^white$|^brown$|^grey$|^gray$|^green$|^blue$|^red$"
         r")"
     )
-    _WOOD_TIER_RE = re.compile(r"(?i)^wood\s*tier\s*\d+$")
+    _WOOD_TIER_RE = re.compile(
+        r"(?i)^(wood\s*tier\s*\d+|(standard|premium)\s+woods?)$"
+    )
     _OPTION_CODE_RE = re.compile(
         r"(?i)^("
         r"cat\.?\s*[123]|"
@@ -225,6 +227,28 @@ class PriceBookRepository:
                 by_low[k] = p
         return sorted(by_low.values(), key=lambda x: x.lower())
 
+    def list_finish_states(self, vendor: Optional[str] = None) -> list[str]:
+        """Sellable finish_state values for one builder (finished / unfinished)."""
+        if not vendor or vendor in ("All", ""):
+            return []
+        found: set[str] = set()
+        with self._conn() as conn:
+            for (raw,) in conn.execute(
+                """
+                SELECT DISTINCT lower(trim(finish_state))
+                FROM pricebook
+                WHERE vendor = ?
+                  AND finish_state IS NOT NULL
+                  AND trim(finish_state) != ''
+                  AND lower(COALESCE(line_kind, 'item')) != 'addon'
+                """,
+                (vendor,),
+            ):
+                s = str(raw or "").strip().lower()
+                if s in {"finished", "unfinished"}:
+                    found.add(s)
+        return sorted(found)
+
     def list_species(self, vendor: Optional[str] = None) -> list[str]:
         """
         Distinct wood labels for the floor Wood dropdown.
@@ -296,6 +320,8 @@ class PriceBookRepository:
         if len(s) < 1 or len(s) > 48:
             return False
         if re.fullmatch(r"(?i)finished|unfinished|finshed|none|null|nan|n/?a", s):
+            return False
+        if self._WOOD_TIER_RE.match(s):
             return False
         if re.search(r"[@$%]|\+\d|option:|stain part|electrical control", s, re.I):
             return False
@@ -1352,6 +1378,51 @@ class PriceBookRepository:
                     updated_at = excluded.updated_at
                 """,
                 (vendor, DEFAULT_MULTIPLIER, phone_clean, now),
+            )
+            conn.commit()
+
+    def get_vendor_import_fingerprint(self, vendor: str) -> str:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT last_import_fingerprint FROM vendors WHERE name = ?",
+                (vendor,),
+            ).fetchone()
+        return str(row[0] or "") if row else ""
+
+    def set_vendor_import_fingerprint(
+        self,
+        vendor: str,
+        fingerprint: str,
+        *,
+        source_file: str = "",
+        version: int = 1,
+    ) -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO vendors (
+                    name, multiplier, last_import_fingerprint,
+                    last_import_source, last_imported_at,
+                    fingerprint_version, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    last_import_fingerprint = excluded.last_import_fingerprint,
+                    last_import_source = excluded.last_import_source,
+                    last_imported_at = excluded.last_imported_at,
+                    fingerprint_version = excluded.fingerprint_version,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    vendor,
+                    DEFAULT_MULTIPLIER,
+                    fingerprint,
+                    source_file or None,
+                    now,
+                    int(version),
+                    now,
+                ),
             )
             conn.commit()
 

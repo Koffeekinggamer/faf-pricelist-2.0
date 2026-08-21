@@ -186,9 +186,12 @@ def read_excel_bytes(data: bytes) -> pd.DataFrame:
     """Read first usable sheet; try header detection for messy lists."""
     import io
 
+    from backend.workbook_sheets import excel_engine
+
+    engine = excel_engine(data)
     bio = io.BytesIO(data)
     try:
-        df = pd.read_excel(bio, engine="openpyxl")
+        df = pd.read_excel(bio, engine=engine)
     except Exception:
         bio.seek(0)
         df = pd.read_excel(bio)
@@ -197,7 +200,7 @@ def read_excel_bytes(data: bytes) -> pd.DataFrame:
         for header_row in range(0, 8):
             try:
                 bio.seek(0)
-                trial = pd.read_excel(bio, header=header_row, engine="openpyxl")
+                trial = pd.read_excel(bio, header=header_row, engine=engine)
             except Exception:
                 continue
             if len(map_columns(trial)) >= 2:

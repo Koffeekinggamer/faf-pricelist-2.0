@@ -1,8 +1,9 @@
-"""Read every Excel tab on Drop. Never skip a sheet unread.
+"""Read every *visible* Excel tab on Drop.
 
-Named parsers and the generic Drop router both start here so Options,
-Percentage, Cover, and backup tabs are inspected before anything is
-imported or ignored.
+Never unhide a sheet or row. Factories hide Masters, backups, and leftover
+tables that often duplicate the visible book. Named parsers and the generic
+Drop router start here so Options, Percentage, Cover, and backup tabs that
+are visible are inspected; hidden tabs stay hidden and unread.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 import io
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import pandas as pd
 
@@ -25,6 +26,22 @@ _MARKUP_RE = re.compile(
 _OPTIONS_RE = re.compile(
     r"(?i)option|percentage|portal|addon|upcharge|specialty\s*finish"
 )
+
+# OLE Compound File magic — BIFF .xls, not a zip .xlsx
+_OLE_MAGIC = b"\xd0\xcf\x11\xe0"
+
+
+def excel_engine(data: bytes) -> str:
+    """Pick the pandas Excel adapter from file magic, not the filename.
+
+    One seam for Drop, named readers, and Viztech: BIFF .xls uses xlrd,
+    Office Open XML uses openpyxl. Callers pass bytes; they do not choose
+    an engine.
+    """
+    head = bytes(data or b"")[:8]
+    if head.startswith(_OLE_MAGIC):
+        return "xlrd"
+    return "openpyxl"
 
 
 @dataclass
@@ -67,16 +84,213 @@ def _preview(raw: pd.DataFrame, *, limit: int = 4) -> list[str]:
     return out
 
 
+def hidden_sheet_names(data: bytes) -> set[str]:
+    """Sheet titles marked hidden / veryHidden. Does not unhide them."""
+    found: set[str] = set()
+    if excel_engine(data) == "xlrd":
+        try:
+            import xlrd
+
+            book = xlrd.open_workbook(file_contents=data, formatting_info=False)
+            for i, name in enumerate(book.sheet_names()):
+                if getattr(book.sheet_by_index(i), "visibility", 0):
+                    found.add(str(name))
+        except Exception:
+            return found
+        return found
+    try:
+        from xml.etree import ElementTree as ET
+        import zipfile
+
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            xml = zf.read("xl/workbook.xml")
+        root = ET.fromstring(xml)
+        ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        for sh in root.findall(".//m:sheet", ns):
+            state = (sh.attrib.get("state") or "visible").lower()
+            if state != "visible":
+                name = sh.attrib.get("name") or ""
+                if name:
+                    found.add(name)
+    except Exception:
+        pass
+    return found
+
+
+def hidden_row_indexes(data: bytes, sheet_name: Union[str, int]) -> set[int]:
+    """0-based pandas indexes of hidden Excel rows (header=None → row 0 is Excel 1)."""
+    hidden: set[int] = set()
+    if excel_engine(data) == "xlrd":
+        try:
+            import xlrd
+
+            book = xlrd.open_workbook(file_contents=data, formatting_info=True)
+            if isinstance(sheet_name, int):
+                ws = book.sheet_by_index(sheet_name)
+            else:
+                ws = book.sheet_by_name(str(sheet_name))
+            info = getattr(ws, "rowinfo_map", {}) or {}
+            for r, meta in info.items():
+                if getattr(meta, "hidden", 0):
+                    hidden.add(int(r))
+        except Exception:
+            return hidden
+        return hidden
+    try:
+        import openpyxl
+
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=False, data_only=False)
+        ws = wb[sheet_name] if not isinstance(sheet_name, int) else wb.worksheets[sheet_name]
+        for idx, dim in ws.row_dimensions.items():
+            if dim.hidden and isinstance(idx, int) and idx >= 1:
+                hidden.add(idx - 1)
+        wb.close()
+    except Exception:
+        return hidden
+    return hidden
+
+
+def drop_hidden_rows(df: pd.DataFrame, data: bytes, sheet_name: Union[str, int]) -> pd.DataFrame:
+    """Drop hidden Excel rows without unhiding them in the file."""
+    skip = hidden_row_indexes(data, sheet_name)
+    if not skip or df is None or df.empty:
+        return df
+    keep = [i for i in df.index if int(i) not in skip]
+    return df.loc[keep].reset_index(drop=True)
+
+
+def hidden_rows_by_sheet(
+    data: bytes,
+    sheet_names: list[str],
+) -> dict[str, set[int]]:
+    """Read hidden-row metadata once for a multi-sheet Drop."""
+    found = {str(name): set() for name in sheet_names}
+    if excel_engine(data) == "xlrd":
+        try:
+            import xlrd
+
+            book = xlrd.open_workbook(file_contents=data, formatting_info=True)
+            for name in sheet_names:
+                ws = book.sheet_by_name(str(name))
+                for row_index, meta in (getattr(ws, "rowinfo_map", {}) or {}).items():
+                    if getattr(meta, "hidden", 0):
+                        found[str(name)].add(int(row_index))
+        except Exception:
+            pass
+        return found
+    try:
+        import posixpath
+        import zipfile
+        from xml.etree import ElementTree as ET
+
+        main_ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        doc_rel_ns = (
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+        )
+        package_rel_ns = (
+            "http://schemas.openxmlformats.org/package/2006/relationships"
+        )
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+            relationships = ET.fromstring(
+                archive.read("xl/_rels/workbook.xml.rels")
+            )
+            targets = {
+                rel.attrib.get("Id", ""): rel.attrib.get("Target", "")
+                for rel in relationships.findall(
+                    f"{{{package_rel_ns}}}Relationship"
+                )
+            }
+            wanted = set(str(name) for name in sheet_names)
+            for sheet in workbook.findall(f".//{{{main_ns}}}sheet"):
+                name = str(sheet.attrib.get("name") or "")
+                if name not in wanted:
+                    continue
+                rel_id = sheet.attrib.get(f"{{{doc_rel_ns}}}id", "")
+                target = targets.get(rel_id, "")
+                if not target:
+                    continue
+                xml_path = (
+                    target.lstrip("/")
+                    if target.startswith("/xl/")
+                    else posixpath.normpath(posixpath.join("xl", target))
+                )
+                if xml_path.startswith("xl/"):
+                    pass
+                elif xml_path.startswith("xl"):
+                    xml_path = "xl/" + xml_path[2:].lstrip("/")
+                root = ET.fromstring(archive.read(xml_path))
+                for row in root.findall(f".//{{{main_ns}}}row"):
+                    if str(row.attrib.get("hidden") or "").lower() not in {
+                        "1",
+                        "true",
+                    }:
+                        continue
+                    row_number = int(row.attrib.get("r") or 0)
+                    if row_number >= 1:
+                        found[name].add(row_number - 1)
+    except Exception:
+        pass
+    return found
+
+
+def read_sheet(
+    data: bytes,
+    sheet_name: Union[str, int],
+    *,
+    header: Optional[int] = None,
+) -> pd.DataFrame:
+    """Bytes-in sheet adapter. Visible rows only. Callers never pick an engine."""
+    raw = pd.read_excel(
+        io.BytesIO(data),
+        sheet_name=sheet_name,
+        header=header,
+        engine=excel_engine(data),
+    )
+    if header is None:
+        return drop_hidden_rows(raw, data, sheet_name)
+    return raw
+
+
 def read_all_sheets(data: bytes) -> list[SheetView]:
-    """Open every workbook tab. Callers may ignore a tab only after this."""
+    """Open every visible workbook tab. Hidden tabs are not read."""
     from wide_import import list_excel_sheets
 
     views: list[SheetView] = []
-    for name in list_excel_sheets(data):
-        try:
-            raw = pd.read_excel(
-                io.BytesIO(data), sheet_name=name, header=None, engine="openpyxl"
+    names = list_excel_sheets(data)
+    hidden_rows = hidden_rows_by_sheet(data, names)
+    engine = excel_engine(data)
+    if engine == "openpyxl":
+        import openpyxl
+
+        workbook = openpyxl.load_workbook(
+            io.BytesIO(data),
+            read_only=True,
+            data_only=True,
+            keep_links=False,
+        )
+
+        def parse_sheet(name: str) -> pd.DataFrame:
+            return pd.DataFrame(
+                workbook[str(name)].iter_rows(values_only=True)
             )
+
+    else:
+        try:
+            workbook = pd.ExcelFile(io.BytesIO(data), engine=engine)
+        except Exception:
+            workbook = pd.ExcelFile(io.BytesIO(data))
+
+        def parse_sheet(name: str) -> pd.DataFrame:
+            return workbook.parse(sheet_name=name, header=None)
+
+    for name in names:
+        try:
+            raw = parse_sheet(name)
+            skip = hidden_rows.get(str(name)) or set()
+            if skip and raw is not None and not raw.empty:
+                keep = [index for index in raw.index if int(index) not in skip]
+                raw = raw.loc[keep].reset_index(drop=True)
         except Exception as e:
             views.append(
                 SheetView(name=str(name), role="error", n_rows=0, n_cols=0, note=str(e)[:200])
@@ -97,6 +311,7 @@ def read_all_sheets(data: bytes) -> list[SheetView]:
                 preview=_preview(raw),
             )
         )
+    workbook.close()
     return views
 
 

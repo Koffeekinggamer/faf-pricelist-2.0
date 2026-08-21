@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "vendor": "Stoney Acres Furniture",
+  "parser": {
+    "importer": "stoney_acres_furniture",
+    "source_file": "Stoney_Acres_Furniture/Download_Pricelist_315847.xlsx",
+    "filename_hints": [
+      "stoney acres furniture",
+      "stoneyacresfurniture"
+    ],
+    "layouts": [
+      "viewed_markup",
+      "viewed_options",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

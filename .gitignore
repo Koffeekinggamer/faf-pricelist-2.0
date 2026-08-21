@@ -38,6 +38,10 @@ credentials.json
 # Streamlit
 .streamlit/secrets.toml
 
+# Login remember-me (signed token + HMAC key, local machine only)
+.login_secret
+.login_token
+
 # Floor iPad pins (local preference)
 .floor_favorites.json
 
@@ -50,3 +54,6 @@ smoke_test_quote.pdf
 data/*.db
 data/
 !.gitkeep
+
+# Christina's lesson log (lives next to the DB; not source)
+christina_lessons.jsonl

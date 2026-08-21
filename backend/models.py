@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS vendors (
     multiplier REAL DEFAULT 2.7,
     notes TEXT,
     phone TEXT,
+    last_import_fingerprint TEXT,
+    last_import_source TEXT,
+    last_imported_at TEXT,
+    fingerprint_version INTEGER,
     updated_at TEXT
 );
 
@@ -154,6 +158,10 @@ NEW_COLUMNS = {
 # Columns added after early v1 — migrate existing DBs (vendors table)
 VENDOR_NEW_COLUMNS = {
     "phone": "TEXT",
+    "last_import_fingerprint": "TEXT",
+    "last_import_source": "TEXT",
+    "last_imported_at": "TEXT",
+    "fingerprint_version": "INTEGER",
 }
 
 # Columns added for OrderTrac quote push link-back

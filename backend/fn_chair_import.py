@@ -16,7 +16,6 @@ adders — imported as ``line_kind='addon'`` (ADR-0008), not sellable retail.
 
 from __future__ import annotations
 
-import io
 import re
 from typing import Any, Optional
 
@@ -263,8 +262,9 @@ def import_fn_chair_workbook(
             )
             continue
         try:
-            bio = io.BytesIO(data)
-            raw = pd.read_excel(bio, sheet_name=name, header=None, engine="openpyxl")
+            from backend.workbook_sheets import read_sheet
+
+            raw = read_sheet(data, name, header=None)
         except Exception as e:
             tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)})
             continue

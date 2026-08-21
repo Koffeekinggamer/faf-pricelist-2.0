@@ -170,6 +170,57 @@ def test_drop_load_locks_parser_for_next_file(tmp_path: Path):
     ) == "generic"
 
 
+def test_next_year_filename_drop_uses_locked_parser(tmp_path: Path, monkeypatch):
+    """After Load locks a parser, next year's file name reuses it without a typed vendor."""
+    profiles = tmp_path / "profiles"
+    profiles.mkdir()
+    save_named_parser(
+        "Acme Furniture",
+        importer="generic",
+        source_file="Acme_2026.xlsx",
+        layouts=["long_flat"],
+        root=profiles,
+    )
+    monkeypatch.setattr("backend.builder_profiles.PROFILES_DIR", profiles)
+    clear_profile_cache()
+
+    db = tmp_path / "t.db"
+    svc = PriceBookService(db_path=db)
+    svc.init()
+    svc._drop_parse_root = tmp_path / "drop_sessions"
+    data = _simple_book()
+    view = svc.ensure_drop_parse_session(
+        [DropUpload("Acme_2027.xlsx", data, size=len(data))],
+    )
+    f = view.files[0]
+    assert f.suggested_builder == "Acme Furniture"
+    assert f.parser_source == "saved"
+    assert f.detected_importer == "generic"
+    assert f.row_count >= 1
+
+
+def test_named_parser_zero_rows_falls_through_then_lock_refreshes(tmp_path: Path):
+    """If the locked importer cannot read this book, Drop guesses again and Load can retag."""
+    result = import_workbook(
+        _simple_book(),
+        filename="flat_catalog.xlsx",
+        vendor="FN Chair",
+        preferred_parser="fn_chair",
+    )
+    assert result.long_df is not None and not result.long_df.empty
+    assert result.detected_importer == "generic"
+    assert result.parser_source == "guessed"
+    path = save_named_parser(
+        "FN Chair",
+        importer=result.detected_importer,
+        source_file="flat_catalog.xlsx",
+        layouts=["long_flat"],
+        root=tmp_path,
+    )
+    assert path is not None
+    assert preferred_parser_for("FN Chair", root=tmp_path) == "generic"
+
+
 def test_reparse_honors_vendor_override_saved_parser(tmp_path: Path, monkeypatch):
     profiles = tmp_path / "profiles"
     profiles.mkdir()
@@ -180,7 +231,6 @@ def test_reparse_honors_vendor_override_saved_parser(tmp_path: Path, monkeypatch
         root=profiles,
     )
     monkeypatch.setattr("backend.builder_profiles.PROFILES_DIR", profiles)
-    monkeypatch.setattr("backend.builder_parsers.PROFILES_DIR", profiles)
     clear_profile_cache()
 
     db = tmp_path / "t.db"

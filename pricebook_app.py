@@ -23,6 +23,12 @@ import streamlit as st
 
 from backend import PriceBookService
 from backend.auth import login_user
+from backend.option_labels import option_widget_key
+from backend.builder_profiles import (
+    exclusive_option_conflicts,
+    load_builder_profile,
+    profile_writes_allowed,
+)
 from backend.config import (
     APP_DIR,
     DEFAULT_MULTIPLIER,
@@ -30,12 +36,23 @@ from backend.config import (
     THIN_CATALOG_MAX_ROWS,
 )
 from backend.drop_parse_session import (
+    DropLoadBinding,
     DropSessionGone,
     DropUpload,
     drop_upload_from_path,
     is_drop_filename,
 )
 from backend.dropzone_widget import render_dropzone
+from backend.login_session import (
+    COOKIE_NAME,
+    TTL_SECONDS,
+    clear_persisted_token,
+    issue_login_token,
+    load_persisted_token,
+    login_secret,
+    persist_token,
+    restore_login_session,
+)
 
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
@@ -170,14 +187,100 @@ def _favorites_path() -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Login gate
+# Login gate — cookie + local token so a reload signs the user back in
 # ---------------------------------------------------------------------------
+
+
+def _apply_auth_session(session: dict) -> None:
+    st.session_state["authenticated"] = True
+    st.session_state["auth_user"] = session["username"]
+    st.session_state["auth_display"] = session.get("display_name")
+    st.session_state["auth_role"] = session.get("role") or "sales"
+    st.session_state["auth_user_id"] = session.get("user_id")
+    st.session_state["auth_session"] = session
+    st.session_state.pop("auth_forget", None)
+
+
+def _write_login_cookie(token: str) -> None:
+    assignment = (
+        f"{COOKIE_NAME}={token}; path=/; max-age={TTL_SECONDS}; SameSite=Lax"
+        if token
+        else f"{COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax"
+    )
+    html = f"""
+    <script>
+    (function () {{
+      var c = {json.dumps(assignment)};
+      try {{ document.cookie = c; }} catch (e) {{}}
+      try {{ window.parent.document.cookie = c; }} catch (e) {{}}
+    }})();
+    </script>
+    """
+    st.components.v1.html(html, height=0, width=0)
+
+
+def _browser_login_token() -> str:
+    try:
+        cookies = st.context.cookies
+        if cookies is None:
+            return ""
+        return str(cookies.get(COOKIE_NAME) or "")
+    except Exception:
+        return ""
+
+
+def _client_is_local_browser() -> bool:
+    """True for localhost reloads. LAN iPads keep their own cookie."""
+    try:
+        ip = str(getattr(st.context, "ip_address", None) or "")
+    except Exception:
+        ip = ""
+    if ip in {"127.0.0.1", "::1", "localhost"}:
+        return True
+    try:
+        headers = st.context.headers
+        host = str(headers.get("Host") or headers.get("host") or "")
+    except Exception:
+        host = ""
+    return host.startswith("localhost") or host.startswith("127.0.0.1")
+
+
+def _remember_login(session: dict) -> None:
+    token = issue_login_token(session, secret=login_secret())
+    st.session_state["_login_cookie_write"] = token
+    if profile_writes_allowed() and _client_is_local_browser():
+        try:
+            persist_token(token)
+        except OSError:
+            pass
+
+
+def _forget_login() -> None:
+    st.session_state["_login_cookie_write"] = ""
+    st.session_state["auth_forget"] = True
+    if profile_writes_allowed() and _client_is_local_browser():
+        clear_persisted_token()
+
+
+_pending_login_cookie = st.session_state.pop("_login_cookie_write", None)
+if _pending_login_cookie is not None:
+    _write_login_cookie(_pending_login_cookie)
 
 
 def _require_login() -> bool:
     """Show login form until authenticated. Returns True when logged in."""
     if st.session_state.get("authenticated"):
         return True
+
+    if not st.session_state.get("auth_forget"):
+        token = _browser_login_token()
+        if not token and profile_writes_allowed() and _client_is_local_browser():
+            token = load_persisted_token()
+        if token:
+            session = restore_login_session(token, secret=login_secret())
+            if session:
+                _apply_auth_session(session)
+                return True
 
     st.markdown(
         """
@@ -201,12 +304,8 @@ def _require_login() -> bool:
             if submitted:
                 session = login_user(user, pw)
                 if session:
-                    st.session_state["authenticated"] = True
-                    st.session_state["auth_user"] = session["username"]
-                    st.session_state["auth_display"] = session.get("display_name")
-                    st.session_state["auth_role"] = session.get("role") or "sales"
-                    st.session_state["auth_user_id"] = session.get("user_id")
-                    st.session_state["auth_session"] = session
+                    _apply_auth_session(session)
+                    _remember_login(session)
                     st.rerun()
                 else:
                     st.error("Incorrect username or password.")
@@ -320,16 +419,25 @@ def _option_dropdown_options(vendor_key: str, catalog_stamp: str = "") -> list:
 
 def _option_checkbox_key(vendor_key: str, option_label: str) -> str:
     """Stable Streamlit widget key for an Option checkbox (per builder)."""
-
-    def slug(s: str) -> str:
-        return re.sub(r"[^a-z0-9]+", "_", (s or "").lower()).strip("_") or "x"
-
-    return f"so_cb_{slug(vendor_key)}_{slug(option_label)}"
+    return option_widget_key(vendor_key, option_label)
 
 
 def _option_qty_key(vendor_key: str, option_label: str) -> str:
     """Session key for Extra Drawers/Doors quantity."""
     return _option_checkbox_key(vendor_key, option_label) + "_qty"
+
+
+def _enforce_single_select_options(
+    vendor_key: str,
+    option_label: str,
+    opt_list: list[str],
+) -> None:
+    """Alternatives (FN Chair's Cat. 1/2/3) replace each other instead of stacking."""
+    if not st.session_state.get(_option_checkbox_key(vendor_key, option_label)):
+        return
+    profile = load_builder_profile(vendor_key)
+    for other in exclusive_option_conflicts(profile, option_label, list(opt_list)):
+        st.session_state[_option_checkbox_key(vendor_key, other)] = False
 
 
 svc = _svc()
@@ -615,6 +723,7 @@ who = st.session_state.get("auth_display") or st.session_state.get("auth_user") 
 role = st.session_state.get("auth_role") or "sales"
 st.sidebar.caption(f"Signed in as **{who}** · `{role}`")
 if st.sidebar.button("Sign out"):
+    _forget_login()
     for k in (
         "authenticated",
         "auth_user",
@@ -831,7 +940,12 @@ if nav == "Search":
                     cb_cols = st.columns(n_cols)
                     for i, opt in enumerate(opt_list):
                         with cb_cols[i % n_cols]:
-                            checked = st.checkbox(opt, key=_option_checkbox_key(vf, opt))
+                            checked = st.checkbox(
+                                opt,
+                                key=_option_checkbox_key(vf, opt),
+                                on_change=_enforce_single_select_options,
+                                args=(vf, opt, opt_list),
+                            )
                             if checked:
                                 of_list.append(opt)
                                 if PriceBookService._option_qty_allowed(opt):
@@ -844,8 +958,8 @@ if nav == "Search":
                                         max_value=20,
                                         step=1,
                                         key=qkey,
-                                        help="Charge × count — casegoods with "
-                                        "several drawers/doors need more than one.",
+                                        help="Charge × count — how many drawers, "
+                                        "drawer bottoms, or openings to price.",
                                     )
                                     option_qty[opt] = int(qty)
                     if of_list:
@@ -2040,6 +2154,9 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
     # Flash message after load (survives rerun so sidebar stats refresh)
     if st.session_state.get("drop_load_msg"):
         st.success(st.session_state.pop("drop_load_msg"))
+        warning = st.session_state.pop("drop_load_warning", "")
+        if warning:
+            st.error(warning)
         log = st.session_state.pop("drop_load_log", None)
         if log:
             st.dataframe(pd.DataFrame(log), use_container_width=True, hide_index=True)
@@ -2322,7 +2439,14 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                             f"Retail preview uses x{mult_final:g} on sample only · "
                             f"**{f.row_count:,}** wholesale rows in session"
                         )
-                        ready_indexes.append(i)
+                        readiness = getattr(f, "readiness", None)
+                        if readiness is None or readiness.load_ready:
+                            ready_indexes.append(i)
+                        else:
+                            st.error(
+                                readiness.block_message
+                                or "This builder is blocked until its named parser reads the book."
+                            )
                     elif f.error:
                         st.warning("This file will be skipped until it parses cleanly.")
 
@@ -2350,8 +2474,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                 if len(by_vendor_idx) < len(ready_indexes):
                     st.warning(
                         "Two or more files map to the **same builder name**. "
-                        "Only the last file for each builder will be kept "
-                        "(one catalog per builder)."
+                        "They will be combined into one catalog for that builder."
                     )
 
                 st.caption(
@@ -2379,128 +2502,80 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                     use_container_width=True,
                     key="drop_load_master",
                 ):
-                    results_log = []
-                    bar = st.progress(0.0, text="Loading…")
+                    bindings = [
+                        DropLoadBinding(
+                            file_index=i,
+                            builder=(
+                                st.session_state.get(f"drop_vend_{i}")
+                                or session.files[i].suggested_builder
+                            ).strip(),
+                            multiplier=float(
+                                st.session_state.get(f"drop_mult_{i}")
+                                or session.files[i].suggested_mult
+                            ),
+                        )
+                        for i in by_vendor_idx.values()
+                    ]
                     try:
-                        wholesale_files = svc.wholesale_from_drop_parse_session(session.session_id)
+                        with st.spinner("Loading builders…"):
+                            batch_result = svc.commit_drop_load(
+                                session.session_id,
+                                bindings,
+                                mode=commit_mode,
+                            )
                     except DropSessionGone:
                         st.error("Drop parse session expired — click Re-parse and try again.")
-                        wholesale_files = []
-
-                    # Last file wins per builder name
-                    load_plan = []
-                    for i in ready_indexes:
-                        wf = next((w for w in wholesale_files if w.file_index == i), None)
-                        if not wf or not wf.rows:
-                            continue
-                        vend = (
-                            st.session_state.get(f"drop_vend_{i}") or wf.suggested_builder
-                        ).strip()
-                        mult = float(st.session_state.get(f"drop_mult_{i}") or wf.suggested_mult)
-                        load_plan.append(
-                            {
-                                "filename": wf.filename,
-                                "vendor": vend,
-                                "multiplier": mult,
-                                "rows": _bind_builder_mult(wf.rows, vend, mult, wf.filename),
-                            }
-                        )
-                    by_vendor: dict = {p["vendor"]: p for p in load_plan}
-                    items = list(by_vendor.values())
-                    for i, p in enumerate(items):
-                        bar.progress(
-                            i / max(len(items), 1),
-                            text=f"Loading {p['vendor']}…",
-                        )
-                        try:
-                            result = svc.add_rows(p["rows"], mode=commit_mode)
-                            svc.set_vendor_multiplier(
-                                p["vendor"],
-                                float(p["multiplier"]),
-                                notes=f"Set from drop import of {p['filename']}",
-                            )
-                            svc.reapply_multiplier(float(p["multiplier"]), vendor=p["vendor"])
-                            wf_meta = next(
-                                (w for w in wholesale_files if w.filename == p["filename"]),
-                                None,
-                            )
-                            layouts = []
-                            sess_file = next(
-                                (sf for sf in session.files if sf.filename == p["filename"]),
-                                None,
-                            )
-                            if sess_file and getattr(sess_file, "variants", None):
-                                layouts = list((sess_file.variants or {}).get("layouts") or [])
-                            importer = ""
-                            if wf_meta is not None:
-                                importer = getattr(wf_meta, "detected_importer", "") or ""
-                            if not importer and sess_file is not None:
-                                importer = getattr(sess_file, "detected_importer", "") or ""
-                            parser_path = svc.lock_builder_parser(
-                                p["vendor"],
-                                importer=importer,
-                                source_file=p["filename"],
-                                layouts=layouts,
-                            )
-                            parser_note = (
-                                f"parser {importer or 'generic'}"
-                                if parser_path
-                                else "parser not saved (production reads shipped profiles)"
-                            )
+                    else:
+                        results_log = []
+                        for item in batch_result.results:
+                            catalog = item.catalog or {}
+                            if item.status == "loaded":
+                                status = (
+                                    f"ok · parser {item.parser_id or 'generic'}"
+                                    if not item.profile_warning
+                                    else f"loaded · PROFILE WARNING: {item.profile_warning}"
+                                )
+                            elif item.status == "unchanged":
+                                status = "unchanged · skipped"
+                            elif item.status == "blocked":
+                                status = f"blocked: {item.block_message}"
+                            else:
+                                status = f"error: {item.block_message}"
                             results_log.append(
                                 {
-                                    "Builder": p["vendor"],
-                                    "File": p["filename"],
-                                    "Mult": p["multiplier"],
-                                    "Inserted": result.get("inserted", 0),
-                                    "Updated": result.get("updated", 0),
-                                    "Removed old": result.get("deleted", 0),
-                                    "Total": result.get("total", 0),
-                                    "Status": f"ok · {parser_note}",
+                                    "Builder": item.builder,
+                                    "File": item.filename,
+                                    "Mult": item.multiplier,
+                                    "Inserted": catalog.get("inserted", 0),
+                                    "Updated": catalog.get("updated", 0),
+                                    "Removed old": catalog.get("deleted", 0),
+                                    "Total": catalog.get("total", 0),
+                                    "Status": status[:160],
                                 }
                             )
-                        except Exception as exc:
-                            results_log.append(
-                                {
-                                    "Builder": p["vendor"],
-                                    "File": p["filename"],
-                                    "Mult": p["multiplier"],
-                                    "Inserted": 0,
-                                    "Updated": 0,
-                                    "Removed old": 0,
-                                    "Total": 0,
-                                    "Status": f"error: {exc}"[:120],
-                                }
+                        ok_n = sum(
+                            1
+                            for item in batch_result.results
+                            if item.status in {"loaded", "unchanged"}
+                        )
+                        if batch_result.session_cleared:
+                            st.session_state.pop("drop_session_id", None)
+                            st.session_state.pop("drop_vendor_overrides", None)
+                            _clear_drop_widget_state()
+                        saved_n = sum(
+                            1 for item in batch_result.results if item.profile_saved
+                        )
+                        st.session_state["drop_load_msg"] = (
+                            f"Loaded or skipped **{ok_n}** of **{len(bindings)}** builder(s). "
+                            f"Master now has **{batch_result.master_row_count:,}** rows. "
+                            f"Named parser saved for **{saved_n}** builder(s)."
+                        )
+                        if batch_result.blocking_warnings:
+                            st.session_state["drop_load_warning"] = " | ".join(
+                                batch_result.blocking_warnings
                             )
-                    bar.progress(1.0, text="Done")
-                    ok_n = sum(
-                        1
-                        for r in results_log
-                        if str(r.get("Status") or "").startswith("ok")
-                    )
-                    # Successful Load clears the Drop parse session (keep on total failure).
-                    if ok_n > 0:
-                        sid = st.session_state.pop("drop_session_id", None)
-                        svc.clear_drop_parse_session(sid)
-                        st.session_state.pop("drop_vendor_overrides", None)
-                        _clear_drop_widget_state()
-                    saved_n = sum(
-                        1
-                        for r in results_log
-                        if str(r.get("Status") or "").startswith("ok · parser")
-                        and "not saved" not in str(r.get("Status") or "")
-                    )
-                    extra = (
-                        f" Named parser saved for **{saved_n}** builder(s)."
-                        if saved_n
-                        else ""
-                    )
-                    st.session_state["drop_load_msg"] = (
-                        f"Loaded **{ok_n}** of **{len(items)}** builder(s). "
-                        f"Master now has **{svc.row_count():,}** rows.{extra}"
-                    )
-                    st.session_state["drop_load_log"] = results_log
-                    st.rerun()
+                        st.session_state["drop_load_log"] = results_log
+                        st.rerun()
 
 # ---------------------------------------------------------------------------
 # VENDORS — edit multipliers

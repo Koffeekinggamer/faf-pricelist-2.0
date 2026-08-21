@@ -15,22 +15,30 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
-# Fields that distinguish a real sellable row from a copy.
+# Full sellable row — identity collision is not enough to delete.
+# Read every field before cleanup; SKU-only matches are not copies.
 VERIFY_FIELDS = (
+    "vendor",
     "part_number",
     "collection",
     "description",
     "dimensions",
     "species",
+    "species_tier",
     "finish_state",
     "option_key",
     "line_kind",
     "base_price",
+    "adjusted_price",
+    "addon_pct",
+    "price_basis",
+    "unit",
 )
 
 VERIFY_SELECT = (
-    "id, imported_at, part_number, collection, description, dimensions, "
-    "species, finish_state, option_key, line_kind, base_price"
+    "id, imported_at, vendor, part_number, collection, description, dimensions, "
+    "species, species_tier, finish_state, option_key, line_kind, base_price, "
+    "adjusted_price, addon_pct, price_basis, unit"
 )
 
 
@@ -47,7 +55,7 @@ def _norm(field: str, value: Any) -> Any:
 
 
 def verify_duplicate_group(rows: Sequence[Mapping[str, Any]]) -> tuple[bool, str]:
-    """True only when every row is the same sellable configuration."""
+    """True only when every full sellable row matches. Never SKU-only."""
     if len(rows) < 2:
         return False, "need two or more rows"
     first = {field: _norm(field, rows[0].get(field)) for field in VERIFY_FIELDS}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "vendor": "Troyer Design Company",
+  "parser": {
+    "importer": "troyer_design_company",
+    "source_file": "Download_2026_Pricelists_653341_unzipped/TDC_2026_Pricelist_Finished_0326.xls + Download_2026_Pricelists_653341_unzipped/TDC_2026_Pricelist_Unfinished_032326.xls",
+    "filename_hints": [
+      "troyer design company",
+      "troyerdesigncompany",
+      "tdc"
+    ],
+    "layouts": [
+      "long_flat",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

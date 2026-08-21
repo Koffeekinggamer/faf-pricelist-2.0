@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendor": "Mirror Lake Woodworks",
+  "parser": {
+    "importer": "mirror_lake_woodworks",
+    "source_file": "Mirror_Lake_Woodworks/Download_2026_Finished_Pricelist_695517.xls + Mirror_Lake_Woodworks/Download_2026_Unfinished_Pricelist_695524.xls",
+    "filename_hints": [
+      "mirror lake woodworks",
+      "mirrorlakewoodworks"
+    ],
+    "layouts": [
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from backend.service import PriceBookService
 from backend.standardize import standardize_row
 
@@ -169,6 +171,99 @@ def test_multi_options_stack_upcharges(tmp_path):
     assert "Undermount Drawer Slides" not in str(bed["notes"])
 
 
+def test_fn_chair_cat_filters_before_fabric_upcharge(tmp_path):
+    """Cat.N is a priced item variant; fabric adds to that selected variant."""
+    svc = _svc(tmp_path)
+    vendor = "FN Chair"
+    svc.repo.insert_rows(
+        [
+            {
+                **_item(vendor, "Seating", "Abe Side Chair", "Abe Side Chair", 304.0),
+                "base_price": 112.0,
+                "option_key": None,
+            },
+            {
+                **_item(
+                    vendor,
+                    "Seating",
+                    "Abe Side Chair",
+                    "Abe Side Chair - Cat. 1",
+                    428.0,
+                ),
+                "base_price": 158.0,
+                "option_key": "Cat. 1",
+            },
+            _addon_cat(
+                vendor,
+                "Solid Fabrics / COM / Faux Leathers",
+                "Abe Side Chair",
+                25.0,
+                68.0,
+            ),
+        ]
+    )
+
+    result = svc.search(
+        "Abe Side Chair",
+        vendor=vendor,
+        option_key=["Cat. 1", "Solid Fabrics / COM / Faux Leathers"],
+    )
+
+    assert len(result) == 1
+    assert result.iloc[0]["base_price"] == 183.0
+    assert result.iloc[0]["adjusted_price"] == 496.0
+
+
+def test_fn_chair_keeps_one_category_when_two_are_passed(tmp_path):
+    """Cat. 1/2/3 are alternatives — the newest pick replaces the earlier one."""
+    svc = _svc(tmp_path)
+    vendor = "FN Chair"
+    svc.repo.insert_rows(
+        [
+            {
+                **_item(
+                    vendor,
+                    "Seating",
+                    "Abe Side Chair",
+                    "Abe Side Chair - Cat. 1",
+                    428.0,
+                ),
+                "base_price": 158.0,
+                "option_key": "Cat. 1",
+            },
+            {
+                **_item(
+                    vendor,
+                    "Seating",
+                    "Abe Side Chair",
+                    "Abe Side Chair - Cat. 2",
+                    528.0,
+                ),
+                "base_price": 195.0,
+                "option_key": "Cat. 2",
+            },
+            _addon_cat(
+                vendor,
+                "Solid Fabrics / COM / Faux Leathers",
+                "Abe Side Chair",
+                25.0,
+                68.0,
+            ),
+        ]
+    )
+
+    result = svc.search(
+        "Abe Side Chair",
+        vendor=vendor,
+        option_key=["Cat. 1", "Cat. 2", "Solid Fabrics / COM / Faux Leathers"],
+    )
+
+    assert len(result) == 1
+    # Cat. 2 wholesale 195 + fabric 25, retail to the next even dollar.
+    assert result.iloc[0]["base_price"] == 220.0
+    assert result.iloc[0]["adjusted_price"] == 596.0
+
+
 def test_mirrors_exempt_from_drawer_door_options(tmp_path):
     """Mirrors never get drawer/door upcharges (even console / vanity mirrors)."""
     svc = _svc(tmp_path)
@@ -192,7 +287,35 @@ def test_mirrors_exempt_from_drawer_door_options(tmp_path):
     assert "M2" not in set(doors["part_number"])
 
 
-def test_extra_drawers_qty_multiplies_flat_charge(tmp_path):
+def test_any_drawer_option_gets_a_qty_control():
+    allowed = PriceBookService._option_qty_allowed
+    assert allowed("Cedar Drawer Bottoms")
+    assert allowed("Cedar Lined Drawers")
+    assert allowed("Hidden Drawers")
+    assert allowed("Extra Drawers or Doors")
+    assert allowed("Undermount Drawer Slides")
+    assert not allowed("Two-tone")
+    assert not allowed("Lock")
+    assert not allowed("Distressing")
+
+
+def test_cedar_drawer_bottoms_qty_multiplies_flat_charge(tmp_path):
+    svc = _svc(tmp_path)
+    V = "Millcraft"
+    svc.repo.insert_rows([
+        _item(V, "Bedroom", "NS1", "3 Drawer Nightstand", 1000.0),
+        _addon(V, "Cedar Drawer Bottoms", 80.0, 216.0),
+    ])
+
+    three = svc.search(
+        "",
+        vendor=V,
+        option_key="Cedar Drawer Bottoms",
+        option_qty={"Cedar Drawer Bottoms": 3},
+    )
+    row = three.iloc[0]
+    assert float(row["adjusted_price"]) == 1000.0 + 216.0 * 3
+    assert "×3" in str(row["notes"])
     """Qty N stacks the Extra Drawers or Doors flat charge N times."""
     svc = _svc(tmp_path)
     V = "Test Builder"

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendor": "Genuine Oak",
+  "parser": {
+    "importer": "genuine_oak",
+    "source_file": "Genuine_Oak_Designs/Download_2026_Pricelist_3481.xlsx",
+    "filename_hints": [
+      "genuine oak",
+      "genuineoak"
+    ],
+    "layouts": [
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

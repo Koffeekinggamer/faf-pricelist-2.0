@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "vendor": "Meadow Lane Furniture",
+  "parser": {
+    "importer": "meadow_lane_furniture",
+    "source_file": "Meadow_Lane_Furniture/Download_2026_Pricelist_408604.xlsx",
+    "filename_hints": [
+      "meadow lane furniture",
+      "meadowlanefurniture"
+    ],
+    "layouts": [
+      "long_flat",
+      "multi_name_price",
+      "unknown",
+      "viewed_cover",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendor": "Superior Woodcrafts",
+  "parser": {
+    "importer": "superior_woodcrafts",
+    "source_file": "Superior_Woodcrafts/Download_2026_Pricelist_687470.xlsx",
+    "filename_hints": [
+      "superior woodcrafts",
+      "superiorwoodcrafts"
+    ],
+    "layouts": [
+      "wide_finish"
+    ],
+    "locked": true
+  }
+}

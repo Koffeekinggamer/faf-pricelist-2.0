@@ -5,7 +5,7 @@ Monthly Viztech → FAF Price Book sync.
 1. Log into viztechfurniture.com (Preferred Dealer)
 2. Discover builder price-list download links
 3. Download Excel catalogs to ~/Documents/viztech-downloads/
-4. Import into master_pricebook.db (normalize + replace_vendor)
+4. Import through Drop Load (readiness gate + named parser lock; never add_rows)
 5. Keep builders that Viztech does not have (never wipe unknown vendors)
 
 Credentials (first match wins):
@@ -28,11 +28,9 @@ import html as htmlmod
 import json
 import os
 import re
-import sqlite3
 import subprocess
 import sys
 import time
-import traceback
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -444,6 +442,19 @@ def vendor_from_folder(folder_name: str) -> str:
 def rank_file(p: Path, vendor: str) -> tuple:
     name = p.name.lower()
     score = 0
+    hay = f"{p.parent.name}/{p.name}"
+    try:
+        from backend.catalog_readers import spec_for_vendor
+
+        spec = spec_for_vendor(vendor)
+        if spec and (spec.matches(hay) or spec.matches(p.name)):
+            score += 80
+    except Exception:
+        pass
+    if re.search(r"solo\s*galaxy", name):
+        score -= 500
+    if re.search(r"quotes?\s*calculator|cover\s*page", name):
+        score -= 200
     if vendor == "FN Chair":
         if re.search(r"level.?one|one.?blue", name):
             score += 1000
@@ -486,14 +497,8 @@ def backup_db() -> None:
             log("DB backup via CLI")
 
 
-def import_folder(out_dir: Path) -> dict[str, Any]:
-    from backend import PriceBookService
-
-    db = ROOT / "master_pricebook.db"
-    con = sqlite3.connect(str(db))
-    svc = PriceBookService(db_path=str(db))
-    svc.init()
-
+def ranked_excel_plan(out_dir: Path) -> list[tuple[str, Path, list[Path]]]:
+    """One ranked Excel file per builder folder (extras kept for the report)."""
     plan: list[tuple[str, Path, list[Path]]] = []
     for d in sorted(out_dir.iterdir()):
         if not d.is_dir():
@@ -523,87 +528,108 @@ def import_folder(out_dir: Path) -> dict[str, Any]:
                 files = one
         files = sorted(set(files), key=lambda p: rank_file(p, vendor))
         plan.append((vendor, files[0], files[1:]))
+    return plan
 
-    log(f"Import plan: {len(plan)} builders")
-    report: list[dict] = []
-    ok = err = skip = 0
 
-    for i, (vendor, best, extras) in enumerate(plan, 1):
-        mult = 1.7 if vendor == "Genuine Oak" else 2.7
-        log(f"[{i}/{len(plan)}] {vendor} ← {best.name}")
+def drop_load_ranked_files(svc, items: list[tuple[str, Path, float]]) -> dict[str, Any]:
+    """Load ranked builder files through the Drop Load gate (ADR-0011)."""
+    from backend.drop_parse_session import DropLoadBinding, DropUpload
+
+    uploads: list[DropUpload] = []
+    bindings: list[DropLoadBinding] = []
+    vendor_overrides: dict[str, str] = {}
+    for vendor, path, _mult in items:
+        data = path.read_bytes()
+        drop_name = f"{path.parent.name}/{path.name}"
+        uploads.append(DropUpload(drop_name, data, size=len(data)))
+        vendor_overrides[drop_name] = vendor
+        bindings.append(
+            DropLoadBinding(
+                file_index=len(uploads) - 1,
+                builder=vendor,
+                multiplier=float(_mult),
+            )
+        )
+    if not uploads:
+        return {"ok": 0, "err": 0, "skip": 0, "blocked": 0, "details": []}
+
+    view = svc.ensure_drop_parse_session(
+        uploads,
+        vendor_overrides=vendor_overrides,
+        force=True,
+    )
+    batch = svc.commit_drop_load(view.session_id, bindings)
+    report: list[dict[str, Any]] = []
+    ok = err = skip = blocked = 0
+    by_builder = {r.builder: r for r in batch.results}
+    for vendor, path, mult in items:
+        result = by_builder.get(vendor)
         entry: dict[str, Any] = {
             "vendor": vendor,
-            "file": str(best),
+            "file": str(path),
             "mult": mult,
-            "extras": [str(e) for e in extras],
+            "extras": [],
         }
-        try:
-            data = best.read_bytes()
-            prev = svc.preview_excel(
-                data,
-                filename=best.name,
-                vendor=vendor,
-                multiplier=mult,
-                use_workbook_markup=False,
-            )
-            rows = prev.rows or []
-            if len(rows) < 5:
-                prev = svc.preview_excel(
-                    data,
-                    filename=best.name,
-                    vendor=vendor,
-                    multiplier=mult,
-                    use_workbook_markup=True,
-                )
-                rows = prev.rows or []
-                entry["used_markup"] = True
-            entry["preview_rows"] = len(rows)
-            if len(rows) < 5:
-                entry["status"] = "error"
-                entry["error"] = f"too few rows ({len(rows)})"
-                err += 1
-                log(f"  ERR few rows {len(rows)}")
-                report.append(entry)
-                continue
-            existing = con.execute(
-                "select count(*) from pricebook where vendor=?", (vendor,)
-            ).fetchone()[0]
-            # Never wipe a large catalog with a tiny parse
-            if existing > 200 and len(rows) < max(30, int(existing * 0.05)):
-                entry["status"] = "skipped_keep_existing"
-                entry["error"] = f"existing={existing} new={len(rows)}"
-                skip += 1
-                log(f"  SKIP keep existing {existing}")
-                report.append(entry)
-                continue
-            result = svc.add_rows(rows, mode="replace_vendor")
-            try:
-                svc.set_vendor_multiplier(vendor, mult)
-            except Exception:
-                pass
-            entry["status"] = "ok"
-            entry["result"] = result
-            ok += 1
-            log(f"  OK total={result.get('total')}")
-        except Exception as e:
+        if result is None:
             entry["status"] = "error"
-            entry["error"] = f"{type(e).__name__}: {e}"
-            entry["trace"] = traceback.format_exc()[-400:]
+            entry["error"] = "missing Drop Load result"
             err += 1
-            log(f"  ERR {e}")
+        elif result.status == "loaded":
+            entry["status"] = "ok"
+            entry["result"] = result.catalog
+            entry["parser_id"] = result.parser_id
+            ok += 1
+            log(f"  OK {vendor} total={result.catalog.get('total')}")
+        elif result.status == "unchanged":
+            entry["status"] = "skipped_unchanged"
+            entry["result"] = result.catalog
+            skip += 1
+            log(f"  SKIP unchanged {vendor}")
+        elif result.status == "blocked":
+            entry["status"] = "blocked"
+            entry["error"] = result.block_message or result.status
+            entry["parser_id"] = result.parser_id
+            blocked += 1
+            log(f"  BLOCK {vendor}: {entry['error']}")
+        else:
+            entry["status"] = "error"
+            entry["error"] = result.block_message or result.status
+            err += 1
+            log(f"  ERR {vendor}: {entry['error']}")
         report.append(entry)
-
-    stats = svc.stats()
-    con.close()
-    summary = {
+    return {
         "ok": ok,
         "err": err,
         "skip": skip,
-        "stats": stats,
+        "blocked": blocked,
         "details": report,
-        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "blocking_warnings": list(batch.blocking_warnings),
+        "master_row_count": batch.master_row_count,
     }
-    return summary
+
+
+def import_folder(out_dir: Path, *, svc=None) -> dict[str, Any]:
+    """Import a Viztech download tree through Drop Load, never add_rows."""
+    from backend import PriceBookService
+
+    if svc is None:
+        db = ROOT / "master_pricebook.db"
+        svc = PriceBookService(db_path=str(db))
+        svc.init()
+
+    plan = ranked_excel_plan(out_dir)
+    log(f"Import plan: {len(plan)} builders")
+    items: list[tuple[str, Path, float]] = []
+    for vendor, best, extras in plan:
+        mult = 1.7 if vendor == "Genuine Oak" else 2.7
+        log(f"  {vendor} ← {best.name}")
+        items.append((vendor, best, mult))
+        if extras:
+            log(f"    extras unused: {len(extras)}")
+    loaded = drop_load_ranked_files(svc, items)
+    loaded["stats"] = svc.stats()
+    loaded["finished_at"] = datetime.now(timezone.utc).isoformat()
+    return loaded
 
 
 def save_state(state: dict) -> None:

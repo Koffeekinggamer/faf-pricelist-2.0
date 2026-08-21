@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "vendor": "Stone River Furniture",
+  "parser": {
+    "importer": "stone_river_furniture",
+    "source_file": "Stone_River_Furniture/Download_Pricelist_134642.xlsx",
+    "filename_hints": [
+      "stone river furniture",
+      "stoneriverfurniture"
+    ],
+    "layouts": [
+      "long_flat",
+      "viewed_cover",
+      "viewed_markup",
+      "wide_finish",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

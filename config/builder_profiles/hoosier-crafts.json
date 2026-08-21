@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendor": "Hoosier Crafts",
+  "parser": {
+    "importer": "hoosier_crafts",
+    "source_file": "Hoosier_Crafts/Download_2026_Pricelist_944825.xlsx",
+    "filename_hints": [
+      "hoosier crafts",
+      "hoosiercrafts"
+    ],
+    "layouts": [
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

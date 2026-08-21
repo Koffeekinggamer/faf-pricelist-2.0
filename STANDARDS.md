@@ -29,7 +29,7 @@ listing or deleting. Same part number with a different size in the description
 | **vendor** | Clean display name (`Hope Wood`, `Genuine Oak`, …) |
 | **collection** | Product category only — not sheet names, not option/upcharge lines. Defaults: FN Chair → Seating, Genuine Oak → Casegoods. `Mult-Gun` → Gun Cabinets. Drop / folder import auto-fixes known typos (`Occasonial` → `Occasional`) |
 | **part_number** | Trimmed SKU / item code (or full item name if builder has no SKU) |
-| **description** | Always filled (falls back to `part_number`) |
+| **description** | Human-readable visible-source context: product name/style + meaningful collection + dimensions + useful feature note, de-duplicated. Always filled (falls back to `part_number`). Never append price, wood/species, finish state, Option tier, parser metadata, or hidden content |
 | **species** | Wood tier **or** color/fabric option, slash-separated woods, Title Case. Never `col_N` / `FINISHED` |
 | **species_tier** | Optional 1…N |
 | **finish_state** | `finished` \| `unfinished` only (default `finished`) |

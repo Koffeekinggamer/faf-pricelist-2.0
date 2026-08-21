@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "vendor": "Brookside Home Furnishings",
+  "parser": {
+    "importer": "brookside_home_furnishings",
+    "source_file": "Brookside_Home_Furnishings/Download_2026_Pricelist_3164.xlsx",
+    "filename_hints": [
+      "brookside home furnishings",
+      "brooksidehomefurnishings",
+      "brookside"
+    ],
+    "layouts": [
+      "multi_name_price",
+      "unknown",
+      "viewed_cover",
+      "viewed_markup",
+      "wide_finish",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

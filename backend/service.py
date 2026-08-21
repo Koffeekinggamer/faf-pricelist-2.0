@@ -6,6 +6,8 @@ UI and scripts should prefer this over touching repository/importers directly.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence, Union
@@ -14,17 +16,20 @@ import pandas as pd
 
 from backend.batch import BatchImporter, BatchResult
 from backend.builder_parsers import (
+    identify_reader,
     infer_importer,
     list_locked_parsers,
-    match_vendor_from_saved_parsers,
-    guess_named_parser,
     preferred_parser_for,
     save_named_parser,
 )
 from backend.builder_profiles import (
+    apply_finish_as_option,
     category_matches_override,
+    effective_finish_as_option,
+    finish_option_label,
     load_builder_profile,
     override_applies,
+    resolve_option_groups,
 )
 from backend.config import (
     DB_PATH,
@@ -41,6 +46,28 @@ from backend.repository import PriceBookRepository
 from backend.users import UserRepository
 
 
+def _wholesale_fingerprint(rows: list[dict]) -> str:
+    """ADR-0010: sorted item/addon identities + wholesale after Standardize."""
+    identities = []
+    for row in rows:
+        line_kind = str(row.get("line_kind") or "item").strip().lower()
+        identities.append(
+            (
+                line_kind,
+                str(row.get("collection") or ""),
+                str(row.get("part_number") or ""),
+                str(row.get("description") or ""),
+                str(row.get("species") or ""),
+                str(row.get("finish_state") or ""),
+                str(row.get("option_key") or ""),
+                round(float(row.get("base_price") or 0), 4),
+                round(float(row.get("addon_pct") or 0), 4),
+            )
+        )
+    raw = json.dumps(sorted(identities), separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 class PriceBookService:
     """Single entry point: catalog, import, pricing, quotes, users, batch, export."""
 
@@ -54,6 +81,42 @@ class PriceBookService:
         self._ready = False
         # Injectable Drop parse session store root (tests / Fly temp).
         self._drop_parse_root: Optional[Path] = None
+        self._builder_profile_root: Optional[Path] = None
+
+    def _christina_watch(self, out: dict) -> dict:
+        """Christina records every Drop. Failures here must never block parse."""
+        try:
+            from dataclasses import asdict
+
+            from backend.christina import observe_drop
+            from backend.drop_parse_session import evaluate_readiness
+
+            out["readiness"] = asdict(evaluate_readiness(out))
+            observe_drop(out, path=self.db_path.parent / "christina_lessons.jsonl")
+        except Exception:
+            pass
+        return out
+
+    def _christina_log_path(self) -> Path:
+        return self.db_path.parent / "christina_lessons.jsonl"
+
+    def _christina_observe_load(self, **kwargs) -> None:
+        try:
+            from backend.christina import observe_load
+
+            kwargs.setdefault("path", self._christina_log_path())
+            observe_load(**kwargs)
+        except Exception:
+            pass
+
+    def _christina_observe_lock(self, **kwargs) -> None:
+        try:
+            from backend.christina import observe_lock
+
+            kwargs.setdefault("path", self._christina_log_path())
+            observe_lock(**kwargs)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ lifecycle
     def init(self) -> Path:
@@ -101,6 +164,10 @@ class PriceBookService:
     ) -> pd.DataFrame:
         self.ensure_ready()
         opts = self._normalize_option_keys(option_key)
+        profile = self._search_profile(vendor)
+        finish_state, opts = apply_finish_as_option(profile, opts, finish_state)
+        if opts and vendor and vendor != "All":
+            opts = resolve_option_groups(profile, opts)
         if (
             opts
             and vendor
@@ -109,6 +176,7 @@ class PriceBookService:
             upcharged = self._search_with_item_option_upcharge(
                 query,
                 vendor=vendor,
+                collection=collection,
                 finish_state=finish_state,
                 species=species,
                 option_keys=opts,
@@ -189,13 +257,16 @@ class PriceBookService:
     def _option_qty_allowed(option_key: str) -> bool:
         """True when floor may pick how many of this option to stack.
 
-        Extra drawers/doors and undermount slides are per-opening charges on
-        casegoods that may have more than one drawer or door.
+        Any Option whose label includes drawer is per-opening (cedar bottoms,
+        lined drawers, slides, extras). Extra doors and kick plates stay
+        countable the same way.
         """
         o = (option_key or "").lower()
-        if "extra" in o and ("drawer" in o or "door" in o):
+        if "drawer" in o:
             return True
-        if "slide" in o and "drawer" in o:
+        if "extra" in o and "door" in o:
+            return True
+        if "kick plate" in o:
             return True
         return False
 
@@ -416,6 +487,10 @@ class PriceBookService:
             itext = f"{r.get('description') or ''} {r.get('collection') or ''} {r.get('part_number') or ''}"
             if cats:
                 m, confident = self._match_addon_category(itext, cats, profile)
+                if m is None and flat:
+                    # A flat row is the default price; category rows override it
+                    # for named collections (for example AC Asher/Lenova/Martin).
+                    m, confident = flat[0], True
             else:
                 m, confident = (flat[0], True) if flat else (None, False)
             op = r.get("adjusted_price")
@@ -466,6 +541,7 @@ class PriceBookService:
         query: str,
         *,
         vendor: str,
+        collection: Optional[str],
         finish_state: Optional[str],
         species: Optional[str],
         option_keys: Sequence[str],
@@ -487,19 +563,25 @@ class PriceBookService:
         qtys = option_qty or {}
         profile = load_builder_profile(vendor)
         addon_by_opt: list[tuple[str, list[dict]]] = []
+        item_options: list[str] = []
         for opt in keys:
             addons = self.repo.get_addon_rows(vendor, opt)
             if addons:
                 addon_by_opt.append((opt, addons))
+            else:
+                # Item-native options (FN Cat.N, size variants, etc.) select
+                # the priced base rows before additive options are applied.
+                item_options.append(opt)
         if not addon_by_opt:
             return None
 
         df = self.repo.search(
             query,
+            collection=collection,
             vendor=vendor,
             finish_state=finish_state,
             species=species,
-            option_key=None,
+            option_key=item_options or None,
             limit=max(int(limit) * 6, 400),
         )
         if df.empty:
@@ -517,10 +599,15 @@ class PriceBookService:
             return df.iloc[0:0].copy()
 
         df = df.loc[any_applied].copy()
-        # Label with all selected upcharge options (stable order from UI).
+        # Label with item-native and additive selections in stable UI order.
         label_bits = []
-        for opt, _ in addon_by_opt:
-            q = self._clamp_option_qty(qtys.get(opt, 1)) if self._option_qty_allowed(opt) else 1
+        addon_keys = {opt for opt, _ in addon_by_opt}
+        for opt in keys:
+            q = (
+                self._clamp_option_qty(qtys.get(opt, 1))
+                if opt in addon_keys and self._option_qty_allowed(opt)
+                else 1
+            )
             label_bits.append(f"{opt} ×{q}" if q > 1 else opt)
         df["option_key"] = ", ".join(label_bits)
         return df.head(int(limit)).reset_index(drop=True)
@@ -545,7 +632,23 @@ class PriceBookService:
     def list_option_keys(self, vendor: Optional[str] = None) -> list[str]:
         """Live Option list for one builder from that builder's catalog (not a static menu)."""
         self.ensure_ready()
-        return self.repo.list_option_keys(vendor=vendor)
+        keys = self.repo.list_option_keys(vendor=vendor)
+        label = finish_option_label(self._search_profile(vendor))
+        if label and label not in keys:
+            return [label, *keys]
+        return keys
+
+    def _search_profile(self, vendor: Optional[str]) -> dict:
+        if not vendor or vendor == "All":
+            return {}
+        profile = dict(load_builder_profile(vendor) or {})
+        spec = effective_finish_as_option(
+            profile,
+            finish_states=self.repo.list_finish_states(vendor),
+        )
+        if spec:
+            profile["finish_as_option"] = spec
+        return profile
 
     def add_addon_charge(
         self,
@@ -637,12 +740,20 @@ class PriceBookService:
         source = rows[0].get("source_file") or ""
         vend_from_name = resolve_builder_vendor(vend_raw) or ""
         vend_from_file = resolve_builder_vendor(vend_raw, filename=str(source)) or ""
+        hinted = resolve_builder_vendor("", filename=str(source)) or ""
         if vend_from_name and vend_from_file and vend_from_name != vend_from_file:
             vend = vend_from_name
         else:
             vend = vend_from_file or vend_from_name or vend_raw
         for r in rows:
             r["vendor"] = vend
+
+        existed = False
+        if vend:
+            try:
+                existed = vend in set(self.repo.list_vendors())
+            except Exception:
+                existed = False
 
         if mode in ("replace_source", "replace_vendor", "replace_builder"):
             # One builder = one book: wipe + load in a single transaction
@@ -652,27 +763,37 @@ class PriceBookService:
                 result = self.repo.replace_source_rows(source, rows)
             else:
                 n = self.repo.insert_rows(rows)
-                return {
+                result = {
                     "inserted": n,
                     "updated": 0,
                     "deleted": 0,
                     "total": n,
                 }
-            n = result.get("inserted", 0)
-            return {
-                "inserted": n,
-                "updated": 0,
-                "deleted": result.get("deleted", 0),
-                "total": n,
-            }
-
-        if mode == "upsert":
+            if "total" not in result:
+                n = result.get("inserted", 0)
+                result = {
+                    "inserted": n,
+                    "updated": 0,
+                    "deleted": result.get("deleted", 0),
+                    "total": n,
+                }
+        elif mode == "upsert":
             result = self.repo.upsert_rows(rows)
             result["deleted"] = 0
-            return result
+        else:
+            n = self.repo.insert_rows(rows)
+            result = {"inserted": n, "updated": 0, "deleted": 0, "total": n}
 
-        n = self.repo.insert_rows(rows)
-        return {"inserted": n, "updated": 0, "deleted": 0, "total": n}
+        self._christina_observe_load(
+            builder=str(vend or ""),
+            filename=str(source or ""),
+            mode=mode,
+            inserted=int(result.get("inserted") or 0),
+            deleted=int(result.get("deleted") or 0),
+            existed=existed,
+            hinted_builder=str(hinted or ""),
+        )
+        return result
 
     def delete_by_source(self, source_file: str) -> int:
         self.ensure_ready()
@@ -752,26 +873,22 @@ class PriceBookService:
         """Single-pass parse → post-Standardize wholesale rows + suggested mult metadata."""
         from backend.drop_parse_session import wholesale_row
         from backend.smart_parse import summarize_parse_variants, variants_caption
-        from backend.standardize import resolve_builder_vendor
 
         name = filename or "upload"
         typed = (vendor_override or "").strip()
-        vend = resolve_builder_vendor(typed or name, filename=name)
-        if not vend or not preferred_parser_for(vend):
-            hinted = match_vendor_from_saved_parsers(name)
-            if hinted:
-                vend = hinted
-        if typed and not preferred_parser_for(vend or ""):
-            vend = resolve_builder_vendor(typed, filename=name) or typed
-        vend = vend or Path(name).stem
         kind = "pdf" if name.lower().endswith(".pdf") else "excel"
-        locked_parser = preferred_parser_for(vend, filename=name)
-        if kind == "excel" and not locked_parser:
-            guessed_vend, guessed_parser = guess_named_parser(name, data=data)
-            if guessed_parser:
-                locked_parser = guessed_parser
-                if not typed:
-                    vend = resolve_builder_vendor(guessed_vend, filename=name) or guessed_vend
+        vend, selected_parser, source = identify_reader(
+            name,
+            data=data if kind == "excel" else None,
+            vendor_override=typed,
+            root=self._builder_profile_root,
+            allow_guess=kind == "excel",
+        )
+        profile_parser = preferred_parser_for(
+            vend,
+            filename=name,
+            root=self._builder_profile_root,
+        )
         out: dict = {
             "filename": name,
             "kind": kind,
@@ -783,8 +900,9 @@ class PriceBookService:
             "error": "",
             "row_count": 0,
             "variants": {},
-            "detected_importer": locked_parser or ("pdf" if kind == "pdf" else ""),
-            "parser_source": "saved" if locked_parser else "",
+            "detected_importer": selected_parser or ("pdf" if kind == "pdf" else ""),
+            "parser_source": source,
+            "locked_parser": profile_parser,
         }
         try:
             if kind == "pdf":
@@ -801,11 +919,11 @@ class PriceBookService:
                 if prev.stats.get("likely_scanned"):
                     out["error"] = "Scanned PDF — little extractable text. Prefer Excel."
                     out["notes"] = str(prev.stats)
-                    return out
+                    return self._christina_watch(out)
                 if not prev.results and not prev.rows:
                     out["error"] = "No prices found in PDF."
                     out["notes"] = str(prev.stats)
-                    return out
+                    return self._christina_watch(out)
                 rows = [wholesale_row(r) for r in (prev.rows or [])]
                 for r in rows:
                     r["vendor"] = vend
@@ -813,11 +931,14 @@ class PriceBookService:
                     r["price_basis"] = r.get("price_basis") or "wholesale"
                 out["rows"] = rows
                 out["row_count"] = len(rows)
+                out["priced_option_count"] = int(
+                    getattr(prev, "priced_option_count", 0) or 0
+                )
                 out["variants"] = summarize_parse_variants(
                     rows, vendor=vend, sheets_tried=[{"layout": "pdf"}]
                 )
-                out["detected_importer"] = locked_parser or "pdf"
-                out["parser_source"] = "saved" if locked_parser else "guessed"
+                out["detected_importer"] = selected_parser or "pdf"
+                out["parser_source"] = "saved" if profile_parser else "guessed"
                 cap = variants_caption(out["variants"])
                 out["notes"] = (
                     f"PDF strategy · {len(rows)} rows"
@@ -833,7 +954,7 @@ class PriceBookService:
                     default_collection=default_collection,
                     multiplier=DEFAULT_MULTIPLIER,
                     use_workbook_markup=False,
-                    preferred_parser=locked_parser,
+                    preferred_parser=profile_parser,
                 )
                 detected = prev.detected_markup
                 out["detected_markup"] = detected
@@ -853,18 +974,22 @@ class PriceBookService:
                     r["price_basis"] = r.get("price_basis") or "wholesale"
                 out["rows"] = rows
                 out["row_count"] = len(rows)
+                out["priced_option_count"] = int(
+                    getattr(prev, "priced_option_count", 0) or 0
+                )
                 out["variants"] = summarize_parse_variants(
                     rows,
                     vendor=vend,
                     sheets_tried=getattr(prev, "sheets_tried", None),
                 )
                 out["detected_importer"] = infer_importer(
-                    getattr(prev, "detected_importer", "") or locked_parser,
+                    getattr(prev, "detected_importer", "") or selected_parser,
                     out["variants"].get("layouts"),
                 )
-                # Locked generic still counts as saved — same classifier, no re-guess.
                 out["parser_source"] = (
-                    "saved" if locked_parser else (getattr(prev, "parser_source", "") or "guessed")
+                    "saved"
+                    if profile_parser and out["detected_importer"] == profile_parser
+                    else (getattr(prev, "parser_source", "") or "guessed")
                 )
                 cap = variants_caption(out["variants"])
                 if cap:
@@ -875,7 +1000,7 @@ class PriceBookService:
                     out["error"] = "0 rows parsed — check file layout."
         except Exception as e:
             out["error"] = str(e)[:400]
-        return out
+        return self._christina_watch(out)
 
     def ensure_drop_parse_session(
         self,
@@ -894,6 +1019,7 @@ class PriceBookService:
         Full rows stay on disk; UI must not hold them.
         """
         from backend.drop_parse_session import (
+            DropFileOutcome,
             DropUpload,
             batch_key,
             new_session_id,
@@ -943,7 +1069,7 @@ class PriceBookService:
                 prefer_workbook_markup=prefer_workbook_markup,
                 vendor_override=(vendor_overrides or {}).get(up.filename, ""),
             )
-            files_payload.append(parsed)
+            files_payload.append(DropFileOutcome.from_payload(parsed).to_payload())
         if progress:
             try:
                 progress(1.0, "Done parsing")
@@ -987,13 +1113,19 @@ class PriceBookService:
         vend = resolve_builder_vendor(vendor) or (vendor or "").strip()
         if not vend:
             return None
-        return save_named_parser(
+        saved = save_named_parser(
             vend,
             importer=importer,
             source_file=source_file,
             layouts=list(layouts or []),
-            root=root,
+            root=root if root is not None else self._builder_profile_root,
         )
+        self._christina_observe_lock(
+            builder=vend,
+            importer=importer,
+            source_file=source_file,
+        )
+        return saved
 
     def wholesale_from_drop_parse_session(self, session_id: str):
         """Read post-Standardize wholesale rows for commit binding (outside this module)."""
@@ -1019,160 +1151,195 @@ class PriceBookService:
             raise DropSessionGone(session_id)
         return wholesale_from_payload(payload)
 
-    def prepare_drop_file(
+    def commit_drop_load(
         self,
-        data: bytes,
+        session_id: str,
+        bindings,
         *,
-        filename: str,
-        vendor: str = "",
-        multiplier: Optional[float] = None,
-        use_workbook_markup: bool = False,
-        default_collection: str = "",
-        pdf_max_pages: Optional[int] = None,
-        pdf_strategy_index: int = 0,
-    ) -> dict:
-        """
-        Parse one dropped Excel/PDF into standardized long-form rows.
-
-        Returns dict:
-          vendor, multiplier, detected_markup, rows, notes, error, row_count,
-          sample (list of dicts), sheets_tried
-        """
-        from backend.standardize import resolve_builder_vendor
-
-        self.ensure_ready()
-        name = filename or "upload"
-        vend = (
-            resolve_builder_vendor(vendor or name, filename=name)
-            or (vendor or "").strip()
-            or Path(name).stem
+        mode: str = "replace_vendor",
+    ):
+        """Commit confirmed Drop bindings; each Builder succeeds or blocks independently."""
+        from backend.builder_profiles import profile_writes_allowed
+        from backend.drop_parse_session import (
+            DropBuilderLoadResult,
+            DropLoadBatchResult,
+            DropSessionGone,
+            _lock_fields_from_payload,
+            _readiness_from_payload,
         )
-        out: dict = {
-            "filename": name,
-            "vendor": vend,
-            "multiplier": float(DEFAULT_MULTIPLIER),
-            "detected_markup": None,
-            "rows": [],
-            "notes": "",
-            "error": "",
-            "row_count": 0,
-            "sample": [],
-            "sheets_tried": [],
-            "kind": "pdf" if name.lower().endswith(".pdf") else "excel",
-        }
 
-        try:
-            if name.lower().endswith(".pdf"):
-                prev = self.imports.preview_pdf(
-                    data,
-                    filename=name,
-                    vendor=vend,
-                    default_collection=default_collection,
-                    multiplier=float(
-                        multiplier
-                        if multiplier is not None
-                        else self.get_vendor_multiplier(vend, default=DEFAULT_MULTIPLIER)
-                    ),
-                    max_pages=pdf_max_pages,
-                    strategy_index=pdf_strategy_index,
-                )
-                if prev.stats.get("likely_scanned"):
-                    out["error"] = "Scanned PDF — little extractable text. Prefer Excel."
-                    out["notes"] = str(prev.stats)
-                    return out
-                if not prev.results and not prev.rows:
-                    out["error"] = "No prices found in PDF."
-                    out["notes"] = str(prev.stats)
-                    return out
-                rows = list(prev.rows or [])
-                detected = None
-                notes = f"PDF strategy · {len(rows)} rows"
-            else:
-                # First pass: detect markup without forcing mult
-                probe = self.imports.preview_excel(
-                    data,
-                    filename=name,
-                    vendor=vend,
-                    default_collection=default_collection,
-                    multiplier=DEFAULT_MULTIPLIER,
-                    use_workbook_markup=False,
-                )
-                detected = probe.detected_markup
-                out["sheets_tried"] = probe.sheets_tried or []
-                out["notes"] = probe.notes or ""
+        store = self._drop_parse_store()
+        payload = store.load(session_id)
+        if not payload:
+            raise DropSessionGone(session_id)
+        files = list(payload.get("files") or [])
 
-                if multiplier is not None:
-                    mult = float(multiplier)
-                else:
-                    mult = self.resolve_multiplier(
-                        vend,
-                        sidebar_mult=DEFAULT_MULTIPLIER,
-                        detected_markup=detected if use_workbook_markup else None,
-                        prefer_workbook=use_workbook_markup,
-                        prefer_saved_vendor=True,
+        # One builder = one catalog. Multiple files for the same name concatenate.
+        grouped: dict[str, list[tuple[Any, dict]]] = {}
+        for binding in bindings:
+            index = int(binding.file_index)
+            if index < 0 or index >= len(files):
+                continue
+            builder = str(binding.builder or "").strip()
+            if not builder:
+                continue
+            grouped.setdefault(builder, []).append((binding, files[index]))
+
+        results = []
+        warnings: list[str] = []
+        any_success = False
+        for builder, parts in grouped.items():
+            binding = parts[0][0]
+            mult = float(binding.multiplier)
+            ready: list[tuple[Any, dict]] = []
+            skipped: list[str] = []
+            for _binding, file_payload in parts:
+                readiness = _readiness_from_payload(file_payload)
+                if not readiness.load_ready:
+                    skipped.append(
+                        "{0}: {1}".format(
+                            file_payload.get("filename") or "file",
+                            readiness.block_message or "not ready",
+                        )
                     )
-
-                prev = self.imports.preview_excel(
-                    data,
-                    filename=name,
-                    vendor=vend,
-                    default_collection=default_collection,
-                    multiplier=mult,
-                    use_workbook_markup=False,
+                    continue
+                ready.append((_binding, file_payload))
+            if not ready:
+                lock_fields = _lock_fields_from_payload(parts[0][1])
+                results.append(
+                    DropBuilderLoadResult(
+                        builder=builder,
+                        filename=" + ".join(
+                            str(item[1].get("filename") or "") for item in parts
+                        ),
+                        status="blocked",
+                        multiplier=mult,
+                        catalog={},
+                        parser_id=lock_fields.importer,
+                        block_message="; ".join(skipped),
+                    )
                 )
-                rows = list(prev.rows or [])
-                notes = prev.notes or notes
-                out["sheets_tried"] = prev.sheets_tried or out["sheets_tried"]
-                out["detected_markup"] = detected
+                continue
 
-            # Resolve final mult after we know detected
-            if multiplier is not None:
-                mult = float(multiplier)
-            else:
-                mult = self.resolve_multiplier(
-                    vend,
-                    sidebar_mult=DEFAULT_MULTIPLIER,
-                    detected_markup=out.get("detected_markup") if use_workbook_markup else None,
-                    prefer_workbook=use_workbook_markup,
-                    prefer_saved_vendor=True,
+            rows = []
+            filenames: list[str] = []
+            lock_fields = _lock_fields_from_payload(ready[0][1])
+            for _binding, file_payload in ready:
+                filename = str(file_payload.get("filename") or "")
+                filenames.append(filename)
+                next_lock = _lock_fields_from_payload(file_payload)
+                if next_lock.importer and next_lock.importer not in {"generic", "pdf"}:
+                    lock_fields = next_lock
+                for source_row in file_payload.get("rows") or []:
+                    row = dict(source_row)
+                    row["vendor"] = builder
+                    row["source_file"] = filename
+                    row["multiplier"] = mult
+                    row.pop("adjusted_price", None)
+                    rows.append(row)
+            filename = " + ".join(filenames)
+            if skipped:
+                warnings.append(
+                    "{0}: loaded {1} file(s), skipped {2}".format(
+                        builder, len(ready), "; ".join(skipped)
+                    )
                 )
-
-            # Apply builder-specific mult + ensure standardization already on rows
-            for r in rows:
-                r["vendor"] = vend
-                r["source_file"] = name
-                r["multiplier"] = mult
-                r["price_basis"] = r.get("price_basis") or "wholesale"
-                bp = r.get("base_price")
-                if bp is not None:
-                    try:
-                        from backend.pricing import catalog_multiplier, catalog_retail
-
-                        r["multiplier"] = catalog_multiplier(
-                            mult,
-                            line_kind=r.get("line_kind"),
-                            option_key=r.get("option_key"),
-                        )
-                        r["adjusted_price"] = catalog_retail(
-                            bp,
-                            mult,
-                            line_kind=r.get("line_kind"),
-                            option_key=r.get("option_key"),
-                        )
-                    except (TypeError, ValueError):
-                        pass
-
-            out["vendor"] = vend
-            out["multiplier"] = mult
-            out["rows"] = rows
-            out["row_count"] = len(rows)
-            out["notes"] = notes
-            out["sample"] = rows[:8]
             if not rows:
-                out["error"] = out["error"] or "0 rows parsed — check file layout."
-        except Exception as e:
-            out["error"] = str(e)[:400]
-        return out
+                results.append(
+                    DropBuilderLoadResult(
+                        builder=builder,
+                        filename=filename,
+                        status="blocked",
+                        multiplier=mult,
+                        catalog={},
+                        parser_id=lock_fields.importer,
+                        block_message="0 rows parsed",
+                    )
+                )
+                continue
+
+            fingerprint = _wholesale_fingerprint(rows)
+            unchanged = (
+                bool(fingerprint)
+                and self.repo.get_vendor_import_fingerprint(builder) == fingerprint
+            )
+            try:
+                if unchanged:
+                    catalog = {
+                        "inserted": 0,
+                        "updated": 0,
+                        "deleted": 0,
+                        "total": 0,
+                    }
+                else:
+                    catalog = self.add_rows(rows, mode=mode)
+                self.set_vendor_multiplier(
+                    builder,
+                    mult,
+                    notes=f"Set from drop import of {filename}",
+                )
+                self.reapply_multiplier(mult, vendor=builder)
+                self.repo.set_vendor_import_fingerprint(
+                    builder,
+                    fingerprint,
+                    source_file=filename,
+                )
+            except Exception as exc:
+                results.append(
+                    DropBuilderLoadResult(
+                        builder=builder,
+                        filename=filename,
+                        status="error",
+                        multiplier=mult,
+                        catalog={},
+                        parser_id=lock_fields.importer,
+                        block_message=str(exc)[:400],
+                    )
+                )
+                continue
+
+            profile_saved = False
+            profile_warning = ""
+            try:
+                parser_path = self.lock_builder_parser(
+                    builder,
+                    importer=lock_fields.importer,
+                    source_file=filename,
+                    layouts=list(lock_fields.layouts),
+                )
+                profile_saved = bool(parser_path)
+                # Fly intentionally reads shipped profiles and does not write.
+                if parser_path is None and profile_writes_allowed():
+                    profile_warning = "Builder Profile parser lock was not saved"
+            except Exception as exc:
+                profile_warning = str(exc)[:400]
+            if profile_warning:
+                warning = f"{builder}: catalog loaded but parser lock failed — {profile_warning}"
+                warnings.append(warning)
+
+            any_success = True
+            results.append(
+                DropBuilderLoadResult(
+                    builder=builder,
+                    filename=filename,
+                    status="unchanged" if unchanged else "loaded",
+                    multiplier=mult,
+                    catalog=catalog,
+                    parser_id=lock_fields.importer,
+                    profile_saved=profile_saved,
+                    profile_warning=profile_warning,
+                )
+            )
+
+        if any_success:
+            store.delete(session_id)
+        return DropLoadBatchResult(
+            session_id=session_id,
+            results=tuple(results),
+            blocking_warnings=tuple(warnings),
+            master_row_count=self.row_count(),
+            session_cleared=any_success,
+        )
 
     def preview_excel(self, data: bytes, **kwargs) -> ExcelImportPreview:
         return self.imports.preview_excel(data, **kwargs)

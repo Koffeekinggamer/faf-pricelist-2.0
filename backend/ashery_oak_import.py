@@ -261,7 +261,7 @@ def _classify_option_line(
 
 
 def parse_bookcase_door_addons(raw: pd.DataFrame, *, vendor: str) -> list[dict]:
-    """Options&Portal bk bookcase door matrix → flat addons on Bookcase items."""
+    """Visible Options tab bookcase door matrix → flat addons on Bookcase items."""
     if raw is None or raw.empty:
         return []
     df = raw.dropna(how="all").reset_index(drop=True)
@@ -466,23 +466,17 @@ def import_ashery_oak_workbook(
     for view in views:
         if view.role != "options" or view.raw is None:
             continue
-        key = view.name.strip()
-        if "bk" not in key.lower():
-            wood_pct = parse_extra_wood_percentages(view.raw)
-            n = _add_addons(parse_option_addons(view.raw, vendor=vendor_name))
-            extra[view.name] = {
-                "layout": "ashery_oak_options",
-                "rows": n,
-                "note": f"viewed · {len(wood_pct)} wood adders · {n} addons",
-            }
-        else:
-            n_doors = _add_addons(parse_bookcase_door_addons(view.raw, vendor=vendor_name))
-            n_opt = _add_addons(parse_option_addons(view.raw, vendor=vendor_name))
-            extra[view.name] = {
-                "layout": "ashery_oak_bookcase_options",
-                "rows": n_doors + n_opt,
-                "note": f"viewed · {n_doors} bookcase doors · {n_opt} other addons",
-            }
+        wood_pct = parse_extra_wood_percentages(view.raw)
+        n_opt = _add_addons(parse_option_addons(view.raw, vendor=vendor_name))
+        n_doors = _add_addons(parse_bookcase_door_addons(view.raw, vendor=vendor_name))
+        extra[view.name] = {
+            "layout": "ashery_oak_options",
+            "rows": n_opt + n_doors,
+            "note": (
+                f"viewed · {len(wood_pct)} wood adders · {n_opt} addons"
+                + (f" · {n_doors} bookcase doors" if n_doors else "")
+            ),
+        }
 
     seen_skus: set[str] = set()
     for view in views:

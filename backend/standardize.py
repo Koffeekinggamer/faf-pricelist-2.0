@@ -536,7 +536,7 @@ def standardize_text(val: Any) -> Optional[str]:
     if val is None:
         return None
     s = str(val).strip()
-    if not s or s.lower() in {"nan", "none", "null"}:
+    if not s or s.lower() in {"nan", "nat", "none", "null"}:
         return None
     # Normalize curly quotes / fancy dashes so matrix twins collapse
     s = (
@@ -633,6 +633,13 @@ VENDOR_CANON = {
     "ashery oak": "Ashery Oak",
     "asheryoak": "Ashery Oak",
     "ao": "Ashery Oak",
+    "artisan chairs": "Artisan Chairs",
+    "artisan chair": "Artisan Chairs",
+    "ac": "Artisan Chairs",
+    "criswell bedroom": "Criswell Bedroom",
+    "criswell furniture": "Criswell Bedroom",
+    "criswell": "Criswell Bedroom",
+    "cwf": "Criswell Bedroom",
 }
 
 # Substring matchers for messy filenames (order: more specific first)
@@ -640,7 +647,8 @@ _VENDOR_FILENAME_HINTS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"(?i)genuine\s*oak"), "Genuine Oak"),
     (re.compile(r"(?i)millers?\s*woodshop|mws\b"), "Millers Woodshop"),
     (re.compile(r"(?i)windy\s*acres"), "Windy Acres Furniture"),
-    (re.compile(r"(?i)\bfn\s*chairs?\b"), "FN Chair"),
+    # FNC_<year>_Pricelist is how that factory names every book they send.
+    (re.compile(r"(?i)\bfn\s*chairs?\b|(?:^|[^a-z])fnc(?:[^a-z]|$)"), "FN Chair"),
     (re.compile(r"(?i)rainbow\s*bedding|jan\s*2026\s*wholesale"), "Rainbow Bedding"),
     (re.compile(r"(?i)premier\s*woodcraft|\bpremier\b"), "Premier Woodcraft"),
     (re.compile(r"(?i)charleston\s*forge"), "Charleston Forge"),
@@ -655,6 +663,19 @@ _VENDOR_FILENAME_HINTS: list[tuple[re.Pattern, str]] = [
     ),
     (re.compile(r"(?i)hope\s*wood|hopewood|\bhw_2025\b|\bhw_"), "Hope Wood"),
     (re.compile(r"(?i)ashery\s*oak|asheryoak|ao_pricelist"), "Ashery Oak"),
+    (
+        re.compile(
+            r"(?i)artisan\s*chairs?|(?:^|[^a-z])ac_(?:20\d{2}|pricelist)|indianawoodcrafters"
+        ),
+        "Artisan Chairs",
+    ),
+    (
+        re.compile(
+            r"(?i)criswell|\bcwf\b|beds\s*[ah]\s*-\s*[fw]|cwf_pricelists|"
+            r"living\s*rooms?\s*price\s*list"
+        ),
+        "Criswell Bedroom",
+    ),
 ]
 
 
@@ -732,6 +753,13 @@ def _fn_chair_cat_token(val: Any) -> Optional[str]:
     return f"Cat. {int(m.group(1))}"
 
 
+def _fn_chair_species(species: Optional[str]) -> Optional[str]:
+    """FN Chair lists Brown Soft Maple as Brown Maple on the floor."""
+    if not species:
+        return species
+    return re.sub(r"(?i)\bbrown\s+soft\s+maple\b", "Brown Maple", species)
+
+
 def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[dict]:
     """
     Return a cleaned copy of a master row dict, or None if the row should be dropped.
@@ -783,6 +811,8 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
         return None
 
     species = standardize_species(raw_species)
+    if vendor == "FN Chair":
+        species = _fn_chair_species(species)
     # If species was pure junk col_N, drop the whole row (bad matrix columns)
     if is_junk_species_row(raw_species) and species is None:
         return None
@@ -860,6 +890,22 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
     line_kind = kind_raw.lower() if kind_raw else "item"
     if line_kind not in {"item", "addon"}:
         line_kind = "item"
+    from backend.product_descriptions import human_description
+
+    desc = human_description(
+        {
+            "vendor": vendor,
+            "part_number": part,
+            "description": desc,
+            "collection": collection,
+            "dimensions": dims,
+            "notes": notes,
+            "species": species,
+            "finish_state": finish,
+            "option_key": option_key,
+            "line_kind": line_kind,
+        }
+    )
     addon_raw = out.get("addon_pct")
     try:
         addon_pct = (
@@ -870,7 +916,15 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
     if addon_pct is not None and (math.isnan(addon_pct) or math.isinf(addon_pct)):
         addon_pct = None
     if base_f is None or base_f <= 0:
-        if not (line_kind == "addon" and addon_pct is not None and addon_pct > 0):
+        no_upcharge = (
+            line_kind == "addon"
+            and base_f == 0
+            and "no upcharge" in str(out.get("notes") or "").lower()
+        )
+        percent_addon = (
+            line_kind == "addon" and addon_pct is not None and addon_pct > 0
+        )
+        if not (no_upcharge or percent_addon):
             return None
     if not part and not desc:
         return None

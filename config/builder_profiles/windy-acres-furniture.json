@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "vendor": "Windy Acres Furniture",
+  "parser": {
+    "importer": "windy_acres",
+    "source_file": "Download_2026_Pricelist_2396.xlsx",
+    "filename_hints": [
+      "windy acres furniture",
+      "windyacresfurniture"
+    ],
+    "layouts": [
+      "unknown",
+      "viewed_cover",
+      "viewed_markup",
+      "wide_finish",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

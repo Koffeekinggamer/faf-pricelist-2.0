@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendor": "Patio Kraft",
+  "parser": {
+    "importer": "patio_kraft",
+    "source_file": "PatioKraft/Download_2026_Pricelist_305917.xlsx",
+    "filename_hints": [
+      "patio kraft",
+      "patiokraft"
+    ],
+    "layouts": [
+      "patio_kraft_color_tiers"
+    ],
+    "locked": true
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "vendor": "INTEG Wood Products",
+  "parser": {
+    "importer": "integ_wood_products",
+    "source_file": "INTEG_Wood_Products/Download_2026_Pricelist_8630.xls",
+    "filename_hints": [
+      "integ wood products",
+      "integwoodproducts",
+      "integ"
+    ],
+    "layouts": [
+      "long_flat",
+      "unknown",
+      "viewed_cover",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

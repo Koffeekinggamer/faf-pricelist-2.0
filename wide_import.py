@@ -247,10 +247,10 @@ def classify_column(col: str) -> str:
         return "skip"
     if re.search(r"finish(ing)?\s*(cost|est|estimate)", k) or "estimated finishing" in k:
         return "finish_est"
-    if looks_like_id_header(col):
-        return "id"
     if looks_like_desc_header(col):
         return "desc"
+    if looks_like_id_header(col):
+        return "id"
     if looks_like_dim_header(col):
         return "dim"
     if looks_like_species_header(col):
@@ -396,16 +396,14 @@ def dataframe_from_sheet(
     sheet_name: Union[str, int],
     engine: Optional[str] = None,
 ) -> pd.DataFrame:
-    bio = io.BytesIO(data)
-    kwargs = {"sheet_name": sheet_name, "header": None}
-    if engine:
-        kwargs["engine"] = engine
-    try:
-        raw = pd.read_excel(bio, **kwargs)
-    except Exception:
-        bio.seek(0)
-        raw = pd.read_excel(bio, sheet_name=sheet_name, header=None)
+    from backend.workbook_sheets import read_sheet
 
+    raw = read_sheet(data, sheet_name, header=None)
+    return dataframe_from_raw(raw)
+
+
+def dataframe_from_raw(raw: pd.DataFrame) -> pd.DataFrame:
+    """Promote headers from an already-read visible sheet."""
     raw = raw.dropna(how="all").dropna(axis=1, how="all")
     if raw.empty:
         return raw
@@ -543,17 +541,18 @@ def dataframe_from_sheet(
 
 
 def list_excel_sheets(data: bytes) -> list[str]:
+    """Visible sheet titles only. Hidden tabs stay hidden."""
+    from backend.workbook_sheets import excel_engine, hidden_sheet_names
+
     bio = io.BytesIO(data)
     try:
-        xl = pd.ExcelFile(bio, engine="openpyxl")
+        xl = pd.ExcelFile(bio, engine=excel_engine(data))
     except Exception:
         bio.seek(0)
-        try:
-            xl = pd.ExcelFile(bio, engine="xlrd")
-        except Exception:
-            bio.seek(0)
-            xl = pd.ExcelFile(bio)
-    return list(xl.sheet_names)
+        xl = pd.ExcelFile(bio)
+    names = list(xl.sheet_names)
+    hidden = hidden_sheet_names(data)
+    return [n for n in names if n not in hidden]
 
 
 def _is_markup_control_sheet(name: str) -> bool:
@@ -581,8 +580,9 @@ def detect_markup_from_workbook(data: bytes, sheet_names: list[str]) -> Optional
         if not _is_markup_control_sheet(str(name)):
             continue
         try:
-            bio = io.BytesIO(data)
-            df = pd.read_excel(bio, sheet_name=name, header=None)
+            from backend.workbook_sheets import read_sheet
+
+            df = read_sheet(data, name, header=None)
         except Exception:
             continue
         candidates = []
@@ -971,7 +971,7 @@ def _section_collection(row_vals: list, prev: Optional[str]) -> Optional[str]:
     if re.search(
         r"(?i)collection|series|bedroom|dining|chairs?|tables?|suite|"
         r"consoles?|desks?|bookcases?|entertainment|seating|occasional|"
-        r"plant\s*stand|pedestal|bookshelf|shaker|mission",
+        r"plant\s*stand|pedestal|bookshelf|shaker|mission|wall\s*units?|tv\s*stands?",
         joined,
     ):
         return joined.title() if joined.isupper() else joined
@@ -988,6 +988,28 @@ def _section_collection(row_vals: list, prev: Optional[str]) -> Optional[str]:
     return prev
 
 
+def _is_species_header_row(row_vals: list) -> bool:
+    texts = [_norm(v) for v in row_vals if _norm(v)]
+    if len(texts) < 2:
+        return False
+    species = sum(1 for value in texts if looks_like_species_header(value))
+    return species >= 2 and species / len(texts) >= 0.5
+
+
+def _is_finish_state_series(series: pd.Series) -> bool:
+    values = series.dropna().astype(str).str.strip().str.lower()
+    if values.empty:
+        return False
+    finish = values.str.fullmatch(
+        r"(?:unf(?:inished)?|fin(?:ished)?|finshed|glaz(?:e|ed))"
+    )
+    return bool(finish.mean() >= 0.6)
+
+
+def _is_ditto_part(value: str) -> bool:
+    return bool(re.fullmatch(r'(?:""|“”|″|〃)', (value or "").strip()))
+
+
 def unpivot_wide_species(
     df: pd.DataFrame,
     layout: SheetLayout,
@@ -999,6 +1021,7 @@ def unpivot_wide_species(
     """Expand species columns into long rows."""
     rows = []
     current_collection = default_collection or None
+    current_part: Optional[str] = None
     id_col = layout.id_col or _guess_id_from_values(df) or _guess_product_name_col(df)
     desc_col = layout.desc_col
     wholesale_map = wholesale_map or {}
@@ -1006,7 +1029,9 @@ def unpivot_wide_species(
     if not desc_col:
         for c in df.columns:
             if c != id_col and classify_column(c) in ("desc", "other"):
-                if not is_price_column(df[c], min_hits=5):
+                if not is_price_column(df[c], min_hits=5) and not _is_finish_state_series(
+                    df[c]
+                ):
                     desc_col = c
                     break
     if not desc_col and id_col:
@@ -1042,7 +1067,11 @@ def unpivot_wide_species(
         vals = row.tolist()
         # section header?
         part = _norm(row[id_col]) if id_col and id_col in row.index else ""
+        if _is_ditto_part(part):
+            part = current_part or ""
         desc = _norm(row[desc_col]) if desc_col and desc_col in row.index else ""
+        if _is_ditto_part(desc):
+            desc = part
         any_price = any(
             _to_float(row[price_src[c]]) is not None
             for c in species_cols
@@ -1050,7 +1079,8 @@ def unpivot_wide_species(
         )
 
         if not any_price:
-            current_collection = _section_collection(vals, current_collection)
+            if not _is_species_header_row(vals):
+                current_collection = _section_collection(vals, current_collection)
             continue
 
         if not part and not desc:
@@ -1063,6 +1093,8 @@ def unpivot_wide_species(
             part,
         ):
             continue
+        if part and part.lower() not in {"option", "options"}:
+            current_part = part
 
         dims = _combine_dims(row, layout.dim_cols)
         finish_est = None
@@ -1164,7 +1196,7 @@ def unpivot_wide_finish(
                     "vendor": vendor or None,
                     "collection": current_collection,
                     "part_number": part or None,
-                    "description": desc or None,
+                    "description": desc or part or None,
                     "dimensions": dims,
                     "option_key": None,
                     "species": species,
@@ -1331,6 +1363,9 @@ class WorkbookImportResult:
     notes: str = ""
     detected_importer: str = ""
     parser_source: str = ""  # "saved" | "guessed"
+    # Priced option lines this reader saw in the source. Counted on its own
+    # pass so the Drop gate can catch a reader that stopped emitting addons.
+    expected_option_lines: int = 0
 
 
 def tag_import_result(
@@ -1390,9 +1425,10 @@ def looks_like_patio_kraft(
         return False
     # Confirm: deep Item # + color-tier headers (not a generic Retail/Wholesale book)
     try:
+        from backend.workbook_sheets import read_sheet
+
         wh = next(s for s in names if str(s).strip().lower() == "wholesale")
-        bio = io.BytesIO(data)
-        raw = pd.read_excel(bio, sheet_name=wh, header=None)
+        raw = read_sheet(data, wh, header=None)
     except Exception:
         return False
     item_hits = 0
@@ -1623,8 +1659,9 @@ def import_patio_kraft_workbook(
             )
             continue
         try:
-            bio = io.BytesIO(data)
-            raw = pd.read_excel(bio, sheet_name=name, header=None)
+            from backend.workbook_sheets import read_sheet
+
+            raw = read_sheet(data, name, header=None)
         except Exception as e:
             tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)})
             continue
@@ -1714,7 +1751,7 @@ def looks_like_lamb(
     filename: str = "",
     sheet_names: Optional[list[str]] = None,
 ) -> bool:
-    fn = (filename or "").lower().replace("_", " ")
+    fn = (filename or "").lower().replace("_", " ").replace("-", " ").replace("/", " ")
     if re.search(r"\blamb\b", fn):
         return True
     names = " ".join(str(s).lower() for s in (sheet_names or []))
@@ -1991,8 +2028,9 @@ def import_lamb_workbook(
             )
             continue
         try:
-            bio = io.BytesIO(data)
-            raw = pd.read_excel(bio, sheet_name=name, header=None)
+            from backend.workbook_sheets import read_sheet
+
+            raw = read_sheet(data, name, header=None)
         except Exception as e:
             tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)})
             continue
@@ -2215,13 +2253,9 @@ def import_luxhome_workbook(
             )
             continue
         try:
-            bio = io.BytesIO(data)
-            # .xls may need xlrd
-            try:
-                raw = pd.read_excel(bio, sheet_name=name, header=None, engine="xlrd")
-            except Exception:
-                bio.seek(0)
-                raw = pd.read_excel(bio, sheet_name=name, header=None)
+            from backend.workbook_sheets import read_sheet
+
+            raw = read_sheet(data, name, header=None)
         except Exception as e:
             tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)})
             continue
@@ -2287,9 +2321,17 @@ def import_luxhome_workbook(
 # ---------------------------------------------------------------------------
 
 
-def looks_like_windy_acres(filename: str = "") -> bool:
-    fn = (filename or "").lower().replace("_", " ")
-    return "windy" in fn and "acres" in fn
+def looks_like_windy_acres(
+    filename: str = "",
+    sheet_names: Optional[list[str]] = None,
+    data: Optional[bytes] = None,
+) -> bool:
+    fn = (filename or "").lower().replace("_", " ").replace("-", " ").replace("/", " ")
+    if "windy" in fn and "acres" in fn:
+        return True
+    from backend.catalog_readers import _xlsx_mentions
+
+    return _xlsx_mentions(data, (b"Windy Acres", b"WINDY ACRES"))
 
 
 _WINDY_WOOD_HINT = re.compile(
@@ -2514,8 +2556,9 @@ def import_windy_acres_workbook(
             tried.append({"sheet": name, "layout": "skip", "rows": 0, "note": "non-product"})
             continue
         try:
-            bio = io.BytesIO(data)
-            raw = pd.read_excel(bio, sheet_name=name, header=None)
+            from backend.workbook_sheets import read_sheet
+
+            raw = read_sheet(data, name, header=None)
         except Exception as e:
             tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)})
             continue
@@ -2646,8 +2689,9 @@ def import_hw_chair_workbook(
             tried.append({"sheet": name, "layout": "skip", "rows": 0, "note": "filtered"})
             continue
         try:
-            bio = io.BytesIO(data)
-            raw = pd.read_excel(bio, sheet_name=name, header=None)
+            from backend.workbook_sheets import read_sheet
+
+            raw = read_sheet(data, name, header=None)
         except Exception as e:
             tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)})
             continue
@@ -2830,8 +2874,9 @@ def import_amish_aspen_workbook(
         if name not in targets:
             continue
         try:
-            bio = io.BytesIO(data)
-            raw = pd.read_excel(bio, sheet_name=name, header=None)
+            from backend.workbook_sheets import read_sheet
+
+            raw = read_sheet(data, name, header=None)
         except Exception as e:
             tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)})
             continue
@@ -2938,6 +2983,292 @@ def import_amish_aspen_workbook(
     )
 
 
+def looks_like_artisan_chairs(
+    filename: str = "", sheet_names: Optional[list[str]] = None, data: Optional[bytes] = None
+) -> bool:
+    """AC_<year>_Pricelist books: Wholesale + Retail with MARKUP.
+
+    Sheet names alone are not enough — LAMB and other factories also ship
+    Wholesale + Retail with MARKUP tabs. Filename (or empty filename in
+    tests that already know the factory) must look like Artisan Chairs.
+    """
+    fn = (filename or "").lower()
+    if re.search(r"artisan\s*chairs?|(?:^|[^a-z])ac[_\s-](?:20\d{2}|pricelist)", fn):
+        return True
+    if fn.strip():
+        return False
+    names = {str(n).strip().lower() for n in (sheet_names or [])}
+    return "wholesale" in names and "retail with markup" in names
+
+
+def artisan_chairs_option_addons(data: bytes, *, vendor: str) -> list[dict]:
+    """Read every priced line in Artisan Chairs' Wholesale Options block."""
+    try:
+        from backend.workbook_sheets import read_sheet
+
+        raw = read_sheet(data, "Wholesale", header=None)
+    except (ValueError, OSError):
+        return []
+
+    rows: list[dict] = []
+    in_options = False
+    special_collections: list[str] = []
+    for _, series in raw.iterrows():
+        cells = ["" if pd.isna(value) else str(value).strip() for value in series.tolist()]
+        text = " ".join(value for value in cells if value)
+        if not in_options:
+            if re.fullmatch(r"(?i)options", text):
+                in_options = True
+            continue
+        if re.fullmatch(r"(?i)miscellaneous", text):
+            continue
+        if re.search(r"(?i)internet policy", text):
+            break
+
+        # AC's labels sit in B; two collection-specific prices are indented in D.
+        label = cells[1] if len(cells) > 1 and cells[1] else ""
+        indented = cells[3] if len(cells) > 3 and cells[3] else ""
+        if label and re.search(r"(?i)priced with heartland standard fabric", label):
+            special_collections = [
+                part.strip()
+                for part in label.split("-", 1)[0].split(",")
+                if part.strip()
+            ]
+            continue
+        if label:
+            special_collections = []
+        option = label or indented
+        if not option:
+            continue
+
+        add_cell = next(
+            (value for value in cells if re.search(r"(?i)\bADD\b", value)),
+            "",
+        )
+        no_upcharge = any(re.search(r"(?i)^no upcharge$", value) for value in cells)
+        if not add_cell and not no_upcharge:
+            continue
+        amount = 0.0 if no_upcharge else None
+        if not no_upcharge:
+            for value in reversed(cells):
+                match = re.search(r"\$?\s*(\d+(?:\.\d+)?)", value.replace(",", ""))
+                if match and value != option:
+                    amount = float(match.group(1))
+                    break
+        if amount is None:
+            continue
+
+        canonical = option
+        if special_collections:
+            if re.fullmatch(r"(?i)leather", canonical):
+                canonical = "Leather Seat"
+            for collection in special_collections:
+                rows.append(
+                    {
+                        "vendor": vendor,
+                        "collection": "Addons",
+                        "part_number": f"{collection} - {canonical}",
+                        "description": f"{canonical} adder ({collection})",
+                        "option_key": canonical,
+                        "species": None,
+                        "finish_state": "finished",
+                        "base_price": amount,
+                        "price_basis": "wholesale",
+                        "line_kind": "addon",
+                        "notes": "Wholesale Options",
+                    }
+                )
+            continue
+
+        rows.append(
+            {
+                "vendor": vendor,
+                "collection": "Addons",
+                "part_number": canonical,
+                "description": canonical,
+                "option_key": canonical,
+                "species": None,
+                "finish_state": "finished",
+                "base_price": amount,
+                "price_basis": "wholesale",
+                "line_kind": "addon",
+                "notes": (
+                    "Wholesale Options · No upcharge"
+                    if no_upcharge
+                    else "Wholesale Options"
+                ),
+            }
+        )
+    return rows
+
+
+def artisan_chairs_product_rows(data: bytes, *, vendor: str) -> list[dict]:
+    """Unpivot the Wholesale Unfinished | Finished species matrix.
+
+    The first collection name (Aberdeen) sits on the species-header row, not on
+    its own banner — generic header detection swallowed it and tagged every
+    price finished. This pass keeps both finish blocks and that first name.
+    """
+    try:
+        from backend.workbook_sheets import read_sheet
+
+        raw = read_sheet(data, "Wholesale", header=None)
+    except (ValueError, OSError):
+        return []
+
+    rows: list[dict] = []
+    in_matrix = False
+    unf_start: Optional[int] = None
+    fin_start: Optional[int] = None
+    species_unf: list[tuple[int, str]] = []
+    species_fin: list[tuple[int, str]] = []
+    current_collection: Optional[str] = None
+
+    def _emit(description: str, species: str, finish_state: str, amount: float) -> None:
+        rows.append(
+            {
+                "vendor": vendor,
+                "collection": current_collection,
+                "part_number": description,
+                "description": description,
+                "option_key": None,
+                "species": species,
+                "finish_state": finish_state,
+                "base_price": amount,
+                "price_basis": "wholesale",
+                "line_kind": "item",
+                "notes": "Wholesale matrix",
+            }
+        )
+
+    for _, series in raw.iterrows():
+        cells = ["" if pd.isna(value) else str(value).strip() for value in series.tolist()]
+        lowered = [cell.lower() for cell in cells]
+        if "unfinished" in lowered and "finished" in lowered:
+            unf_start = lowered.index("unfinished")
+            fin_start = lowered.index("finished")
+            in_matrix = True
+            continue
+        if not in_matrix:
+            continue
+        if re.search(r"(?i)internet policy", " ".join(cell for cell in cells if cell)):
+            break
+
+        wood_cols = [
+            idx
+            for idx, cell in enumerate(cells)
+            if cell and looks_like_species_header(cell)
+        ]
+        if len(wood_cols) >= 4 and unf_start is not None and fin_start is not None:
+            if cells and cells[0] and not looks_like_species_header(cells[0]):
+                current_collection = cells[0]
+            species_unf = [
+                (idx, cells[idx])
+                for idx in wood_cols
+                if unf_start <= idx < fin_start
+            ]
+            species_fin = [
+                (idx, cells[idx]) for idx in wood_cols if idx >= fin_start
+            ]
+            continue
+
+        label = cells[0] if cells else ""
+        if not label:
+            continue
+
+        def _priced(pairs: list[tuple[int, str]]) -> list[tuple[str, float]]:
+            found: list[tuple[str, float]] = []
+            for idx, species in pairs:
+                if idx >= len(cells):
+                    continue
+                amount = _to_float(cells[idx])
+                if amount is None:
+                    continue
+                found.append((species, amount))
+            return found
+
+        unfinished_prices = _priced(species_unf)
+        finished_prices = _priced(species_fin)
+        if not unfinished_prices and not finished_prices:
+            current_collection = label
+            continue
+        for species, amount in unfinished_prices:
+            _emit(label, species, "unfinished", amount)
+        for species, amount in finished_prices:
+            _emit(label, species, "finished", amount)
+    return rows
+
+
+def count_artisan_option_lines(data: bytes) -> int:
+    """Count priced lines in AC's Options block without building any rows.
+
+    Deliberately independent of ``artisan_chairs_option_addons``: this is the
+    "how many should there be" side of the Drop gate, so it must not go dark
+    when the row builder does.
+    """
+    try:
+        from backend.workbook_sheets import read_sheet
+
+        raw = read_sheet(data, "Wholesale", header=None)
+    except (ValueError, OSError):
+        return 0
+
+    count = 0
+    in_options = False
+    for _, series in raw.iterrows():
+        cells = ["" if pd.isna(value) else str(value).strip() for value in series.tolist()]
+        text = " ".join(value for value in cells if value)
+        if not in_options:
+            if re.fullmatch(r"(?i)options", text):
+                in_options = True
+            continue
+        if re.search(r"(?i)internet policy", text):
+            break
+        if re.search(r"(?i)^no upcharge$", text) or re.search(
+            r"(?i)\bADD\b\s*\$?\s*\d", text
+        ):
+            count += 1
+    return count
+
+
+def count_priced_option_lines(data: bytes) -> int:
+    """Back-compat alias for the Artisan Chairs option-line count."""
+    return count_artisan_option_lines(data)
+
+
+def import_artisan_chairs_workbook(
+    data: bytes,
+    *,
+    vendor: str = "",
+    default_collection: str = "",
+    sheet_filter: Optional[list[str]] = None,
+    filename: str = "",
+) -> WorkbookImportResult:
+    """Artisan Chairs: import Wholesale; view Retail with MARKUP and leave it out."""
+    result = import_workbook(
+        data,
+        vendor=vendor or "Artisan Chairs",
+        default_collection=default_collection,
+        sheet_filter=sheet_filter,
+        filename=filename,
+        force_layout_guess=True,
+    )
+    result.expected_option_lines = count_artisan_option_lines(data)
+    vendor_name = vendor or "Artisan Chairs"
+    products = artisan_chairs_product_rows(data, vendor=vendor_name)
+    addons = artisan_chairs_option_addons(data, vendor=vendor_name)
+    frames = [pd.DataFrame(products)] if products else []
+    if addons:
+        frames.append(pd.DataFrame(addons))
+    if frames:
+        result.long_df = pd.concat(frames, ignore_index=True, sort=False)
+        result.notes = (
+            f"{result.notes} · {len(products)} Wholesale chair rows"
+            f"{' · ' + str(len(addons)) + ' Wholesale option rows' if addons else ''}"
+        )
+    return result
+
+
 def looks_like_hillside_chair(filename: str = "", sheet_names: Optional[list[str]] = None) -> bool:
     fn = (filename or "").lower().replace("_", " ")
     if "hillside chair" in fn or "hillside_chair" in (filename or "").lower():
@@ -2987,8 +3318,9 @@ def import_hillside_chair_workbook(
                 tried.append({"sheet": name, "layout": "skip", "rows": 0, "note": "index/adders"})
             continue
         try:
-            bio = io.BytesIO(data)
-            raw = pd.read_excel(bio, sheet_name=name, header=None)
+            from backend.workbook_sheets import read_sheet
+
+            raw = read_sheet(data, name, header=None)
         except Exception as e:
             tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)})
             continue
@@ -3166,8 +3498,9 @@ def import_maple_lane_workbook(
                 tried.append({"sheet": name, "layout": "skip", "rows": 0, "note": "retail"})
             continue
         try:
-            bio = io.BytesIO(data)
-            raw = pd.read_excel(bio, sheet_name=name, header=None)
+            from backend.workbook_sheets import read_sheet
+
+            raw = read_sheet(data, name, header=None)
         except Exception as e:
             tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)})
             continue
@@ -3332,6 +3665,7 @@ def import_workbook(
     sheet_filter: Optional[list[str]] = None,
     filename: str = "",
     preferred_parser: str = "",
+    force_layout_guess: bool = False,
 ) -> WorkbookImportResult:
     """
     Read all product sheets from an Excel workbook, unpivot wide matrices,
@@ -3348,108 +3682,46 @@ def import_workbook(
         "filename": filename,
     }
 
-    chosen = (preferred_parser or "").strip().lower()
-    if not chosen:
-        from backend.builder_parsers import preferred_parser_for
+    from backend.builder_parsers import identify_reader, run_named_parser
+    from backend.builder_reader_registry import DEFAULT_READER_REGISTRY
 
-        chosen = (preferred_parser_for(vendor, filename=filename) or "").strip().lower()
-    if chosen and chosen not in {"generic", "pdf"}:
-        from backend.builder_parsers import run_named_parser
+    if not force_layout_guess:
+        vend, chosen, source = identify_reader(
+            filename,
+            sheet_names=names,
+            data=data,
+            vendor=vendor,
+            preferred_parser=preferred_parser,
+        )
+        if vend:
+            common["vendor"] = vend
+        if chosen and chosen not in DEFAULT_READER_REGISTRY.generic_ids:
+            locked = run_named_parser(chosen, data, **common)
+            if locked is not None and not locked.long_df.empty:
+                tagged = tag_import_result(locked, chosen, source=source or "saved")
+                from backend.book_options import merge_book_options
 
-        locked = run_named_parser(chosen, data, **common)
-        if locked is not None and not locked.long_df.empty:
-            return tag_import_result(locked, chosen, source="saved")
+                return merge_book_options(tagged, data, vendor=common.get("vendor") or vendor)
 
-    # FN Chair Level One Blue — PL Print matrix (style × chair × Unf/Cat × wood)
-    from backend.fn_chair_import import import_fn_chair_workbook, looks_like_fn_level_one
-
-    if looks_like_fn_level_one(filename, names):
-        return tag_import_result(
-            import_fn_chair_workbook(
+        detected_vendor, detected_id = DEFAULT_READER_REGISTRY.detect(
+            filename, sheet_names=names, data=data
+        )
+        if detected_id:
+            detected = DEFAULT_READER_REGISTRY.run(
+                detected_id,
                 data,
-                vendor=vendor or "FN Chair",
+                vendor=common.get("vendor") or detected_vendor,
                 default_collection=default_collection,
                 sheet_filter=sheet_filter,
                 filename=filename,
-            ),
-            "fn_chair",
-        )
+            )
+            if detected is not None and not detected.long_df.empty:
+                tagged = tag_import_result(detected, detected_id)
+                from backend.book_options import merge_book_options
 
-    # J & M Woodworking — Br. Maple base + Percentage wood adders + finish addons
-    from backend.jmw_import import import_jmw_workbook, looks_like_jmw
-
-    if looks_like_jmw(filename, names):
-        return tag_import_result(
-            import_jmw_workbook(
-                data,
-                vendor=vendor or "J & M Woodworking",
-                default_collection=default_collection,
-                sheet_filter=sheet_filter,
-                filename=filename,
-            ),
-            "jmw",
-        )
-
-    from backend.ashery_oak_import import import_ashery_oak_workbook, looks_like_ashery_oak
-
-    if looks_like_ashery_oak(filename, names):
-        return tag_import_result(
-            import_ashery_oak_workbook(
-                data,
-                vendor=vendor or "Ashery Oak",
-                default_collection=default_collection,
-                sheet_filter=sheet_filter,
-                filename=filename,
-            ),
-            "ashery_oak",
-        )
-
-    # Specialized outdoor poly layout (multi-section color tiers)
-    if looks_like_patio_kraft(filename, names, data):
-        return tag_import_result(
-            import_patio_kraft_workbook(data, **common),
-            "patio_kraft",
-        )
-
-    if looks_like_amish_aspen(filename):
-        return tag_import_result(
-            import_amish_aspen_workbook(data, **common),
-            "amish_aspen",
-        )
-    if looks_like_hillside_chair(filename, names):
-        return tag_import_result(
-            import_hillside_chair_workbook(data, **common),
-            "hillside_chair",
-        )
-    if looks_like_maple_lane(filename):
-        return tag_import_result(
-            import_maple_lane_workbook(data, **common),
-            "maple_lane",
-        )
-
-    if looks_like_hw_chair_markup(filename, names):
-        return tag_import_result(
-            import_hw_chair_workbook(data, **common),
-            "hw_chair_markup",
-        )
-
-    if looks_like_lamb(filename, names):
-        return tag_import_result(
-            import_lamb_workbook(data, **common),
-            "lamb",
-        )
-
-    if looks_like_luxhome(filename, names):
-        return tag_import_result(
-            import_luxhome_workbook(data, **common),
-            "luxhome",
-        )
-
-    if looks_like_windy_acres(filename):
-        return tag_import_result(
-            import_windy_acres_workbook(data, **common),
-            "windy_acres",
-        )
+                return merge_book_options(
+                    tagged, data, vendor=common.get("vendor") or detected_vendor or vendor
+                )
 
     from backend.workbook_sheets import read_all_sheets
 
@@ -3533,7 +3805,11 @@ def import_workbook(
                 frames.append(long_opt)
             continue
         try:
-            df = dataframe_from_sheet(data, name)
+            df = (
+                dataframe_from_raw(view.raw)
+                if view is not None and view.raw is not None
+                else dataframe_from_sheet(data, name)
+            )
         except Exception as e:
             tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)})
             continue
@@ -3713,7 +3989,7 @@ def import_workbook(
     if filename:
         note = f"{filename}: " + note
 
-    return tag_import_result(
+    tagged = tag_import_result(
         WorkbookImportResult(
             sheets_tried=tried,
             long_df=out,
@@ -3723,3 +3999,6 @@ def import_workbook(
         ),
         "generic",
     )
+    from backend.book_options import merge_book_options
+
+    return merge_book_options(tagged, data, vendor=vendor)

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "vendor": "Farmside Wood",
+  "parser": {
+    "importer": "farmside_wood",
+    "source_file": "Farmside_Wood/Download_2026_Pricelist_3454.xlsx",
+    "filename_hints": [
+      "farmside wood",
+      "farmsidewood"
+    ],
+    "layouts": [
+      "viewed_cover",
+      "viewed_markup",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

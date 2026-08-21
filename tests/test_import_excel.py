@@ -52,6 +52,15 @@ def test_resolve_builder_from_filename():
     assert name == "Millers Woodshop"
 
 
+def test_resolve_artisan_chairs_from_ac_filename():
+    assert (
+        resolve_builder_vendor("", filename="AC_2026_Pricelist_0226.xlsx")
+        == "Artisan Chairs"
+    )
+    assert resolve_builder_vendor("AC") == "Artisan Chairs"
+    assert resolve_builder_vendor("Artisan Chairs") == "Artisan Chairs"
+
+
 def test_flat_table_import():
     data = _xlsx_bytes(
         [

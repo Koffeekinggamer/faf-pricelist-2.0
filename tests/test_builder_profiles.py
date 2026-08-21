@@ -8,7 +8,10 @@ from pathlib import Path
 from backend.builder_profiles import (
     DEFAULT_PROFILE,
     clear_profile_cache,
+    list_locked_parsers,
     load_builder_profile,
+    match_profile_vendor,
+    save_parser_lock,
     vendor_slug,
 )
 
@@ -53,3 +56,38 @@ def test_custom_profile_root(tmp_path: Path):
     p = load_builder_profile("Acme Furniture", root=tmp_path)
     assert p["item_upcharge_option_keywords"] == ["soft-close"]
     assert p["drawer_door_item_keywords"] == ["drawer"]
+
+
+def test_profile_module_owns_parser_lock_lifecycle(tmp_path: Path):
+    path = save_parser_lock(
+        "Acme Furniture",
+        importer="jmw",
+        source_file="Acme_2026_Pricelist.xlsx",
+        layouts=["jmw_br_maple_expand"],
+        root=tmp_path,
+    )
+    assert path is not None
+    assert match_profile_vendor("Acme_2027_Pricelist.xlsx", root=tmp_path) == (
+        "Acme Furniture"
+    )
+    assert list_locked_parsers(root=tmp_path) == [
+        {
+            "vendor": "Acme Furniture",
+            "importer": "jmw",
+            "source_file": "Acme_2026_Pricelist.xlsx",
+        }
+    ]
+
+    # A generic fallthrough can add safe filename metadata but cannot weaken
+    # the settled reader.
+    save_parser_lock(
+        "Acme Furniture",
+        importer="generic",
+        source_file="Acme_2027_Pricelist.xlsx",
+        layouts=["long_flat"],
+        root=tmp_path,
+    )
+    assert (load_builder_profile("Acme Furniture", root=tmp_path)["parser"])[
+        "importer"
+    ] == "jmw"
+    assert not path.with_suffix(".json.tmp").exists()

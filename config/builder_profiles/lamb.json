@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "vendor": "LAMB",
+  "parser": {
+    "importer": "lamb",
+    "source_file": "Lamb_Woodworking/Download_2026_Pricelist_23191.xlsx",
+    "filename_hints": [
+      "lamb"
+    ],
+    "layouts": [
+      "lamb_wholesale_matrix"
+    ],
+    "locked": true
+  }
+}

@@ -69,6 +69,48 @@ def test_fn_chair_remap_idempotent():
     assert twice["collection"] == "Seating"
 
 
+def test_fn_chair_brown_soft_maple_is_brown_maple():
+    cleaned = standardize_row(
+        {
+            "vendor": "FN Chair",
+            "collection": "Seating",
+            "part_number": "Abe Side Chair",
+            "description": "Abe Side Chair — Cat. 1",
+            "option_key": "Cat. 1",
+            "species": "Brown Soft Maple / Rustic Brown Maple / Rustic Cherry",
+            "finish_state": "finished",
+            "base_price": 155.0,
+            "multiplier": 2.7,
+            "source_file": "FNC_2027_Pricelist_0826.xlsm",
+        }
+    )
+    assert cleaned is not None
+    assert cleaned["species"] == "Brown Maple / Rustic Brown Maple / Rustic Cherry"
+    other = standardize_row(
+        {
+            "vendor": "Ashery Oak",
+            "part_number": "X1",
+            "species": "Brown Soft Maple",
+            "base_price": 100,
+            "multiplier": 2.7,
+        }
+    )
+    assert other is not None
+    assert other["species"] == "Brown Soft Maple"
+
+
+def test_rank_file_prefers_vendor_named_over_solo_galaxy(tmp_path: Path):
+    folder = tmp_path / "Black-Horse-Furniture"
+    folder.mkdir()
+    named = folder / "Black Horse Furniture 2026.xlsx"
+    solo = folder / "Solo Galaxy quotes calculator.xlsx"
+    named.write_bytes(b"x" * 3000)
+    solo.write_bytes(b"x" * 9000)
+    assert rank_file(named, "Black Horse Furniture") < rank_file(
+        solo, "Black Horse Furniture"
+    )
+
+
 def test_viztech_prefers_fn_level_one_filename(tmp_path: Path):
     assert vendor_from_folder("FN Chairs LLC") == "FN Chair"
     one = tmp_path / "FN_Level_One_Blue.xlsx"

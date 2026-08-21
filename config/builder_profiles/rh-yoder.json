@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "vendor": "RH Yoder",
+  "parser": {
+    "importer": "rh_yoder",
+    "source_file": "RH_Yoder/Download_2026_Pricelist_60720.xlsx",
+    "filename_hints": [
+      "rh yoder",
+      "rhyoder"
+    ],
+    "layouts": [
+      "viewed_cover",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

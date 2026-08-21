@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendor": "Old Town Oak",
+  "parser": {
+    "importer": "old_town_oak",
+    "source_file": "Old_Town_Oak/Download_2026_Pricelist_9411.xlsx",
+    "filename_hints": [
+      "old town oak",
+      "oldtownoak"
+    ],
+    "layouts": [
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

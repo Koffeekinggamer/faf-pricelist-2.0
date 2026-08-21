@@ -51,10 +51,12 @@ Public tunnel (ephemeral): `~/Documents/FAF-pricebook-backups/CURRENT_PUBLIC_URL
 
 ## Next work (priority)
 
-1. Fix ~26 Viztech files that import as 0 rows (formula sheets)
-2. Commit/push product code (no DB/secrets) if user wants
-3. Fill builder phones / better scrape
-4. Confirm hosted deploy strategy (local DB is source of truth)
+1. **Do not build yet — per-user auth / invite / billing (resale prep).** Each person: own login + password; pins per user (not shared). Invite link → enter email → temp password emailed → first login forces a new main password. Admin (Judson login only): user list with passwords, per-user logs for bugs, usage % per user, billing tab stub. Plan later for a full subscription sellable app. Keep current shared login until then.
+2. **Drop parser coverage:** the built-in Drop parser must know how to run each builder (named parser locked and loadable for all 44; no generic fall-through like Windy Acres).
+2. Fix ~26 Viztech files that import as 0 rows (formula sheets)
+3. Commit/push product code (no DB/secrets) if user wants
+4. Fill builder phones / better scrape
+5. Confirm hosted deploy strategy (local DB is source of truth)
 
 ## Next prompt (copy-paste)
 

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "vendor": "Kidron Woodcraft",
+  "parser": {
+    "importer": "kidron_woodcraft",
+    "source_file": "Download_2026_Pricelists_3224_unzipped/Solo Galaxy.xlsx",
+    "filename_hints": [
+      "kidron woodcraft",
+      "kidronwoodcraft"
+    ],
+    "layouts": [
+      "viewed_markup",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

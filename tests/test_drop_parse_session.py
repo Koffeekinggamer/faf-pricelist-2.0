@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import io
+import pickle
 import time
 
 import openpyxl
 import pytest
 
 from backend.drop_parse_session import (
+    DiskDropParseStore,
     DropSessionGone,
     DropUpload,
+    SESSION_SCHEMA_VERSION,
     drop_upload_from_path,
+    evaluate_readiness,
     is_drop_filename,
 )
 from backend.service import PriceBookService
@@ -85,6 +89,8 @@ def test_ensure_returns_session_with_file_preview_not_full_rows(svc):
     assert f.variants.get("item_count", 0) >= 2
     assert f.detected_importer
     assert f.parser_source in {"guessed", "saved"}
+    assert f.lock_fields.importer == f.detected_importer
+    assert isinstance(f.readiness.load_ready, bool)
     # UI-safe: sample only, not the full catalog
     assert len(f.sample) <= 8
     assert not hasattr(f, "rows") or not getattr(f, "rows", None)
@@ -196,3 +202,47 @@ def test_parse_requires_bytes_when_no_session(svc):
     light = [DropUpload("FlatBuilder.xlsx", b"", size=100)]
     with pytest.raises(ValueError, match="upload data required"):
         svc.ensure_drop_parse_session(light)
+
+
+def test_priced_options_without_addons_block_load():
+    readiness = evaluate_readiness(
+        {
+            "rows": [
+                {
+                    "vendor": "Builder",
+                    "part_number": "C1",
+                    "species": "Oak",
+                    "base_price": 100.0,
+                    "line_kind": "item",
+                }
+            ],
+            "priced_option_count": 4,
+        }
+    )
+
+    assert readiness.load_ready is False
+    assert readiness.block_code == "options_missing"
+    assert "4 priced option" in readiness.block_message
+
+
+def test_old_unversioned_session_is_invalidated(tmp_path):
+    store = DiskDropParseStore(tmp_path)
+    path = store.path_for("dps_old")
+    path.write_bytes(
+        pickle.dumps(
+            {
+                "batch_key": "old",
+                "saved_at": time.time(),
+                "files": [],
+            }
+        )
+    )
+    assert store.load("dps_old") is None
+
+    store.save(
+        "dps_new",
+        {"batch_key": "new", "saved_at": time.time(), "files": []},
+    )
+    loaded = store.load("dps_new")
+    assert loaded is not None
+    assert loaded["schema_version"] == SESSION_SCHEMA_VERSION

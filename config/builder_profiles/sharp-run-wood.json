@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "vendor": "Sharp Run Wood",
+  "parser": {
+    "importer": "sharp_run_wood",
+    "source_file": "Sharp_Run_Wood/Download_2026_Honey_Run_Pricelist_4041.xlsx",
+    "filename_hints": [
+      "sharp run wood",
+      "sharprunwood"
+    ],
+    "layouts": [
+      "long_flat",
+      "viewed_cover",
+      "viewed_empty",
+      "viewed_markup",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

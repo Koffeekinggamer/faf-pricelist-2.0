@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "vendor": "Ebony Woodworking",
+  "parser": {
+    "importer": "ebony_woodworking",
+    "source_file": "Ebony_Woodworking/Download_2025_Pricelist_93010.xlsx",
+    "filename_hints": [
+      "ebony woodworking",
+      "ebonywoodworking"
+    ],
+    "layouts": [
+      "viewed_markup",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

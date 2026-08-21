@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "vendor": "Premier Woodcraft",
+  "parser": {
+    "importer": "premier_woodcraft",
+    "source_file": "Premier_Woodcraft/Download_2026_Pricelist_2067.xlsx",
+    "filename_hints": [
+      "premier woodcraft",
+      "premierwoodcraft"
+    ],
+    "layouts": [
+      "multi_name_price",
+      "viewed_cover",
+      "viewed_markup",
+      "viewed_options",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

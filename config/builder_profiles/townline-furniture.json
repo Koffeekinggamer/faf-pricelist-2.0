@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendor": "Townline Furniture",
+  "parser": {
+    "importer": "townline_furniture",
+    "source_file": "Townline_Furniture/Download_2026_Pricelist_9419.xlsx",
+    "filename_hints": [
+      "townline furniture",
+      "townlinefurniture"
+    ],
+    "layouts": [
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

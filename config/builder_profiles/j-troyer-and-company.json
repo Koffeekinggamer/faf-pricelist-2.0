@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "vendor": "J. Troyer & Company",
+  "parser": {
+    "importer": "j_troyer_and_company",
+    "source_file": "J._Troyer_amp_Company/Download_2026_J._Troyer_Co._Pricelist_65372.xlsx",
+    "filename_hints": [
+      "j. troyer & company",
+      "j troyer and company",
+      "jtroyercompany",
+      "j troyer"
+    ],
+    "layouts": [
+      "long_flat",
+      "multi_name_price",
+      "unknown",
+      "viewed_cover",
+      "viewed_markup",
+      "viewed_options",
+      "wide_species"
+    ],
+    "locked": true
+  }
+}

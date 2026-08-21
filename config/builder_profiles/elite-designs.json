@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendor": "Elite Designs",
+  "parser": {
+    "importer": "elite_designs",
+    "source_file": "Elite_Designs/Download_2026_Pricelist_477146.xls",
+    "filename_hints": [
+      "elite designs",
+      "elitedesigns"
+    ],
+    "layouts": [
+      "wide_species"
+    ],
+    "locked": true
+  }
+}
