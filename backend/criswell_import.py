@@ -225,6 +225,8 @@ def _parse_options(rows: list[list[Any]], *, vendor: str) -> list[dict]:
             amount = _price(pane[1] if len(pane) > 1 else None)
             if amount is None:
                 continue
+            if re.search(r"(?i)\b(deduct(?:ion)?|less|credit)\b", label):
+                amount = -amount
             out.append(
                 {
                     "vendor": vendor,
@@ -244,6 +246,8 @@ def _parse_options(rows: list[list[Any]], *, vendor: str) -> list[dict]:
             # One addon row per option — take the first wood's price (flat across woods).
             first = priced[0]
             first["species"] = None
+            if re.search(r"(?i)\b(deduct(?:ion)?|less|credit)\b", label):
+                first["base_price"] = -abs(float(first["base_price"]))
             first["notes"] = "Criswell Options"
             out.append(first)
     return out

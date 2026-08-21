@@ -107,7 +107,11 @@ CATALOG_SPECS: tuple[CatalogSpec, ...] = (
     CatalogSpec("hoosier_crafts", "Hoosier Crafts"),
     CatalogSpec("integ_wood_products", "INTEG Wood Products", extra_tokens=("integ",)),
     CatalogSpec("j_troyer_and_company", "J. Troyer & Company", extra_tokens=("j troyer",)),
-    CatalogSpec("kidron_woodcraft", "Kidron Woodcraft"),
+    CatalogSpec(
+        "kidron_woodcraft",
+        "Kidron Woodcraft",
+        reader="backend.kidron_import:import_kidron_workbook",
+    ),
     CatalogSpec("meadow_lane_furniture", "Meadow Lane Furniture"),
     CatalogSpec("millcraft", "Millcraft"),
     CatalogSpec("millwood_quality_furniture", "Millwood Quality Furniture"),
@@ -274,6 +278,7 @@ def apply_catalog_description_fixes(
     vendor: str,
     *,
     product_context: Optional[dict[tuple[str, str], str]] = None,
+    filename: str = "",
 ):
     """Correct builder layouts before shared row standardization.
 
@@ -300,7 +305,52 @@ def apply_catalog_description_fixes(
             fabric_tier & option_blank
         ]
         out.loc[fabric_tier, "part_number"] = desc[fabric_tier]
-    elif vendor in {"INTEG Wood Products", "Hermies Table Shop"} and product_context:
+    elif vendor == "INTEG Wood Products":
+        for column in (
+            "collection",
+            "part_number",
+            "description",
+            "dimensions",
+            "option_key",
+            "line_kind",
+            "species",
+        ):
+            if column not in out.columns:
+                out[column] = None
+        upgrades = (
+            out["collection"]
+            .fillna("")
+            .astype(str)
+            .str.contains(r"(?i)\bupgrades?(?:\s*/?\s*options?)?\b")
+        )
+        for index in out.index[upgrades]:
+            part = _context_text(out.at[index, "part_number"])
+            detail = _context_text(out.at[index, "dimensions"])
+            label = detail if part.startswith("#") and detail else part
+            if (
+                label
+                and detail
+                and re.search(r"(?i)\bper\s+(?:pull|knob)", detail)
+                and detail not in label
+            ):
+                label = f"{label} — Per Pull/Knob"
+            if not label:
+                continue
+            out.at[index, "part_number"] = label
+            out.at[index, "description"] = label
+            out.at[index, "option_key"] = label
+            out.at[index, "line_kind"] = "addon"
+            out.at[index, "species"] = None
+        if product_context:
+            for index, row in out.loc[~upgrades].iterrows():
+                collection = _context_text(row.get("collection"))
+                part_number = _context_text(row.get("part_number"))
+                label = product_context.get((collection, part_number)) or product_context.get(
+                    ("", part_number.upper())
+                )
+                if label:
+                    out.at[index, "collection"] = label
+    elif vendor == "Hermies Table Shop" and product_context:
         if "collection" not in out.columns:
             out["collection"] = None
         if "part_number" not in out.columns:
@@ -313,6 +363,11 @@ def apply_catalog_description_fixes(
             ) or product_context.get(("", part_number.upper()))
             if label:
                 out.at[index, "collection"] = label
+    if (
+        vendor == "Mirror Lake Woodworks"
+        and "unfinished" in str(filename or "").lower()
+    ):
+        out["finish_state"] = "unfinished"
     return out
 
 
@@ -347,6 +402,7 @@ def import_catalog_workbook(
         result.long_df,
         spec.vendor,
         product_context=product_context,
+        filename=filename,
     )
     return tag_import_result(result, spec.parser_id)
 

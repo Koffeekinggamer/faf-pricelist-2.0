@@ -132,6 +132,70 @@ def test_ajs_fabric_tier_is_option_not_part_number():
     assert fixed.loc[0, "option_key"] == "Leather"
 
 
+def test_integ_upgrades_are_addons_not_fake_catalog_items():
+    parsed = pd.DataFrame(
+        [
+            {
+                "collection": "Upgrades / Options",
+                "part_number": "#PS2",
+                "description": "#PS2",
+                "dimensions": "Power Strip, Two 110v, 3 USB",
+                "option_key": None,
+                "line_kind": None,
+                "base_price": 85.0,
+            },
+            {
+                "collection": "#5200 Wall Unit",
+                "part_number": "5200",
+                "description": "5200",
+                "dimensions": '45” TV Opening',
+                "option_key": None,
+                "line_kind": "item",
+                "base_price": 2466.0,
+            },
+            {
+                "collection": "Upgrades",
+                "part_number": "Custom Hardware (Not in stock)",
+                "description": "Custom Hardware (Not in stock)",
+                "dimensions": "Non-stock hardware is $3 per pull/knob",
+                "option_key": None,
+                "line_kind": None,
+                "base_price": 3.0,
+            },
+        ]
+    )
+
+    fixed = apply_catalog_description_fixes(parsed, "INTEG Wood Products")
+    upgrade = fixed.iloc[0]
+
+    assert upgrade["line_kind"] == "addon"
+    assert upgrade["option_key"] == "Power Strip, Two 110v, 3 USB"
+    assert upgrade["part_number"] == "Power Strip, Two 110v, 3 USB"
+    assert fixed.iloc[1]["line_kind"] == "item"
+    assert fixed.iloc[2]["option_key"].endswith("Per Pull/Knob")
+
+
+def test_mirror_lake_unfinished_book_keeps_its_finish_twin():
+    parsed = pd.DataFrame(
+        [
+            {
+                "part_number": "ML-10-DMB",
+                "description": "10 Drawer Mule Box",
+                "finish_state": "finished",
+                "base_price": 900.0,
+            }
+        ]
+    )
+
+    fixed = apply_catalog_description_fixes(
+        parsed,
+        "Mirror Lake Woodworks",
+        filename="Download_2026_Unfinished_Pricelist_695524.xls",
+    )
+
+    assert fixed.loc[0, "finish_state"] == "unfinished"
+
+
 def test_integ_section_name_replaces_sheet_name_collection():
     parsed = pd.DataFrame(
         [

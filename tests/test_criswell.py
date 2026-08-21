@@ -126,6 +126,33 @@ def test_criswell_reader_keeps_left_wholesale_copy_and_options():
     assert result.expected_option_lines == 1
 
 
+def test_criswell_deduct_option_is_emitted_as_a_negative_charge():
+    data = _xlsx(
+        {
+            "Markup": [["Enter Markup"], [1]],
+            "Cover": [["CRISWELL FURNITURE"]],
+            "Options ": [
+                ["Options", None, "Oak"],
+                ['20" high low footboard (DEDUCT)', 203],
+            ],
+            "Bloomfield Collection": [
+                [None, None, "Oak"],
+                ["CWF8111", "Tall Dresser", 1099],
+            ],
+        }
+    )
+
+    result = DEFAULT_READER_REGISTRY.run(
+        "criswell", data, vendor="Criswell Bedroom", filename="Wholesale Price List.xlsx"
+    )
+    deduct = result.long_df[
+        result.long_df["option_key"] == '20" high low footboard (DEDUCT)'
+    ]
+
+    assert len(deduct) == 1
+    assert float(deduct.iloc[0]["base_price"]) == -203.0
+
+
 def test_criswell_option_gate_counts_source_lines_not_emitted_rows(monkeypatch):
     """Options tab can go silent and Load must still block (ADR-0011)."""
     data = _xlsx(

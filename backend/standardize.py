@@ -972,7 +972,19 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
         percent_addon = (
             line_kind == "addon" and addon_pct is not None and addon_pct > 0
         )
-        if not (no_upcharge or percent_addon):
+        deduction_addon = (
+            line_kind == "addon"
+            and base_f is not None
+            and base_f < 0
+            and re.search(
+                r"(?i)\b(deduct(?:ion)?|less|credit)\b",
+                " ".join(
+                    str(value or "")
+                    for value in (option_key, part, desc, out.get("notes"))
+                ),
+            )
+        )
+        if not (no_upcharge or percent_addon or deduction_addon):
             return None
     if not part and not desc:
         return None

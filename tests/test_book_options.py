@@ -115,3 +115,54 @@ def test_merge_does_not_duplicate_existing_option_keys():
     merged = merge_book_options(result, _millcraft_front_matter(), vendor="Millcraft")
     locks = merged.long_df[merged.long_df["option_key"] == "Lock"]
     assert len(locks) == 1
+
+
+def test_extracts_visible_options_rows_with_percent_dollar_and_deduct_shapes():
+    data = _xlsx(
+        [
+            ["Options"],
+            ["Paint & Glaze", 0.15],
+            ["Without Drawers", "$45 Less"],
+            ["Plank Rough Sawn Tops", "No Upcharge"],
+            ["Option: Slatted or Grooved Doors, ADD", 65, 65, 65, 65],
+        ]
+    )
+
+    by = {row["option_key"]: row for row in extract_book_options(data, vendor="X")}
+
+    assert by["Paint & Glaze"]["addon_pct"] == 15
+    assert by["Without Drawers"]["base_price"] == -45
+    assert by["Plank Rough Sawn Tops"]["base_price"] == 0
+    assert by["Slatted or Grooved Doors"]["base_price"] == 65
+
+
+def test_extracts_formatted_finish_percent_rows_after_finish_banner():
+    data = _xlsx(
+        [
+            ["FINISHING OPTIONS FOR ALL PRODUCTS"],
+            ["ADD ALL THAT APPLY"],
+            [None, None, None, None, None, "Category 2 Colors", None, None, 0.8],
+            [None, None, None, None, None, "Two-Tone", None, None, 0.4],
+        ]
+    )
+
+    by = {row["option_key"]: row for row in extract_book_options(data, vendor="X")}
+
+    assert by["Category 2 Colors"]["addon_pct"] == 80
+    assert by["Two-tone"]["addon_pct"] == 40
+
+
+def test_extracts_per_drawer_hardware_charges_from_visible_note():
+    data = _xlsx(
+        [
+            [
+                '*Add $10/drawer for side mount soft close, '
+                '$20/drawer for undermount soft close'
+            ]
+        ]
+    )
+
+    by = {row["option_key"]: row for row in extract_book_options(data, vendor="X")}
+
+    assert by["Side Mount Soft Close Slides"]["base_price"] == 10
+    assert by["Undermount Soft Close Slides"]["base_price"] == 20

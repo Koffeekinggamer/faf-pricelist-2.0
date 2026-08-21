@@ -257,16 +257,24 @@ class PriceBookService:
     def _option_qty_allowed(option_key: str) -> bool:
         """True when floor may pick how many of this option to stack.
 
-        Any Option whose label includes drawer is per-opening (cedar bottoms,
-        lined drawers, slides, extras). Extra doors and kick plates stay
-        countable the same way.
+        Countable hardware/openings use a quantity after the Option is checked.
+        A printed fixed bundle (``2 Glass Shelves``) stays one Option; labels
+        saying additional/extra/per/each may be repeated on the same piece.
         """
         o = (option_key or "").lower()
-        if "drawer" in o:
+        if not o:
+            return False
+        if re.search(r"\b(set of|options?:)\s*\d+\b", o):
+            return False
+        if re.search(r"\b\d+\s*[- ]?\s*(?:glass\s+)?shel(?:f|ves)\b", o):
+            return False
+        if any(token in o for token in ("drawer", "slide", "knob", "kick plate")):
             return True
-        if "extra" in o and "door" in o:
+        if re.search(r"\b(?:additional|extra|add)\b.*\b(?:door|shel(?:f|ves)|lea(?:f|ves))\b", o):
             return True
-        if "kick plate" in o:
+        if re.search(r"\bper\s+(?:door|drawer|shel(?:f|ves)|knob|pull|light|opening)\b", o):
+            return True
+        if re.search(r"\b(?:door|drawer|shel(?:f|ves)|knob|pull|light|opening)\b.*\b(?:each|per)\b", o):
             return True
         return False
 
@@ -512,6 +520,11 @@ class PriceBookService:
                 label, approx = None, True
             else:
                 b, a, label, approx = med_base, med_retail, None, True
+            if qty > 1:
+                if a is not None:
+                    a = float(a) * qty
+                if b is not None:
+                    b = float(b) * qty
             if a is not None:
                 df.at[idx, "adjusted_price"] = (float(op) if op is not None else 0.0) + float(a)
             if b is not None:
@@ -530,6 +543,8 @@ class PriceBookService:
                 inner = f"{label}{amt}"
             else:
                 inner = amt.strip(" +")
+            if qty > 1:
+                inner = f"{inner} ×{qty}".strip()
             tag = f"+ {option_key} ({inner})" if inner else f"+ {option_key}"
             n = str(df.at[idx, "notes"] or "") if "notes" in df.columns else ""
             df.at[idx, "notes"] = f"{n} · {tag}".strip(" ·") if n else tag

@@ -30,14 +30,17 @@ _DASH_DOLLAR = re.compile(
 
 _SKIP_LABEL = re.compile(
     r"(?i)^(oak|maple|cherry|walnut|hickory|alder|qswo|standard wood|premium wood|"
-    r"description|item number|collection|wholesale|retail|cover|index|"
+    r"description|item number|item\s*#|collection|wholesale|retail|cover|index|"
     r"password|price|to|prices? for the year)$"
 )
 _JUNK_LABEL = re.compile(r"(?i)password|price list|option\s*:")
 _UNFINISHED_DEDUCT = re.compile(r"(?i)unfinish")
 _NO_UPCHARGE = re.compile(r"(?i)no\s+upcharge")
 _ADD_ON_BANNER = re.compile(r"(?i)add[\s\-]*on\s+options?")
-_FINISH_SECTION = re.compile(r"(?i)premium\s+finish|finish\s+choices|optional\s+finish")
+_OPTIONS_BANNER = re.compile(r"(?i)^options?$")
+_FINISH_SECTION = re.compile(
+    r"(?i)premium\s+finish|finish(?:ing)?\s+(?:choices|options)|optional\s+finish"
+)
 _SIZE_UP_TO = re.compile(r"(?i)size\s*changes?|up to\s*10|customized up to")
 _SIZE_OVER = re.compile(r"(?i)over\s*10")
 _TWO_TONE = re.compile(r"(?i)two[\s\-]*ton")
@@ -67,6 +70,7 @@ def _norm_label(raw: str) -> str:
         r"(?i)^glazing\s*&\s*painting$": "Glaze & paint",
         r"(?i)^paint and glaze$": "Paint and glaze",
         r"(?i)^size changes?$": 'Size change (up to 10")',
+        r"(?i)^3 or 60 sheen$": "30 or 60 Sheen",
     }
     for pat, label in aliases.items():
         if re.fullmatch(pat, s):
@@ -147,11 +151,108 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
             continue
         joined = " | ".join(cells)
 
+        soft_close = re.search(
+            r"(?i)add\s+\$(\d+(?:\.\d+)?)\s*/\s*drawer\s+for\s+side\s+mount"
+            r".*?\$(\d+(?:\.\d+)?)\s*/\s*drawer\s+for\s+undermount",
+            joined,
+        )
+        if soft_close:
+            for label, amount in (
+                ("Side Mount Soft Close Slides", soft_close.group(1)),
+                ("Undermount Soft Close Slides", soft_close.group(2)),
+            ):
+                rec = _addon(
+                    vendor,
+                    label,
+                    dollars=float(amount),
+                    notes="per drawer from visible source note",
+                )
+                if rec:
+                    out.append(rec)
+
+        # Visible option tables often put the label in one cell and the charge
+        # in the next (or repeat the same amount across wood columns).
+        label_cell = next(
+            (
+                cell
+                for cell in cells
+                if not re.fullmatch(r"[$]?\s*-?\d+(?:\.\d+)?%?", cell)
+                and not re.fullmatch(r"(?i)add\s+\d+(?:\.\d+)?%", cell)
+                and not re.fullmatch(r"(?i)\$?\d+(?:\.\d+)?\s+less", cell)
+                and not _NO_UPCHARGE.fullmatch(cell)
+            ),
+            "",
+        )
+        row_label = re.sub(r"(?i)^option\s*:\s*", "", label_cell)
+        row_label = re.sub(r"(?i)[,\s]+add\s*$", "", row_label).strip()
+        explicit_pct = re.search(r"(?i)\badd\s+(\d+(?:\.\d+)?)\s*%", joined)
+        less = re.search(r"(?i)\$?\s*(\d+(?:\.\d+)?)\s+less\b", joined)
+        numeric = []
+        for cell in cells:
+            try:
+                numeric.append(float(cell.replace("$", "").replace(",", "")))
+            except ValueError:
+                pass
+        row_rec = None
+        if row_label and explicit_pct:
+            row_rec = _addon(
+                vendor,
+                row_label,
+                pct=float(explicit_pct.group(1)),
+                notes="percent option from visible row",
+            )
+        elif row_label and less:
+            row_rec = _addon(
+                vendor,
+                row_label,
+                dollars=-float(less.group(1)),
+                notes="deduction from visible row",
+            )
+        elif row_label and _NO_UPCHARGE.search(joined):
+            row_rec = _addon(
+                vendor,
+                row_label,
+                dollars=0,
+                notes="no upcharge from visible row",
+            )
+        elif (
+            row_label
+            and numeric
+            and 0 < numeric[0] <= 2
+            and (
+                finish_section
+                or in_addons
+                or re.search(r"(?i)paint|glaze|two[\s-]?tone|color|sheen", row_label)
+            )
+        ):
+            row_rec = _addon(
+                vendor,
+                row_label,
+                pct=numeric[0] * 100,
+                notes="formatted percent option from visible row",
+            )
+        elif (
+            row_label
+            and numeric
+            and (in_addons or re.match(r"(?i)^option\s*:", label_cell))
+            and len({round(value, 4) for value in numeric if value > 0}) == 1
+        ):
+            row_rec = _addon(
+                vendor,
+                row_label,
+                dollars=numeric[0],
+                notes="flat option from visible row",
+            )
+        if row_rec:
+            out.append(row_rec)
+
         if _NO_UPCHARGE.search(joined):
             no_upcharge = True
             current_pct = None
             continue
-        if _ADD_ON_BANNER.search(joined):
+        if _ADD_ON_BANNER.search(joined) or any(
+            _OPTIONS_BANNER.fullmatch(cell) for cell in cells
+        ):
             in_addons = True
             no_upcharge = False
         if _FINISH_SECTION.search(joined):

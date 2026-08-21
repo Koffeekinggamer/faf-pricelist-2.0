@@ -58,6 +58,14 @@ def catalog_retail(
             return round(float(base_price), 2) if base_price is not None else None
         except (TypeError, ValueError):
             return None
+    if str(line_kind or "item").strip().casefold() == "addon":
+        try:
+            base = float(base_price) if base_price is not None else None
+        except (TypeError, ValueError):
+            base = None
+        if base is not None and base < 0:
+            retail = retail_from_wholesale(abs(base), multiplier)
+            return -retail if retail is not None else None
     return retail_from_wholesale(base_price, multiplier)
 
 

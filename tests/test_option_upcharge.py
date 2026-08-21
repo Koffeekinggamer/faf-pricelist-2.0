@@ -294,9 +294,91 @@ def test_any_drawer_option_gets_a_qty_control():
     assert allowed("Hidden Drawers")
     assert allowed("Extra Drawers or Doors")
     assert allowed("Undermount Drawer Slides")
+    assert allowed("Soft Close Slides")
+    assert allowed("Beveled Glass Per Door")
+    assert allowed("Additional Shelves (Each)")
+    assert allowed("Add Adj Shelves")
+    assert allowed("Per Knob")
+    assert allowed("Additional leaves")
     assert not allowed("Two-tone")
     assert not allowed("Lock")
     assert not allowed("Distressing")
+    assert not allowed("Set of 4 LED Lights w/ 1 Touch Switch")
+
+
+def test_per_knob_qty_multiplies_the_selected_piece_charge(tmp_path):
+    svc = _svc(tmp_path)
+    vendor = "J. Troyer & Company"
+    svc.repo.insert_rows(
+        [
+            _item(vendor, "Dining", "SB1", "Charleston Sideboard", 1000.0),
+            _addon(vendor, "Per Knob", 5.0, 14.0),
+        ]
+    )
+
+    three = svc.search(
+        "SB1",
+        vendor=vendor,
+        option_key="Per Knob",
+        option_qty={"Per Knob": 3},
+    )
+
+    assert len(three) == 1
+    assert float(three.iloc[0]["adjusted_price"]) == 1000.0 + 14.0 * 3
+    assert three.iloc[0]["option_key"] == "Per Knob ×3"
+    assert "×3" in str(three.iloc[0]["notes"])
+
+
+def test_deduct_option_stays_negative_and_lowers_retail(tmp_path):
+    row = standardize_row(
+        {
+            "vendor": "Criswell Bedroom",
+            "collection": "Addons",
+            "part_number": '20" high low footboard (DEDUCT)',
+            "description": '20" high low footboard (DEDUCT)',
+            "option_key": '20" high low footboard (DEDUCT)',
+            "line_kind": "addon",
+            "base_price": -203.0,
+            "multiplier": 2.7,
+        }
+    )
+    assert row is not None
+    assert row["base_price"] == -203.0
+    assert row["adjusted_price"] == -550.0
+
+    svc = _svc(tmp_path)
+    vendor = "Criswell Bedroom"
+    svc.repo.insert_rows(
+        [
+            _item(vendor, "Bedroom", "B1", "Charleston Bed", 2000.0),
+            row,
+        ]
+    )
+    result = svc.search(
+        "B1",
+        vendor=vendor,
+        option_key='20" high low footboard (DEDUCT)',
+    )
+    assert float(result.iloc[0]["adjusted_price"]) == 1450.0
+
+
+def test_visible_less_row_keeps_negative_charge_when_label_says_without():
+    row = standardize_row(
+        {
+            "vendor": "Black Horse Furniture",
+            "line_kind": "addon",
+            "option_key": "Without Drawers",
+            "description": "Without Drawers",
+            "base_price": -45,
+            "price_basis": "wholesale",
+            "notes": "deduction from visible row",
+            "multiplier": 2,
+        }
+    )
+
+    assert row is not None
+    assert row["base_price"] == -45
+    assert row["adjusted_price"] == -90
 
 
 def test_cedar_drawer_bottoms_qty_multiplies_flat_charge(tmp_path):
