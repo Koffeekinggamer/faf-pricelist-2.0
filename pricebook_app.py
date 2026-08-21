@@ -2838,7 +2838,11 @@ if nav == "Admin":
 
             otb1, otb2, otb3 = st.columns(3)
             with otb1:
-                if st.button("Check OrderTrac session", use_container_width=True):
+                if st.button(
+                    "Check OrderTrac session",
+                    use_container_width=True,
+                    help="Pings OrderTrac with the saved session. Does not create quotes or users.",
+                ):
                     with st.spinner("Checking OrderTrac…"):
                         chk = _ot_svc.ordertrac_check_session()
                     if chk.get("ok"):
@@ -2916,7 +2920,11 @@ if nav == "Admin":
                     nr = st.selectbox("Role", ["sales", "floor", "admin"], key="new_user_role")
                 with cu2:
                     npw = st.text_input("Password", type="password", key="new_user_pw")
-                    if st.button("Create user", key="btn_create_user"):
+                    if st.button(
+                        "Create user",
+                        key="btn_create_user",
+                        help="Adds a local FAF login with the username, password, and role on the left.",
+                    ):
                         if not nu or not npw:
                             st.error("Username and password required.")
                         else:
@@ -2938,7 +2946,11 @@ if nav == "Admin":
                     unames = users_df["username"].tolist()
                     ru = st.selectbox("User", unames, key="reset_user_sel")
                     rpw = st.text_input("New password", type="password", key="reset_user_pw")
-                    if st.button("Reset password", key="btn_reset_pw"):
+                    if st.button(
+                        "Reset password",
+                        key="btn_reset_pw",
+                        help="Sets a new password for the selected user. They must change it on next login.",
+                    ):
                         row = users_df[users_df["username"] == ru].iloc[0]
                         _ot_svc.set_app_user_password(int(row["id"]), rpw, must_change=True)
                         st.success(f"Password reset for {ru} (must change on next login).")
@@ -2980,7 +2992,12 @@ if nav == "Admin":
                 index=0,
                 key="ot_push_user",
             )
-            if st.button("Push to OrderTrac as QUOTE", type="primary", key="btn_ot_push"):
+            if st.button(
+                "Push to OrderTrac as QUOTE",
+                type="primary",
+                key="btn_ot_push",
+                help="Creates a new OrderTrac Quote (not a sale) from the FAF row IDs above.",
+            ):
                 try:
                     ids = [int(x.strip()) for x in push_ids.split(",") if x.strip()]
                     qtys = (
@@ -3036,7 +3053,11 @@ if nav == "Admin":
         st.info(_viztech_sync_hint())
         vz1, vz2, vz3 = st.columns(3)
         with vz1:
-            if st.button("Check Viztech login", use_container_width=True):
+            if st.button(
+                "Check Viztech login",
+                use_container_width=True,
+                help="Logs into Viztech and lists builders. Dry-run only — does not import or change the book.",
+            ):
                 import subprocess
 
                 py = _python_executable()
@@ -3088,7 +3109,11 @@ if nav == "Admin":
                 if proc.stderr:
                     st.code(proc.stderr[-2000:])
         with vz3:
-            if st.button("Install 30-day schedule", use_container_width=True):
+            if st.button(
+                "Install 30-day schedule",
+                use_container_width=True,
+                help="Installs a Mac LaunchAgent that runs Viztech sync about every 30 days. Floor Mac only.",
+            ):
                 if not _is_macos_host():
                     st.warning(
                         "30-day schedule uses a macOS LaunchAgent — run this on the "
@@ -3117,7 +3142,12 @@ if nav == "Admin":
     )
     b1, b2, b3 = st.columns([1, 1, 1])
     with b1:
-        if st.button("Backup DB now", type="primary", use_container_width=True):
+        if st.button(
+            "Backup DB now",
+            type="primary",
+            use_container_width=True,
+            help="Copies the live SQLite book to Documents/FAF-pricebook-backups. Does not change Search.",
+        ):
             try:
                 from scripts.backup_db import backup_now
 
@@ -3126,7 +3156,11 @@ if nav == "Admin":
             except Exception as exc:
                 st.error(f"Backup failed: {exc}")
     with b2:
-        if st.button("Install weekly backup (Sunday 6 AM)", use_container_width=True):
+        if st.button(
+            "Install weekly backup (Sunday 6 AM)",
+            use_container_width=True,
+            help="Installs a Mac LaunchAgent that snapshots the live book every Sunday at 6:00 AM. Floor Mac only, not Fly.",
+        ):
             if not _is_macos_host():
                 st.warning(
                     "Weekly backup schedule uses a macOS LaunchAgent — install on the "
@@ -3150,7 +3184,7 @@ if nav == "Admin":
                 file_name="master_pricebook.db",
                 mime="application/x-sqlite3",
                 use_container_width=True,
-                help="Copy this file into a local checkout as master_pricebook.db (gitignored).",
+                help="Downloads the live SQLite file to this computer. Does not change the book. Gitignored — keep off GitHub.",
             )
         else:
             st.caption("No DB file to download.")
@@ -3172,7 +3206,11 @@ if nav == "Admin":
             "I understand restore replaces the live price book",
             key="restore_confirm",
         )
-        if st.button("Restore selected backup", type="secondary"):
+        if st.button(
+            "Restore selected backup",
+            type="secondary",
+            help="Replaces the live price book with the selected snapshot. Check the box first. Current live book is backed up before restore.",
+        ):
             if not confirm:
                 st.warning("Check the confirmation box first.")
             else:
@@ -3197,23 +3235,36 @@ if nav == "Admin":
     )
     m1, m2, m3 = st.columns(3)
     with m1:
-        if st.button("Re-standardize master"):
+        if st.button(
+            "Re-standardize master",
+            help="Re-runs spelling, SKU, and human-description cleanup on every row. Does not delete rows or change prices.",
+        ):
             report = svc.standardize_master()
             st.write(report)
             st.success("Standardize complete")
     with m2:
-        if st.button("Scan duplicates"):
+        if st.button(
+            "Scan duplicates",
+            help="Lists verified copy rows (same SKU, wood, size/description, wholesale). Does not delete anything.",
+        ):
             dups = svc.find_duplicates(50)
             if dups.empty:
                 st.success("No verified duplicate copies.")
             else:
                 st.dataframe(dups, use_container_width=True)
     with m3:
-        if st.button("Dry-run cleanup"):
+        if st.button(
+            "Dry-run cleanup",
+            help="Shows how many verified duplicate copies would be removed if you execute. Makes no changes.",
+        ):
             report = svc.cleanup_duplicates(dry_run=True)
             st.write(report)
 
-    if st.button("Execute cleanup (keep newest)", type="primary"):
+    if st.button(
+        "Execute cleanup (keep newest)",
+        type="primary",
+        help="Deletes verified duplicate copies and keeps the newest row. One SKU × wood is not a duplicate. Cannot undo except by restore.",
+    ):
         report = svc.cleanup_duplicates(dry_run=False)
         st.success(report)
         st.rerun()
@@ -3222,6 +3273,9 @@ if nav == "Admin":
     sources = svc.list_source_files()
     if sources:
         src = st.selectbox("Source file", sources)
-        if st.button("Delete all rows from this source"):
+        if st.button(
+            "Delete all rows from this source",
+            help="Removes every catalog row that came from the selected Excel/PDF filename. Other builders stay. Restore a backup to undo.",
+        ):
             n = svc.delete_by_source(src)
             st.warning(f"Removed {n:,} rows")
