@@ -139,6 +139,13 @@ def _sheet_rows(data: bytes, sheet_name: str) -> list[list[Any]]:
 
 
 def _wood_labels(header_rows: list[list[Any]]) -> dict[int, str]:
+    """Wood names per price column.
+
+    Criswell runs footnotes and drawer-unit callouts down the same columns as
+    the wood names, so only recognized species are collected here.
+    """
+    from backend.standardize import standardize_species, wood_species_strict
+
     collected: dict[int, list[str]] = {}
     for row in header_rows:
         pane = _left_pane(row)
@@ -146,9 +153,16 @@ def _wood_labels(header_rows: list[list[Any]]) -> dict[int, str]:
             label = _text(pane[idx])
             if not label or re.fullmatch(r"(?i)finished|unfinished|add", label):
                 continue
+            canonical = standardize_species(label)
+            if not canonical:
+                continue
+            woods = wood_species_strict(canonical.split(" / "))
+            if not woods:
+                continue
             bucket = collected.setdefault(idx, [])
-            if label not in bucket:
-                bucket.append(label)
+            for wood in woods:
+                if wood not in bucket:
+                    bucket.append(wood)
     return {idx: " / ".join(labels) for idx, labels in collected.items()}
 
 
@@ -181,7 +195,6 @@ def _emit_priced(
                 "base_price": amount,
                 "price_basis": "wholesale",
                 "line_kind": line_kind,
-                "notes": "Criswell left pane",
             }
         )
     return rows

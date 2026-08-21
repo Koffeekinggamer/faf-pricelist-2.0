@@ -62,8 +62,18 @@ _TRAILING_INDEX_RE = re.compile(r"\s*\((\d+)\)\s*$")
 _JUNK_SPECIES_RE = re.compile(
     r"""(?ix)
     ^(col_\d+|unnamed.*|finished|unfinished|finshed|price|markup|
+      (?:un)?fin\.?\s*retail|
       windy\s+acres.*pricelist.*|
       \d+\.0)$
+    """
+)
+
+# Non-wood labels a builder legitimately prices by. Everything else that
+# carries no recognized wood is spreadsheet furniture, not a species.
+_SPECIES_KEEP_RE = re.compile(
+    r"""(?ix)
+    ^(all\s+woods?|standard\s+wood|premium\s+wood|painted|paint|
+      two\s*-?\s*tone|unfinished\s+wood)$
     """
 )
 
@@ -135,6 +145,7 @@ _WOOD_ABBREV = [
     (re.compile(r"(?i)\br\.?\s*walnut\b"), "Rustic Walnut"),
     (re.compile(r"(?i)\bqs\s*white\s*oak\b"), "QS White Oak"),
     (re.compile(r"(?i)\bwhite\s*qtrsawn\b"), "QS White Oak"),
+    (re.compile(r"(?i)\bq\.\s*s\.\s*w\.\s*o\.?"), "QSWO"),
     (re.compile(r"(?i)\bqsw[o0]\b"), "QSWO"),
     (re.compile(r"(?i)\bwormy\s*maple\b"), "Wormy Maple"),
     (re.compile(r"(?i)\brough\s*sawn\s*wormy\s*maple\b"), "Rough Sawn Wormy Maple"),
@@ -255,6 +266,47 @@ def _collapse_ws(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+_WOOD_PHRASE_SET = {phrase.lower() for phrase in _WOOD_PHRASES}
+
+# Header bands often run a footnote or a drawer-unit callout down the same
+# column as the wood names. Those cells are real catalog text, but they are
+# not species, so the Wood column drops them.
+_NOT_A_SPECIES_RE = re.compile(
+    r"""(?ix)
+    ^(
+        \W*
+      | .*[:#].*
+      | .*\d+\s*["'].*
+      | \d+(\.\d+)?
+      | height|width|depth|length|weight
+      | from|to|of|for|with|per|and|or|also|the
+      | floor|bottom|top|side|back|front
+      | sideboard\.?|footboard|headboard|daybed|drawer|drawers|unit|units
+      | arched|add|adder|deduct|see|page|note|notes|only|each
+    )$
+    """
+)
+
+
+def wood_species_only(chunks: list[str]) -> list[str]:
+    """Drop the non-species cells from a split wood header."""
+    return [
+        name
+        for name in (_collapse_ws(chunk) for chunk in chunks)
+        if name and not _NOT_A_SPECIES_RE.match(name)
+    ]
+
+
+def wood_species_strict(chunks: list[str]) -> list[str]:
+    """Recognized wood names only, in order, once each."""
+    woods: list[str] = []
+    for chunk in chunks:
+        name = _collapse_ws(chunk)
+        if name.lower() in _WOOD_PHRASE_SET and name not in woods:
+            woods.append(name)
+    return woods
+
+
 def standardize_species(val: Any) -> Optional[str]:
     """Canonical species / color / fabric option label, or None if junk."""
     if val is None:
@@ -317,20 +369,15 @@ def standardize_species(val: Any) -> Optional[str]:
     work = _collapse_ws(work)
 
     # Multi-wood / single wood
-    woods = _extract_wood_list(work)
+    woods = wood_species_only(_extract_wood_list(work))
     if woods:
-        # Drop useless leftover tokens
-        woods = [
-            w
-            for w in woods
-            if w.lower() not in {"and", "or", "also", "the", "with", "(", ")"}
-            and not re.match(r"^\W+$", w)
-        ]
         s = " / ".join(woods)
     else:
         s = _collapse_ws(_expand_wood_abbrevs(work))
         if s.isupper() and len(s) > 3:
             s = s.title()
+        if not _SPECIES_KEEP_RE.match(s):
+            return None
 
     s = _collapse_ws(s)
     s = re.sub(r"(?i)\bQswo\b", "QSWO", s)
