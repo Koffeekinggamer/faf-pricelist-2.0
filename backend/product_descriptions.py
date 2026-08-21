@@ -40,6 +40,31 @@ _DIMENSION = re.compile(
     """
 )
 _WORD = re.compile(r"[a-z0-9]+")
+_COMPACT_SKU = re.compile(
+    r"""(?ix)
+    ^\#?
+    (?:
+        [A-Z]{1,4}-[A-Z0-9][A-Z0-9._/-]{1,40}
+        | [A-Z]{1,12}\d[A-Z0-9._/-]{0,40}
+        | \d{1,6}[A-Z][A-Z0-9._/-]{0,24}
+        | \d{1,6}(?:-[A-Z0-9]{1,16})+
+        | \d{1,6}
+    )
+    $
+    """
+)
+_LEADING_SKU = re.compile(
+    r"""(?ix)
+    ^\s*
+    (
+        \#[A-Z0-9][A-Z0-9._/-]{1,32}
+        | [A-Z]{1,4}-[A-Z0-9][A-Z0-9._/-]{1,32}
+        | [A-Z]{1,12}\d[A-Z0-9._/-]{0,32}
+        | \d{1,6}[A-Z][A-Z0-9._/-]{0,16}
+    )
+    (?:\s+|$)
+    """
+)
 
 
 def _text(value: Any) -> Optional[str]:
@@ -144,3 +169,19 @@ def human_description(row: Mapping[str, Any]) -> Optional[str]:
         vendor = _text(row.get("vendor"))
         return f"{vendor} catalog item" if vendor else None
     return " — ".join(pieces)
+
+
+def floor_part_number(value: Any) -> str:
+    """Compact SKU for Search. Blank when the cell is a product name, not a part #."""
+    text = _text(value)
+    if not text:
+        return ""
+    if " " not in text and _COMPACT_SKU.fullmatch(text):
+        return text
+    match = _LEADING_SKU.match(text)
+    if not match:
+        return ""
+    rest = text[match.end() :].lstrip()
+    if rest[:1] in {'"', "'"}:
+        return ""
+    return match.group(1)

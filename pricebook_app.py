@@ -24,6 +24,7 @@ import streamlit as st
 from backend import PriceBookService
 from backend.auth import login_user
 from backend.option_labels import option_widget_key
+from backend.product_descriptions import floor_part_number
 from backend.builder_profiles import (
     exclusive_option_conflicts,
     load_builder_profile,
@@ -1065,11 +1066,15 @@ if nav == "Search":
                 unsafe_allow_html=True,
             )
             # Floor view: retail only (wholesale/mult managed on Vendors tab)
+            display = display.copy()
+            if "part_number" in display.columns:
+                display["part_number"] = [
+                    floor_part_number(value) for value in display["part_number"].tolist()
+                ]
             show_cols = [
                 c
                 for c in [
                     "image_path",
-                    "collection",
                     "part_number",
                     "description",
                     "vendor",
@@ -1100,6 +1105,11 @@ if nav == "Search":
                 has_images = any(thumbs) or bool(shown_vendors & photo_vendors)
                 if not has_images:
                     show_cols = [c for c in show_cols if c != "image_path"]
+            if (
+                "part_number" in show_cols
+                and display["part_number"].fillna("").astype(str).str.strip().eq("").all()
+            ):
+                show_cols = [c for c in show_cols if c != "part_number"]
             if (
                 "option_key" in show_cols
                 and display["option_key"].fillna("").astype(str).str.strip().eq("").all()
@@ -1156,6 +1166,7 @@ if nav == "Search":
                         "Wood": "Wood species / option — use the Wood dropdown above to pick one",
                         "Option": "Addon charge or finish/size option",
                         "Image": "Catalog photo for this SKU",
+                        "Part #": "Factory SKU when the book has one",
                     },
                     overrides={
                         "Image": 72,

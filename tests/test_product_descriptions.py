@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from backend.product_descriptions import human_description
+from backend.product_descriptions import floor_part_number, human_description
 from backend.standardize import standardize_row
 from wide_import import (
     SheetLayout,
@@ -250,3 +250,26 @@ def test_wide_species_preserves_section_name_and_ditto_sku():
 
 def test_item_description_header_is_description_not_identifier():
     assert classify_column("Item Description") == "desc"
+
+
+def test_floor_part_number_keeps_compact_skus():
+    assert floor_part_number("SH-2262") == "SH-2262"
+    assert floor_part_number("40A") == "40A"
+    assert floor_part_number("HTS1100-4260") == "HTS1100-4260"
+    assert floor_part_number("1617-CK-EDGE-FOOT-BR-SAP") == "1617-CK-EDGE-FOOT-BR-SAP"
+
+
+def test_floor_part_number_strips_words_after_a_real_sku():
+    assert (
+        floor_part_number("CWF2504 Full Bed w/ 001, 002, or 005 Drawer Unit")
+        == "CWF2504"
+    )
+    assert floor_part_number("#G2026 Galaxy Wall Unit") == "#G2026"
+    assert floor_part_number("#101 9 Drawer Dresser") == "#101"
+
+
+def test_floor_part_number_blank_when_there_is_no_sku():
+    assert floor_part_number('24" Stationary Bar Stool') == ""
+    assert floor_part_number("Desk Arm Chair w/ Gas Lift") == ""
+    assert floor_part_number("1 Drawer 2 Door Nightstand") == ""
+    assert floor_part_number("2-tone paint and stain") == ""
