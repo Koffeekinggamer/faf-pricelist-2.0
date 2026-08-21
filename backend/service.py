@@ -268,6 +268,12 @@ class PriceBookService:
             return False
         if re.search(r"\b\d+\s*[- ]?\s*(?:glass\s+)?shel(?:f|ves)\b", o):
             return False
+        if re.search(r"^\s*\d+\s+drawer\b", o):
+            return False
+        if re.search(r"\bwithout\s+drawers?\b|\bdrawer\s+in\s+drawer\b", o):
+            return False
+        if re.search(r"\b(?:usb|port|charger)\b.*\bdrawer\b", o):
+            return False
         if any(token in o for token in ("drawer", "slide", "knob", "kick plate")):
             return True
         if re.search(r"\b(?:additional|extra|add)\b.*\b(?:door|shel(?:f|ves)|lea(?:f|ves))\b", o):

@@ -234,7 +234,7 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
         elif (
             row_label
             and numeric
-            and (in_addons or re.match(r"(?i)^option\s*:", label_cell))
+            and re.search(r"(?i)\b(?:option|upgrade|add)\b", label_cell)
             and len({round(value, 4) for value in numeric if value > 0}) == 1
         ):
             row_rec = _addon(

@@ -127,7 +127,11 @@ CATALOG_SPECS: tuple[CatalogSpec, ...] = (
     CatalogSpec("stone_river_furniture", "Stone River Furniture"),
     CatalogSpec("stoney_acres_furniture", "Stoney Acres Furniture"),
     CatalogSpec("superior_woodcrafts", "Superior Woodcrafts"),
-    CatalogSpec("townline_furniture", "Townline Furniture"),
+    CatalogSpec(
+        "townline_furniture",
+        "Townline Furniture",
+        reader="backend.townline_import:import_townline_workbook",
+    ),
     CatalogSpec("troyer_design_company", "Troyer Design Company", extra_tokens=("tdc",)),
     CatalogSpec("troyer_ridge_furniture", "Troyer Ridge Furniture"),
 )

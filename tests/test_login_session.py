@@ -51,7 +51,9 @@ def test_tampered_or_expired_token_does_not_sign_in(tmp_path: Path) -> None:
     db = _db(tmp_path)
     session = login_user("judson", "secret", db_path=db)
     token = issue_login_token(session, secret="unit-test-secret")
-    assert restore_login_session(token[:-1] + "0", secret="unit-test-secret", db_path=db) is None
+    replacement = "0" if token[-1] != "0" else "1"
+    tampered = token[:-1] + replacement
+    assert restore_login_session(tampered, secret="unit-test-secret", db_path=db) is None
     assert restore_login_session(token, secret="other-secret", db_path=db) is None
     expired = issue_login_token(
         session,

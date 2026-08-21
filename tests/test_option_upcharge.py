@@ -304,6 +304,10 @@ def test_any_drawer_option_gets_a_qty_control():
     assert not allowed("Lock")
     assert not allowed("Distressing")
     assert not allowed("Set of 4 LED Lights w/ 1 Touch Switch")
+    assert not allowed("2 Drawer Armoire")
+    assert not allowed("Without Drawers")
+    assert not allowed("Docking Drawer In Drawer")
+    assert not allowed("USB port in nightstand drawer")
 
 
 def test_per_knob_qty_multiplies_the_selected_piece_charge(tmp_path):

@@ -72,6 +72,14 @@ SOURCES = {
             / "Download_2025_Pricelist_478597.xlsx",
         ),
     ),
+    "Townline Furniture": (
+        "townline_furniture",
+        (
+            VIZTECH
+            / "Townline_Furniture"
+            / "Download_2026_Pricelist_9419.xlsx",
+        ),
+    ),
     "Criswell Bedroom": (
         "criswell",
         tuple(
@@ -93,6 +101,7 @@ EXPECT_OPTIONS = {
     "Mirror Lake Woodworks",
     "Old Town Oak",
     "Signature Designs",
+    "Townline Furniture",
     "Criswell Bedroom",
 }
 
@@ -103,6 +112,7 @@ MIN_ROWS = {
     "Mirror Lake Woodworks": 9_000,
     "Old Town Oak": 800,
     "Signature Designs": 75,
+    "Townline Furniture": 1_900,
     "Criswell Bedroom": 1_300,
 }
 
@@ -164,11 +174,15 @@ def _parse(vendor: str, parser_id: str, files: tuple[Path, ...]) -> list[dict]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--vendor", choices=tuple(SOURCES))
     args = parser.parse_args()
 
     service = PriceBookService()
     prepared: dict[str, list[dict]] = {}
-    for vendor, (parser_id, files) in SOURCES.items():
+    selected = (
+        {args.vendor: SOURCES[args.vendor]} if args.vendor else SOURCES
+    )
+    for vendor, (parser_id, files) in selected.items():
         print(f"\n{vendor}")
         rows = _parse(vendor, parser_id, files)
         before_count, _ = _live_counts(service, vendor)

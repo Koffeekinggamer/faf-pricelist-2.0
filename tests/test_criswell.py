@@ -169,9 +169,11 @@ def test_criswell_option_gate_counts_source_lines_not_emitted_rows(monkeypatch):
             ],
         }
     )
+    import backend.book_options as book_options
     import backend.criswell_import as criswell_import
 
     monkeypatch.setattr(criswell_import, "_parse_options", lambda *a, **k: [])
+    monkeypatch.setattr(book_options, "extract_book_options", lambda *a, **k: [])
     preview = ImportService().preview_excel(
         data,
         filename="Wholesale Price List.xlsx",

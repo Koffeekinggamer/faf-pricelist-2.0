@@ -166,3 +166,20 @@ def test_extracts_per_drawer_hardware_charges_from_visible_note():
 
     assert by["Side Mount Soft Close Slides"]["base_price"] == 10
     assert by["Undermount Soft Close Slides"]["base_price"] == 20
+
+
+def test_options_banner_does_not_turn_following_product_skus_into_options():
+    data = _xlsx(
+        [
+            ["Options"],
+            ["10-16", "Chair", 250, 250, 250],
+            ["101 CSC", "Corner Sofa", 1200, 1200],
+            ["Option: Slatted Door, ADD", 65, 65],
+        ]
+    )
+
+    labels = {row["option_key"] for row in extract_book_options(data, vendor="X")}
+
+    assert "10-16" not in labels
+    assert "101 CSC" not in labels
+    assert "Slatted Door" in labels

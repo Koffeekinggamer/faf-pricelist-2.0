@@ -246,11 +246,13 @@ def test_expected_option_lines_survive_a_dead_addon_scanner(monkeypatch):
     """The gate counts source option lines, not the rows the reader emitted."""
     if not LIVE.is_file():
         return
+    import backend.book_options as book_options
     import wide_import
 
     monkeypatch.setattr(
         wide_import, "artisan_chairs_option_addons", lambda data, *, vendor: []
     )
+    monkeypatch.setattr(book_options, "extract_book_options", lambda *a, **k: [])
     preview = ImportService().preview_excel(
         LIVE.read_bytes(),
         filename=LIVE.name,
