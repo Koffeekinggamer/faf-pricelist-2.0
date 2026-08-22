@@ -48,6 +48,17 @@ _DISTRESS = re.compile(r"(?i)^distressing$")
 _OIL = re.compile(r"(?i)hand[\s\-]*rubbed\s*oil")
 _CATALOG_HDR = re.compile(r"(?i)item\s*(number|#)|standard\s*wood")
 _SKUISH = re.compile(r"^[A-Z]{2,6}\d{2,}")
+# Real choices the book refuses to price. They belong on the floor as Options
+# with no charge, so the salesperson knows to call rather than assume $0.
+_QUOTE_ONLY = re.compile(
+    r"(?i)\bcall\s+(?:for|us|the\s+(?:office|factory))\b|\bcall\s+for\s+(?:pricing|price|quote)\b"
+    r"|\b(?:tbd|t\.b\.d\.?|quote\s+required|price\s+on\s+request|market\s+price)\b"
+    r"|\bfax\s+(?:for\s+)?quote\b|\bask\s+for\s+(?:pricing|quote)\b"
+)
+# A leading catalog code (10-36, #PS2, 110 CSF) means the row prices a piece,
+# even when a per-SKU finish markup sits in the same row.
+_SKU_CODE = re.compile(r"^#?(?=.*\d)[A-Z0-9]+(?:[-/.][A-Z0-9]+)*(?:\s+[A-Z]{2,8})?$")
+_BUILDER_NAMES: Optional[frozenset[str]] = None
 
 
 def _cell(v: Any) -> str:
@@ -59,10 +70,41 @@ def _cell(v: Any) -> str:
     return re.sub(r"\s+", " ", s)
 
 
+def _builder_names() -> frozenset[str]:
+    """Canonical builder names, from the reader registry — not a hand-kept list."""
+    global _BUILDER_NAMES
+    if _BUILDER_NAMES is None:
+        try:
+            from backend.builder_reader_registry import DEFAULT_READER_REGISTRY
+
+            _BUILDER_NAMES = frozenset(
+                entry.vendor.casefold()
+                for entry in DEFAULT_READER_REGISTRY.entries
+                if entry.vendor
+            )
+        except Exception:
+            _BUILDER_NAMES = frozenset()
+    return _BUILDER_NAMES
+
+
+def _is_builder_name(label: str) -> bool:
+    """A builder is a factory, never one of its Options."""
+    name = (label or "").casefold().strip()
+    if not name:
+        return False
+    return any(
+        name == builder or name.startswith(builder + " ")
+        for builder in _builder_names()
+    )
+
+
 def _norm_label(raw: str) -> str:
     s = re.sub(r"\s+", " ", (raw or "").strip(" -–:•*"))
     s = re.sub(r"(?i)\s*add(?:ing)?\s*$", "", s).strip(" -–:")
+    s = re.sub(r"(?i)^for\s+", "", s).strip(" ,;:-–")
     aliases = {
+        r"(?i)^painting$": "Paint",
+        r"(?i)^locks?\s+on\s+drawers?$": "Drawer lock",
         r"(?i)^two[\s\-]*toning$": "Two-tone",
         r"(?i)^two[\s\-]*tone$": "Two-tone",
         r"(?i)^two[\s\-]*tone staining$": "Two-tone",
@@ -87,15 +129,18 @@ def _addon(
     dollars: Optional[float] = None,
     pct: Optional[float] = None,
     notes: str = "",
+    quote_only: bool = False,
 ) -> Optional[dict[str, Any]]:
     name = _norm_label(label)
     if not name or _SKIP_LABEL.fullmatch(name) or _UNFINISHED_DEDUCT.search(name):
+        return None
+    if _is_builder_name(name):
         return None
     if _JUNK_LABEL.search(name):
         return None
     if name[:1].islower() or name[:1] in {",", '"', "'", "(", ")"}:
         return None
-    if dollars is None and pct is None:
+    if dollars is None and pct is None and not quote_only:
         return None
     rec: dict[str, Any] = {
         "vendor": vendor,
@@ -112,9 +157,12 @@ def _addon(
     if dollars is not None:
         rec["base_price"] = float(dollars)
         rec["addon_pct"] = None
-    else:
+    elif pct is not None:
         rec["base_price"] = None
         rec["addon_pct"] = float(pct)
+    else:
+        rec["base_price"] = None
+        rec["addon_pct"] = None
     return rec
 
 
@@ -146,6 +194,8 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
         cells = [_cell(df.iat[i, j]) for j in range(df.shape[1])]
         cells = [c for c in cells if c]
         if not cells:
+            continue
+        if _SKU_CODE.fullmatch(cells[0]):
             continue
         if _is_sku_price_row(cells):
             continue
@@ -194,7 +244,14 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
             except ValueError:
                 pass
         row_rec = None
-        if row_label and explicit_pct:
+        if row_label and _QUOTE_ONLY.search(joined) and not explicit_pct:
+            row_rec = _addon(
+                vendor,
+                row_label,
+                quote_only=True,
+                notes="quote required — factory does not publish a price",
+            )
+        elif row_label and explicit_pct:
             row_rec = _addon(
                 vendor,
                 row_label,

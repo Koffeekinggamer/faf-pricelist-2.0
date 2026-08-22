@@ -955,6 +955,9 @@ class PriceBookService:
                 out["priced_option_count"] = int(
                     getattr(prev, "priced_option_count", 0) or 0
                 )
+                out["expected_finish_states"] = list(
+                    getattr(prev, "expected_finish_states", []) or []
+                )
                 out["variants"] = summarize_parse_variants(
                     rows, vendor=vend, sheets_tried=[{"layout": "pdf"}]
                 )
@@ -998,6 +1001,12 @@ class PriceBookService:
                 out["priced_option_count"] = int(
                     getattr(prev, "priced_option_count", 0) or 0
                 )
+                out["expected_finish_states"] = list(
+                    getattr(prev, "expected_finish_states", []) or []
+                )
+                out["hidden_product_candidates"] = list(
+                    getattr(prev, "hidden_product_candidates", []) or []
+                )
                 out["variants"] = summarize_parse_variants(
                     rows,
                     vendor=vend,
@@ -1016,6 +1025,14 @@ class PriceBookService:
                 if cap:
                     out["notes"] = (
                         (out["notes"] + " · " if out["notes"] else "") + cap
+                    )
+                if out["hidden_product_candidates"]:
+                    # Hidden stays hidden. Naming the tabs lets Judson ask the
+                    # factory for a visible copy instead of guessing.
+                    named = ", ".join(out["hidden_product_candidates"][:6])
+                    out["notes"] = (
+                        (out["notes"] + " · " if out["notes"] else "")
+                        + f"Hidden tabs that look like product (not imported): {named}"
                     )
                 if not rows:
                     out["error"] = "0 rows parsed — check file layout."

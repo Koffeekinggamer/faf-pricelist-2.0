@@ -3,12 +3,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Optional
 
 import pandas as pd
 
 from backend.config import DEFAULT_MULTIPLIER
 from backend.normalize import long_df_to_rows, normalize_dataframe, read_excel_bytes
+from backend.workbook_sheets import hidden_product_candidates
+
+
+def source_finish_states(filename: str, sheet_names: list[str]) -> list[str]:
+    """Finish states explicitly promised by a filename or visible tab name."""
+    found: set[str] = set()
+    for raw in [filename, *sheet_names]:
+        text = re.sub(r"[_-]+", " ", str(raw or "")).lower()
+        if re.search(r"\bunfinished\b|\bunfin\b", text):
+            found.add("unfinished")
+        without_unfinished = re.sub(r"\bunfinished\b|\bunfin\b", "", text)
+        if re.search(r"\bfinished\b|\bfin\b", without_unfinished):
+            found.add("finished")
+    return [state for state in ("finished", "unfinished") if state in found]
 
 
 @dataclass
@@ -23,6 +38,8 @@ class ExcelImportPreview:
     detected_importer: str = ""
     parser_source: str = ""
     priced_option_count: int = 0
+    expected_finish_states: list[str] = field(default_factory=list)
+    hidden_product_candidates: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -65,6 +82,20 @@ class ImportService:
             mult = float(wb.detected_markup)
 
         long_df = wb.long_df
+        expected_finish_states = source_finish_states(filename, wb.sheet_names)
+        try:
+            hidden_candidates = hidden_product_candidates(data)
+        except Exception:
+            hidden_candidates = []
+        if (
+            len(expected_finish_states) == 1
+            and not long_df.empty
+            and "line_kind" in long_df.columns
+        ):
+            state = expected_finish_states[0]
+            items = long_df["line_kind"].fillna("item").astype(str).str.lower() != "addon"
+            long_df = long_df.copy()
+            long_df.loc[items, "finish_state"] = state
         if species_keep and not long_df.empty and "species" in long_df.columns:
             long_df = long_df[
                 long_df["species"].isna() | long_df["species"].isin(species_keep)
@@ -88,6 +119,8 @@ class ImportService:
             detected_importer=getattr(wb, "detected_importer", "") or "",
             parser_source=getattr(wb, "parser_source", "") or "",
             priced_option_count=int(getattr(wb, "expected_option_lines", 0) or 0),
+            expected_finish_states=expected_finish_states,
+            hidden_product_candidates=hidden_candidates,
         )
 
     def preview_excel_manual(

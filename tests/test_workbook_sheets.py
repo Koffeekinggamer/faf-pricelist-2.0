@@ -5,8 +5,15 @@ from __future__ import annotations
 import io
 
 import openpyxl
+import pytest
 
-from backend.workbook_sheets import classify_sheet_role, excel_engine, read_all_sheets, read_sheet
+from backend.workbook_sheets import (
+    classify_sheet_role,
+    excel_engine,
+    hidden_product_candidates,
+    read_all_sheets,
+    read_sheet,
+)
 from wide_import import import_workbook
 
 
@@ -25,6 +32,31 @@ def _book(sheets: dict[str, list[list]]) -> bytes:
     return buf.getvalue()
 
 
+def test_hidden_collection_tabs_are_reported_as_product_candidates():
+    """A hidden collection tab may be real product. Report it, never unhide it."""
+    data = _book(
+        {
+            "Pricelist": [["SKU", "Price"], ["A1", 100]],
+            "Bedroom": [["SKU", "Price"], ["B1", 200]],
+            "Master": [["internal"]],
+            "Markup": [["2.7"]],
+            "Index": [["contents"]],
+            "Pricelist bk": [["SKU", "Price"], ["A1", 90]],
+        }
+    )
+    wb = openpyxl.load_workbook(io.BytesIO(data))
+    for name in ("Bedroom", "Master", "Markup", "Index", "Pricelist bk"):
+        wb[name].sheet_state = "hidden"
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    candidates = hidden_product_candidates(buf.getvalue())
+
+    assert candidates == ["Bedroom"]
+    # Hidden stays hidden: nothing here is imported.
+    assert [view.name for view in read_all_sheets(buf.getvalue())] == ["Pricelist"]
+
+
 def test_read_all_sheets_classifies_every_tab():
     data = _book(
         {
@@ -41,6 +73,32 @@ def test_read_all_sheets_classifies_every_tab():
     assert by["Options"] == "options"
     assert by["Items"] == "catalog"
     assert classify_sheet_role("Options&Portal bk", views[2].raw) == "options"
+
+
+@pytest.mark.parametrize(
+    "sheet_name",
+    [
+        "Add Ons",
+        "Customization",
+        "Personalization",
+        "Features",
+        "Product Options",
+    ],
+)
+def test_generic_option_sheet_aliases_use_the_addon_reader(sheet_name):
+    data = _book(
+        {
+            sheet_name: [["Paint", "Add 20%"]],
+            "Catalog": [["Part #", "Description", "Oak"], ["T-1", "Table", 100]],
+        }
+    )
+
+    views = read_all_sheets(data)
+    assert {view.name: view.role for view in views}[sheet_name] == "options"
+
+    result = import_workbook(data, vendor="Test Builder", filename="Test.xlsx")
+    addons = result.long_df[result.long_df["line_kind"] == "addon"]
+    assert "Paint" in set(addons["option_key"])
 
 
 def test_generic_drop_views_options_instead_of_skipping():

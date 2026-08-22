@@ -225,6 +225,48 @@ def test_priced_options_without_addons_block_load():
     assert "4 priced option" in readiness.block_message
 
 
+def test_unfinished_source_without_unfinished_rows_or_option_blocks_load():
+    readiness = evaluate_readiness(
+        {
+            "rows": [
+                {
+                    "vendor": "Builder",
+                    "part_number": "C1",
+                    "species": "Oak",
+                    "finish_state": "finished",
+                    "base_price": 100.0,
+                    "line_kind": "item",
+                }
+            ],
+            "expected_finish_states": ["finished", "unfinished"],
+        }
+    )
+
+    assert readiness.load_ready is False
+    assert readiness.block_code == "finish_state_missing"
+    assert "unfinished" in readiness.block_message.lower()
+
+
+def test_unfinished_source_with_unfinished_rows_passes_finish_gate():
+    rows = [
+        {
+            "vendor": "Builder",
+            "part_number": f"C{i}",
+            "species": "Oak",
+            "finish_state": state,
+            "base_price": 100.0,
+            "line_kind": "item",
+        }
+        for i, state in enumerate(("finished", "unfinished"), start=1)
+    ]
+
+    readiness = evaluate_readiness(
+        {"rows": rows, "expected_finish_states": ["finished", "unfinished"]}
+    )
+
+    assert readiness.load_ready is True
+
+
 def test_old_unversioned_session_is_invalidated(tmp_path):
     store = DiskDropParseStore(tmp_path)
     path = store.path_for("dps_old")

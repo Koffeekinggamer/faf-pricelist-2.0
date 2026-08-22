@@ -385,6 +385,27 @@ def test_visible_less_row_keeps_negative_charge_when_label_says_without():
     assert row["adjusted_price"] == -90
 
 
+def test_quote_required_option_survives_standardization_with_no_price():
+    """A call-for-quote choice is a real Option. Dropping it hides it from the floor."""
+    row = standardize_row(
+        {
+            "vendor": "Premier Woodcraft",
+            "line_kind": "addon",
+            "option_key": "Leather",
+            "description": "Leather",
+            "base_price": None,
+            "price_basis": "wholesale",
+            "notes": "quote required — factory does not publish a price",
+            "multiplier": 2.7,
+        }
+    )
+
+    assert row is not None
+    assert row["base_price"] is None
+    assert row["adjusted_price"] is None
+    assert row["option_key"] == "Leather"
+
+
 def test_cedar_drawer_bottoms_qty_multiplies_flat_charge(tmp_path):
     svc = _svc(tmp_path)
     V = "Millcraft"

@@ -984,7 +984,16 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
                 ),
             )
         )
-        if not (no_upcharge or percent_addon or deduction_addon):
+        quote_only_addon = (
+            line_kind == "addon"
+            and base_f is None
+            and addon_pct is None
+            and re.search(
+                r"(?i)quote\s+required|call\s+for\s+(?:pricing|price|quote)|\btbd\b",
+                str(out.get("notes") or ""),
+            )
+        )
+        if not (no_upcharge or percent_addon or deduction_addon or quote_only_addon):
             return None
     if not part and not desc:
         return None

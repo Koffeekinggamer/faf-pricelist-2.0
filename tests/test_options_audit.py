@@ -42,6 +42,48 @@ def _service(tmp_path) -> PriceBookService:
     return PriceBookService(path)
 
 
+def test_audit_counts_a_quote_required_option_apart_from_a_free_one(tmp_path):
+    """"Call for pricing" is not "no upcharge". The audit must not merge them."""
+    svc = _service(tmp_path)
+    free = _row("Q Builder", "Free", option="Standard Stain", line_kind="addon", base=0, retail=0)
+    free["notes"] = "no upcharge from visible row"
+    quote = _row("Q Builder", "Leather", option="Leather", line_kind="addon", base=None, retail=None)
+    quote["notes"] = "quote required — factory does not publish a price"
+    svc.repo.insert_rows([_row("Q Builder", "T1"), free, quote])
+
+    builder = audit_catalog_options(svc)["builders"][0]
+
+    assert builder["charge_shapes"]["zero"] == 1
+    assert builder["charge_shapes"]["quote"] == 1
+    assert builder["issues"] == []
+
+
+def test_audit_flags_an_unfinished_book_loaded_as_finished(tmp_path):
+    """A source file promising Unfinished must land as unfinished rows."""
+    svc = _service(tmp_path)
+    finished = _row("Twin Builder", "T1")
+    unfinished = _row("Twin Builder", "T1", base=80.0, retail=216.0)
+    unfinished["source_file"] = "TDC_2026_Pricelist_Unfinished.xls"
+    svc.repo.insert_rows([finished, unfinished])
+
+    builder = audit_catalog_options(svc)["builders"][0]
+
+    assert builder["finish_state_gaps"] == ["unfinished"]
+    assert "unfinished promised by the source but not captured" in builder["issues"]
+
+
+def test_audit_passes_a_builder_whose_unfinished_twin_is_tagged(tmp_path):
+    svc = _service(tmp_path)
+    finished = _row("Twin Builder", "T1")
+    unfinished = _row("Twin Builder", "T1", base=80.0, retail=216.0, finish="unfinished")
+    unfinished["source_file"] = "TDC_2026_Pricelist_Unfinished.xls"
+    svc.repo.insert_rows([finished, unfinished])
+
+    builder = audit_catalog_options(svc)["builders"][0]
+
+    assert builder["finish_state_gaps"] == []
+
+
 def test_audit_flags_a_builder_whose_search_options_are_empty(tmp_path):
     svc = _service(tmp_path)
     svc.repo.insert_rows([_row("Empty Builder", "T1")])
@@ -84,7 +126,12 @@ def test_audit_proves_charge_shapes_retail_and_quantity_labels(tmp_path):
     report = audit_catalog_options(svc)
     builder = report["builders"][0]
 
-    assert builder["charge_shapes"] == {"dollar": 1, "percent": 1, "zero": 0}
+    assert builder["charge_shapes"] == {
+        "dollar": 1,
+        "percent": 1,
+        "zero": 0,
+        "quote": 0,
+    }
     assert builder["retail_mismatches"] == []
     assert builder["quantity_options"] == ["Per Knob"]
     assert "Unfinished" in builder["search_options"]

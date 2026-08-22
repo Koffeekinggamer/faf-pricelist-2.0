@@ -3785,13 +3785,9 @@ def import_workbook(
             )
             continue
         if view is not None and view.role == "options" and view.raw is not None:
-            from backend.ashery_oak_import import (
-                parse_bookcase_door_addons,
-                parse_option_addons,
-            )
+            from backend.book_options import extract_from_frame
 
-            opt_rows = parse_option_addons(view.raw, vendor=vendor or "")
-            opt_rows.extend(parse_bookcase_door_addons(view.raw, vendor=vendor or ""))
+            opt_rows = extract_from_frame(view.raw, vendor=vendor or "")
             long_opt = pd.DataFrame(opt_rows)
             tried.append(
                 {

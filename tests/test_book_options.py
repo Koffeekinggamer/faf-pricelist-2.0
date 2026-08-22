@@ -183,3 +183,58 @@ def test_options_banner_does_not_turn_following_product_skus_into_options():
     assert "10-16" not in labels
     assert "101 CSC" not in labels
     assert "Slatted Door" in labels
+
+
+def test_quote_only_lines_surface_as_non_priced_options():
+    """Call-for-quote and TBD choices exist. The floor must see them, not guess."""
+    data = _xlsx(
+        [
+            ["Options"],
+            ["Leather", "Call for pricing"],
+            ["Marble Top", "TBD"],
+            ["Paint", "add 20%"],
+        ]
+    )
+
+    rows = extract_book_options(data, vendor="X")
+    by_label = {row["option_key"]: row for row in rows}
+
+    assert set(by_label) == {"Leather", "Marble Top", "Paint"}
+    leather = by_label["Leather"]
+    assert leather["base_price"] is None
+    assert leather["addon_pct"] is None
+    assert "quote" in leather["notes"].lower()
+    assert by_label["Paint"]["addon_pct"] == 20.0
+
+
+def test_builder_names_never_become_option_labels():
+    """Ashery Oak is a builder. A builder name in an Options tab is not an Option."""
+    data = _xlsx(
+        [
+            ["Options"],
+            ["Ashery Oak", "Add 10%"],
+            ["Quality Fabrications Leather", "Add 15%"],
+            ["Paint", "Add 20%"],
+        ]
+    )
+
+    labels = {row["option_key"] for row in extract_book_options(data, vendor="X")}
+
+    assert "Ashery Oak" not in labels
+    assert "Quality Fabrications Leather" not in labels
+    assert "Paint" in labels
+
+
+def test_per_sku_finish_markup_rows_are_not_global_options():
+    data = _xlsx(
+        [
+            ["110 CSF", '36" Cubic Slat Footstool', 54.6, "Standard Wiping Stains", "List Price", "add 10%"],
+            ["10-36", 'AJ #1 36" Square End Table', 110.25, "Standard Wiping Stains", "List Price", "add 10%"],
+            ["PD-36", 'Pioneer 36" Coffee Table', 99.75, "Standard Wiping Stains", "List Price", "add 10%"],
+            ["Paint", "add 20%"],
+        ]
+    )
+
+    labels = {row["option_key"] for row in extract_book_options(data, vendor="X")}
+
+    assert labels == {"Paint"}

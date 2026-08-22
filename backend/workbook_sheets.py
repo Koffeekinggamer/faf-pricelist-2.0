@@ -24,7 +24,8 @@ _MARKUP_RE = re.compile(
     r"(?i)^(mark\s*-?\s*up|multiplier|multipliers|controls?|settings?)$"
 )
 _OPTIONS_RE = re.compile(
-    r"(?i)option|percentage|portal|addon|upcharge|specialty\s*finish"
+    r"(?i)option|percentage|portal|add[\s_-]*ons?|addon|upcharge|"
+    r"specialty\s*finish|customi[sz]ation|personalization|features"
 )
 
 # OLE Compound File magic — BIFF .xls, not a zip .xlsx
@@ -115,6 +116,34 @@ def hidden_sheet_names(data: bytes) -> set[str]:
     except Exception:
         pass
     return found
+
+
+def hidden_product_candidates(data: bytes) -> list[str]:
+    """Hidden tabs whose names read like sellable collections.
+
+    Reporting only — the caller still Drops visible content. Master, markup,
+    index, and ``bk``/backup/old/copy tabs are known internals, so they never
+    become candidates. Judson decides whether a candidate is real product.
+    """
+    hidden = hidden_sheet_names(data)
+    if not hidden:
+        return []
+    known_internal = re.compile(
+        r"^\s*(?:master|markup|mark[\s_-]*up|index|contents?|toc|template|"
+        r"calc\w*|pivot|data|notes?|instructions?|summary)\b"
+        r"|\b(?:bk|bak|backup|old|copy|orig(?:inal)?|do\s*not\s*use|"
+        r"archive|test|temp)\b"
+        r"|\(\d+\)\s*$",
+        re.IGNORECASE,
+    )
+    out = [
+        name
+        for name in sorted(hidden)
+        if not known_internal.search(str(name).strip())
+        and not _COVER_RE.match(str(name).strip())
+        and not _MARKUP_RE.match(str(name).strip())
+    ]
+    return out
 
 
 def hidden_row_indexes(data: bytes, sheet_name: Union[str, int]) -> set[int]:

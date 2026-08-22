@@ -261,6 +261,32 @@ def evaluate_readiness(file_payload: dict) -> DropReadiness:
         for row in rows
         if str(row.get("line_kind") or "item").strip().lower() != "addon"
     ]
+    expected_finish_states = {
+        str(state or "").strip().lower()
+        for state in (file_payload.get("expected_finish_states") or [])
+        if str(state or "").strip()
+    }
+    actual_finish_states = {
+        str(row.get("finish_state") or "").strip().lower()
+        for row in items
+        if str(row.get("finish_state") or "").strip()
+    }
+    option_labels = {
+        str(row.get("option_key") or "").strip().lower()
+        for row in rows
+        if str(row.get("line_kind") or "item").strip().lower() == "addon"
+    }
+    for state in sorted(expected_finish_states):
+        represented = state in actual_finish_states or (
+            state == "unfinished" and "unfinished" in option_labels
+        )
+        if not represented:
+            return DropReadiness(
+                False,
+                "finish_state_missing",
+                f"Source promises {state} pricing but no {state} rows or Option parsed",
+            )
+
     missing = sum(1 for row in items if not str(row.get("species") or "").strip())
     if items and missing / len(items) >= 0.5:
         return DropReadiness(
