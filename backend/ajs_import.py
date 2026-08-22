@@ -47,6 +47,17 @@ _IGNORE_HEADER_RE = re.compile(r"(?i)yardage|sq\.?\s*footage|chart|category")
 _ID_HEADER_RE = re.compile(r"(?i)^id\s*#?$")
 _PRICE_HEADER_RE = re.compile(r"(?i)^price$")
 _ALL_WOODS_RE = re.compile(r"(?i)^all\s+woods$")
+_FABRIC_HEADER_RE = re.compile(r"(?i)^fabric$")
+# The book refuses to publish some cushion charges. "Quote" is a real option
+# the floor must call about, not an absent one.
+_QUOTE_CELL_RE = re.compile(r"(?i)^(?:quote|call|tbd|t\.b\.d\.?)$")
+_QUOTE_NOTE = "quote required — the factory does not publish this charge"
+
+# AJ's prints no collection banners, so the shape of each band is the section.
+SEATING = "Seating"
+OCCASIONAL = "Occasional Pieces"
+ACCESSORIES = "Accessories"
+CUSTOM_FINISH = "Custom Finish"
 
 # Nicer floor wording for the charges the book abbreviates.
 _ADDON_NAMES: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -130,6 +141,7 @@ class _Band:
         self.addons: dict[int, str] = {}
         self.accessory_price: Optional[int] = None
         self.custom_finish: Optional[int] = None
+        self.collection: Optional[str] = None
 
     @property
     def live(self) -> bool:
@@ -151,6 +163,7 @@ def _read_band(cells: list[Any]) -> Optional[_Band]:
         for index, header in enumerate(text):
             if _ALL_WOODS_RE.match(header):
                 band.custom_finish = index
+                band.collection = CUSTOM_FINISH
                 return band
         return None
 
@@ -158,6 +171,7 @@ def _read_band(cells: list[Any]) -> Optional[_Band]:
     for index, header in enumerate(text):
         if _PRICE_HEADER_RE.match(header):
             band.accessory_price = index
+            band.collection = ACCESSORIES
             return band
 
     # Seating and occasional tables: wood columns plus ADD columns.
@@ -172,7 +186,14 @@ def _read_band(cells: list[Any]) -> Optional[_Band]:
             species = _species_label(header)
             if species:
                 band.species[index] = species
-    return band if len(band.species) >= 2 else None
+    if len(band.species) < 2:
+        return None
+    # A FABRIC column over the tier means upholstery; the same wood columns
+    # without it are the occasional tables.
+    band.collection = (
+        SEATING if len(text) > 2 and _FABRIC_HEADER_RE.match(text[2]) else OCCASIONAL
+    )
+    return band
 
 
 def _sku(value: Any) -> str:
@@ -190,11 +211,14 @@ def _row(
     option_key: Optional[str],
     species: Optional[str],
     finish_state: str,
-    price: float,
+    price: Optional[float],
     line_kind: str,
+    collection: Optional[str] = None,
+    notes: Optional[str] = None,
 ) -> dict:
     return {
         "vendor": vendor,
+        "collection": collection,
         "part_number": part,
         "description": description or part,
         "option_key": option_key,
@@ -203,6 +227,7 @@ def _row(
         "base_price": price,
         "price_basis": "wholesale",
         "line_kind": line_kind,
+        "notes": notes,
     }
 
 
@@ -247,6 +272,7 @@ def _parse_sheet(raw: pd.DataFrame, *, vendor: str, finish_state: str) -> list[d
                         finish_state=finish_state,
                         price=charge,
                         line_kind="addon",
+                        collection=band.collection,
                     )
                 )
             continue
@@ -264,6 +290,7 @@ def _parse_sheet(raw: pd.DataFrame, *, vendor: str, finish_state: str) -> list[d
                         finish_state=finish_state,
                         price=charge,
                         line_kind="addon",
+                        collection=band.collection,
                     )
                 )
             continue
@@ -282,6 +309,7 @@ def _parse_sheet(raw: pd.DataFrame, *, vendor: str, finish_state: str) -> list[d
                     finish_state=finish_state,
                     price=charge,
                     line_kind="item",
+                    collection=band.collection,
                 )
             )
 
@@ -289,7 +317,10 @@ def _parse_sheet(raw: pd.DataFrame, *, vendor: str, finish_state: str) -> list[d
         # down all three tier rows, so only the first sighting is kept.
         for index, label in band.addons.items():
             charge = amount(index)
-            if charge is None:
+            quote_only = charge is None and bool(
+                _QUOTE_CELL_RE.match(_text(cells[index]) if index < len(cells) else "")
+            )
+            if charge is None and not quote_only:
                 continue
             key = f"{part}|{label}"
             if key in seen_addons:
@@ -305,6 +336,8 @@ def _parse_sheet(raw: pd.DataFrame, *, vendor: str, finish_state: str) -> list[d
                     finish_state=finish_state,
                     price=charge,
                     line_kind="addon",
+                    collection=band.collection,
+                    notes=_QUOTE_NOTE if quote_only else None,
                 )
             )
     return rows
@@ -356,7 +389,8 @@ def import_ajs_workbook(
     option_lines = 0
     if not long_df.empty:
         if default_collection:
-            long_df["collection"] = default_collection
+            # The band shape already named each section; only fill the gaps.
+            long_df["collection"] = long_df["collection"].fillna(default_collection)
         option_lines = int((long_df["line_kind"] == "addon").sum())
 
     result = WorkbookImportResult(

@@ -220,6 +220,83 @@ def test_custom_finish_upcharge_is_an_option_not_a_ninety_dollar_sofa():
     }
 
 
+def test_each_band_shape_names_its_own_collection():
+    """AJ's prints no collection banners, so the band shape is the section.
+
+    Every row landed with an empty collection before this, which left the floor
+    with one flat list of 211 SKUs and no way to tell a sofa from an end table.
+    """
+    result = import_ajs_workbook(
+        _finished_book(), vendor="AJ's Furniture", filename="Pricelist_Finished.xls"
+    )
+    assert set(result.long_df["collection"]) == {"Seating"}
+
+    tables = _book(
+        "Finished Wholesale",
+        [
+            ["OCCASIONAL PIECES", None, None, None, None, None, None, None],
+            [None, None, None, "RED OAK & BROWN MAPLE", "CHERRY &\n1/4 SAWN\n WHITE", "WALNUT", "Roughsawn Brown Maple", "LIFT TOP ADD"],
+            ["BN-25", "Barrington Coffee Table", None, 506.41, 646.73, 788.86, None, 120.75],
+        ],
+    )
+    occasional = import_ajs_workbook(
+        tables, vendor="AJ's Furniture", filename="Pricelist_Finished.xls"
+    )
+    assert set(occasional.long_df["collection"]) == {"Occasional Pieces"}
+
+    pillows = _book(
+        "Finished Wholesale",
+        [
+            ["Pillows", None, None, None, None],
+            [None, "*Price per pillow", None, "PRICE", "AJ'S FURNITURE LLC WARRANTY"],
+            ["213 SP", "13x13 Small Pillow", "Standard", 32.55, "Hardwood frames"],
+        ],
+    )
+    accessories = import_ajs_workbook(
+        pillows, vendor="AJ's Furniture", filename="Pricelist_Finished.xls"
+    )
+    assert set(accessories.long_df["collection"]) == {"Accessories"}
+
+    custom = _book(
+        "Finished Wholesale",
+        [
+            ["ID #", "Product Name", None, "All Woods"],
+            ["101 CSC", "Cubic Slat Chair", None, 99.75],
+        ],
+    )
+    finish = import_ajs_workbook(
+        custom, vendor="AJ's Furniture", filename="Pricelist_Finished.xls"
+    )
+    assert set(finish.long_df["collection"]) == {"Custom Finish"}
+
+
+def test_quote_only_cushion_is_an_option_the_floor_can_see():
+    """The Roughsawn sofas print ``Quote`` where a cushion price would go.
+
+    A dropped cell reads as "no such option" on the floor. The factory does
+    sell it, it just won't publish the number, so it ships as a priceless
+    Option rather than a free one.
+    """
+    roughsawn = _book(
+        "Finished Wholesale",
+        [
+            [None, None, None, "FINISHED PRICES", None, None, None, "OPTIONS"],
+            HEADER,
+            ["RS32 HDS", "Houston Deluxe Sofa", "Standard", None, None, None, 1738.48, None, None, None, "12 1/2 yd", "Quote"],
+        ],
+    )
+
+    result = import_ajs_workbook(
+        roughsawn, vendor="AJ's Furniture", filename="Pricelist_Finished.xls"
+    )
+
+    cushions = result.long_df[result.long_df["option_key"] == "Replacement Cushions"]
+    assert len(cushions) == 1
+    assert cushions["line_kind"].iloc[0] == "addon"
+    assert pd.isna(cushions["base_price"].iloc[0])
+    assert "quote required" in str(cushions["notes"].iloc[0]).lower()
+
+
 def test_page_furniture_and_footnotes_never_become_products():
     noisy = _book(
         "Finished Wholesale",

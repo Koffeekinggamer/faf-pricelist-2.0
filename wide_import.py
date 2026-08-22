@@ -2647,6 +2647,59 @@ def enhance_millers_long_df(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
+def _visible_addon(
+    vendor: str,
+    label: str,
+    *,
+    amount: Optional[float] = None,
+    notes: str,
+) -> dict:
+    return {
+        "vendor": vendor,
+        "collection": "Addons",
+        "part_number": label,
+        "description": label,
+        "dimensions": None,
+        "option_key": label,
+        "species": None,
+        "species_tier": None,
+        "finish_state": "finished",
+        "base_price": amount,
+        "price_basis": "wholesale",
+        "unit": None,
+        "notes": notes,
+        "line_kind": "addon",
+        "addon_pct": None,
+    }
+
+
+def _hope_wood_visible_options(raw: pd.DataFrame, vendor: str) -> pd.DataFrame:
+    """Milano seat/back charges printed as prose below the product rows."""
+    text = "\n".join(
+        " ".join(_norm(value) for value in row if _norm(value))
+        for row in raw.values.tolist()
+    )
+    if not re.search(r"(?i)fabric\s+seat\s*/\s*wood\s+back.*add\s*\$20", text):
+        return pd.DataFrame()
+    options = [
+        ("Fabric seat / wood back", 20.0),
+        ("Leather seat / wood back", 45.0),
+        ("Fabric seat and back", 75.0),
+        ("Leather seat and back", 125.0),
+    ]
+    return pd.DataFrame(
+        [
+            _visible_addon(
+                vendor,
+                label,
+                amount=amount,
+                notes="per chair from visible Milano option note",
+            )
+            for label, amount in options
+        ]
+    )
+
+
 def looks_like_hw_chair_markup(
     filename: str = "",
     sheet_names: Optional[list[str]] = None,
@@ -2797,6 +2850,9 @@ def import_hw_chair_workbook(
                 )
 
         long = _clean_long_rows(pd.DataFrame(rows)) if rows else pd.DataFrame()
+        option_rows = _hope_wood_visible_options(raw, vendor_name)
+        if not option_rows.empty:
+            long = pd.concat([long, option_rows], ignore_index=True)
         n = len(long)
         tried.append(
             {
@@ -3441,6 +3497,11 @@ def import_hillside_chair_workbook(
             frames.append(long)
 
     out = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if not out.empty:
+        # Hillside repeats each visible wholesale band in place. The repeated
+        # rows are identical across the full sellable record; keep one without
+        # merging rows that differ by SKU, wood, finish, or price.
+        out = out.drop_duplicates().reset_index(drop=True)
     if vendor_name and not out.empty:
         out["vendor"] = vendor_name
     return WorkbookImportResult(
@@ -3467,6 +3528,47 @@ def import_hillside_chair_workbook(
         detected_markup=None,
         sheet_names=names,
         notes=f"{filename + ': ' if filename else ''}Hillside Chair Unf/Fin · {len(out) if not out.empty else 0} rows",
+    )
+
+
+def _maple_lane_visible_options(raw: pd.DataFrame, vendor: str) -> pd.DataFrame:
+    """Named color/material choices printed in Maple Lane's visible notes."""
+    text = "\n".join(
+        " ".join(_norm(value) for value in row if _norm(value))
+        for row in raw.values.tolist()
+    )
+    labels: list[str] = []
+    if "Maui Quartz = MQ" in text:
+        labels.extend(
+            [
+                "Corian top — Maui Quartz",
+                "Corian top — Silver Birch",
+                "Corian top — Hazelnut",
+                "Stain — Earth Tone",
+                "Stain — Smoke",
+                "Stain — Ebony",
+            ]
+        )
+    if re.search(r"(?i)crypton\s+fabric\s+pads?.*three\s+colors", text):
+        labels.extend(
+            [
+                "Crypton fabric pad — Breeze",
+                "Crypton fabric pad — Home",
+                "Crypton fabric pad — Arrow",
+            ]
+        )
+    if re.search(r"(?i)carpet\s+optional\s*\(same\s+price\)", text):
+        labels.extend(["Carpet insert — Coal", "Carpet insert — Apex"])
+    return pd.DataFrame(
+        [
+            _visible_addon(
+                vendor,
+                label,
+                amount=0.0,
+                notes="no upcharge — named choice from visible source note",
+            )
+            for label in dict.fromkeys(labels)
+        ]
     )
 
 
@@ -3616,6 +3718,9 @@ def import_maple_lane_workbook(
                 )
 
         long = _clean_long_rows(pd.DataFrame(rows)) if rows else pd.DataFrame()
+        option_rows = _maple_lane_visible_options(raw, vendor_name)
+        if not option_rows.empty:
+            long = pd.concat([long, option_rows], ignore_index=True)
         tried.append(
             {
                 "sheet": name,

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendor": "Maple Lane",
+  "parser": {
+    "importer": "maple_lane",
+    "source_file": "Download_2026_Pricelist_466191.xlsx",
+    "filename_hints": [
+      "maple lane",
+      "maplelane"
+    ],
+    "layouts": [
+      "maple_lane"
+    ],
+    "locked": true
+  }
+}

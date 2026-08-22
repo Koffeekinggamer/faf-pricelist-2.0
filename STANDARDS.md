@@ -11,7 +11,7 @@ Every sellable row in `master_pricebook.db` is normalized to the same shape.
 | Canonical name | `Millers Woodshop`, not `MWS 2023` + `Millers Woodshop 2026` |
 | Filename → builder | `HW_2025_…` → Hope Wood; `Jan 2026 wholesale` → Rainbow Bedding |
 | Re-import | **replace_vendor** (default): deletes that builder’s rows, then loads the new book |
-| Batch folder | If two files map to the same builder, only **one** is imported |
+| Batch folder | Several pricesheets for one builder concatenate into one catalog (Kidron Harbor + Solo Galaxy). Cover pages and quote calculators stay out. |
 
 CLI / UI defaults use `replace_vendor`. Avoid **append** unless you intend duplicates.
 

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendor": "Amish Aspen",
+  "parser": {
+    "importer": "amish_aspen",
+    "source_file": "Download_2026_Pricelist_1501888.xlsx",
+    "filename_hints": [
+      "amish aspen",
+      "amishaspen"
+    ],
+    "layouts": [
+      "amish_aspen"
+    ],
+    "locked": true
+  }
+}

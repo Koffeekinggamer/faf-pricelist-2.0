@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "vendor": "Hope Wood",
+  "parser": {
+    "importer": "hw_chair_markup",
+    "source_file": "Download_2026_Pricelist_629159.xlsx",
+    "filename_hints": [
+      "hope wood",
+      "hopewood"
+    ],
+    "layouts": [
+      "hw_chair_markup"
+    ],
+    "locked": true
+  }
+}

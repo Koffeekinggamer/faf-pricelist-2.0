@@ -451,8 +451,6 @@ def rank_file(p: Path, vendor: str) -> tuple:
             score += 80
     except Exception:
         pass
-    if re.search(r"solo\s*galaxy", name):
-        score -= 500
     if re.search(r"quotes?\s*calculator|cover\s*page", name):
         score -= 200
     if vendor == "FN Chair":
@@ -497,9 +495,32 @@ def backup_db() -> None:
             log("DB backup via CLI")
 
 
-def ranked_excel_plan(out_dir: Path) -> list[tuple[str, Path, list[Path]]]:
-    """One ranked Excel file per builder folder (extras kept for the report)."""
-    plan: list[tuple[str, Path, list[Path]]] = []
+_NOT_A_PRICESHEET = re.compile(
+    r"(?i)quotes?\s*calculator|cover\s*page|password|instructions?"
+)
+
+
+def is_sellable_pricesheet(path: Path, vendor: str) -> bool:
+    """True for a factory book the floor should see.
+
+    A builder may ship several books in one download (Kidron Harbor + Solo
+    Galaxy). Cover pages and quote calculators are not catalogs. FN Chair's
+    Level Two orange book is a different price list, not a second collection.
+    """
+    name = path.name
+    if _NOT_A_PRICESHEET.search(name):
+        return False
+    if vendor == "FN Chair" and re.search(r"level.?two|two.?orange", name, re.I):
+        return False
+    # LuxHome ships inside AJ's Viztech folder. It is its own builder.
+    if re.search(r"luxhome", name, re.I) and vendor != "LuxHome":
+        return False
+    return True
+
+
+def ranked_excel_plan(out_dir: Path) -> list[tuple[str, list[Path]]]:
+    """Every sellable pricesheet in a builder folder, not just the first ranked file."""
+    plan: list[tuple[str, list[Path]]] = []
     for d in sorted(out_dir.iterdir()):
         if not d.is_dir():
             continue
@@ -515,19 +536,12 @@ def ranked_excel_plan(out_dir: Path) -> list[tuple[str, Path, list[Path]]]:
             and not p.name.startswith("~$")
             and "__MACOSX" not in str(p)
             and p.stat().st_size > 2000
+            and is_sellable_pricesheet(p, vendor)
         ]
         if not files:
             continue
-        if vendor == "FN Chair":
-            one = [
-                p
-                for p in files
-                if re.search(r"level.?one|one.?blue", p.name, re.I)
-            ]
-            if one:
-                files = one
-        files = sorted(set(files), key=lambda p: rank_file(p, vendor))
-        plan.append((vendor, files[0], files[1:]))
+        files = sorted(set(files), key=lambda p: (rank_file(p, vendor), p.name))
+        plan.append((vendor, files))
     return plan
 
 
@@ -562,12 +576,18 @@ def drop_load_ranked_files(svc, items: list[tuple[str, Path, float]]) -> dict[st
     report: list[dict[str, Any]] = []
     ok = err = skip = blocked = 0
     by_builder = {r.builder: r for r in batch.results}
+    files_by_vendor: dict[str, list[Path]] = {}
+    mult_by_vendor: dict[str, float] = {}
     for vendor, path, mult in items:
+        files_by_vendor.setdefault(vendor, []).append(path)
+        mult_by_vendor[vendor] = mult
+    for vendor, paths in files_by_vendor.items():
         result = by_builder.get(vendor)
         entry: dict[str, Any] = {
             "vendor": vendor,
-            "file": str(path),
-            "mult": mult,
+            "file": " + ".join(str(path) for path in paths),
+            "files": [str(path) for path in paths],
+            "mult": mult_by_vendor[vendor],
             "extras": [],
         }
         if result is None:
@@ -620,12 +640,12 @@ def import_folder(out_dir: Path, *, svc=None) -> dict[str, Any]:
     plan = ranked_excel_plan(out_dir)
     log(f"Import plan: {len(plan)} builders")
     items: list[tuple[str, Path, float]] = []
-    for vendor, best, extras in plan:
+    for vendor, files in plan:
         mult = 1.7 if vendor == "Genuine Oak" else 2.7
-        log(f"  {vendor} ← {best.name}")
-        items.append((vendor, best, mult))
-        if extras:
-            log(f"    extras unused: {len(extras)}")
+        names = ", ".join(path.name for path in files)
+        log(f"  {vendor} ← {names}")
+        for path in files:
+            items.append((vendor, path, mult))
     loaded = drop_load_ranked_files(svc, items)
     loaded["stats"] = svc.stats()
     loaded["finished_at"] = datetime.now(timezone.utc).isoformat()
