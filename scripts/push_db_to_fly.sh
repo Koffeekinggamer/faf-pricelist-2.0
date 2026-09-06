@@ -5,6 +5,8 @@ set -euo pipefail
 
 export PATH="${HOME}/.fly/bin:${PATH}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=scripts/faf_portable_data.sh
+source "$(dirname "$0")/faf_portable_data.sh"
 APP="${FLY_APP:-faf-pricebook}"
 LOCAL_DB="${FAF_LOCAL_DB:-$ROOT/master_pricebook.db}"
 REMOTE_DB="/data/master_pricebook.db"

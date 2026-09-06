@@ -5,17 +5,40 @@
 1. Read in order: **AGENTS.md** (this file) → **CONTEXT.md** → **HANDOFF.md** → **STANDARDS.md**. Consult **`docs/adr/`** as needed.
 2. **This repo is the main FAF Price Book.** Mac/project path: **`~/FAF-pricelist-2.0`**. Current focus: **catalog accuracy** (Search · Drop files · Vendors · Admin).
 3. Default entry: `pricebook_app.py`. OrderTrac UI flags are **off** — do not re-enable unless Judson asks.
-4. Never commit `*.db`, `.env`, or `.streamlit/secrets.toml`.
+4. Never commit `*.db`, `.env`, or `.streamlit/secrets.toml`. Traveling catalog, images, secrets, and the signed-in session live on the price-book drive at `FAF-pricebook/` (usually `/Volumes/ExternalSSD/FAF-pricebook`). Plug the drive in, then `./run.sh` — the laptop signs back in from that folder.
 5. Local port **8501** (Fly: https://faf-pricebook.fly.dev).
 6. `pricebook_app.py` is the **only** app entrypoint. Old variations (`pricebook_app_slim.py`, `pricebook_app_legacy.py`) were purged; the slim experiment history remains on branch `backup/phase1-slim-2026-07-26` if ever needed.
 7. Thin UI; put logic in `backend.PriceBookService`. One builder = one vendor; retail = wholesale × mult (2.7 default, Genuine Oak 1.7). Every builder Excel encodes Options; empty Search Options is a capture miss, not “no Options.” Never unhide a sheet or row (hidden leftovers are often duplicates). Duplicate cleanup reads the full row first.
+
+## Pricebook image alignment — hard rules
+
+**R1 — Part / item number match → attach image.** Match exact normalized catalog keys within the same builder. If part and item numbers both exist, both must match; otherwise match the populated field. Attach one key to every sibling row carrying it. Never cross builders or use fuzzy product-name matching.
+
+**R2 — Every ingest path, including manual parser.** Run image binding after automated ingest, manual parser materialization, PDF upload, and single-image descriptor upload.
+
+**R3 — Always scan VizTech for the book.** Resolve the builder identity, scan VizTech, then cache/refresh its catalog, feed, pricelist, and image status before applying image policy.
+
+**R4 — Builder not on VizTech means ignore VizTech images only.** Operator PDF and single-image uploads remain enabled. Log `viztech_images_skipped: builder_not_on_viztech`.
+
+**R5 — PDF catalog part number on image maps to the pricebook row.** Extract product figures and explicit nearby part/item keys, attach exact keys for that builder even when VizTech misses, and skip covers, contents, charts, and unkeyed figures.
+
+**R6 — Prompt after successful pricebook upload.** After every successful automatic or manual parse show exactly `Do you want to add pdf of images?` with `Yes` and `Not now`. Yes focuses the sibling uploader without leaving the result. Not now dismisses the prompt; the uploader remains available.
+
+**R7 — Editable descriptor on single-image upload.** Require builder and item(s), allow notes, and keep the descriptor editable. Saving removes stale binds, reparses, rebinds, and reruns Christina.
+
+**R8 — Christina verifies alignment before final.** Use Christina's existing identity, lesson log, and service path. Binds remain draft until she passes or an authenticated operator overrides a flag with a required reason. Replacing a passed hero reruns Christina.
+
+### Christina image-alignment contract
+
+Give Christina builder, row part/item keys and context, asset/storage key, extracted keys, descriptor, source, and prior hero. She checks exact key, builder, descriptor fidelity, silent extra attaches, and hero replacement. Run visual plausibility/group-shot checks only through a real vision path; otherwise record `pending_vision` and never fake a pass.
+
+Persist her actual response projection: `pass|flag`, score, findings, and raw run id. Show findings in the uploader. Flagged actions: override with required reason, remove, or edit descriptor and retry. Search shows only final/override heroes; drafts are Drop-preview-only.
 
 ## Fast ops (Mac)
 
 ```bash
 cd ~/FAF-pricelist-2.0
-git pull origin main
-./scripts/pull_db_from_fly.sh   # live catalog (gitignored)
+# Plug in ExternalSSD first. Catalog + secrets are on that drive.
 ./run.sh
 ```
 

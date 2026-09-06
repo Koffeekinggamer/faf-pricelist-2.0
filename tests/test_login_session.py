@@ -10,8 +10,11 @@ from backend.db import init_db
 from backend.login_session import (
     COOKIE_NAME,
     clear_persisted_token,
+    ensure_travel_login_token,
     issue_login_token,
     load_persisted_token,
+    login_secret,
+    may_use_persisted_login,
     persist_token,
     restore_login_session,
 )
@@ -77,6 +80,30 @@ def test_sign_out_clears_the_persisted_token(tmp_path: Path) -> None:
     clear_persisted_token(root=tmp_path)
     assert load_persisted_token(root=tmp_path) == ""
     assert COOKIE_NAME == "faf_login"
+
+
+def test_traveling_drive_restores_login_without_a_browser_cookie(
+    tmp_path: Path, monkeypatch
+) -> None:
+    db = _db(tmp_path)
+    monkeypatch.setenv("FAF_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("FAF_DB_PATH", str(db))
+    monkeypatch.delenv("FLY_APP_NAME", raising=False)
+    monkeypatch.delenv("FLY_ALLOC_ID", raising=False)
+    assert may_use_persisted_login(local_browser=False) is True
+    assert ensure_travel_login_token(root=tmp_path, db_path=db) is True
+    token = load_persisted_token(root=tmp_path)
+    assert token
+    restored = restore_login_session(token, secret=login_secret(root=tmp_path), db_path=db)
+    assert restored is not None
+    assert restored["username"] == "judson"
+    assert restored["role"] == "admin"
+
+
+def test_fly_does_not_use_a_persisted_drive_login(monkeypatch) -> None:
+    monkeypatch.delenv("FAF_DATA_DIR", raising=False)
+    monkeypatch.setenv("FLY_APP_NAME", "faf-pricebook")
+    assert may_use_persisted_login(local_browser=True) is False
 
 
 def test_session_from_user_drops_the_password_hash() -> None:

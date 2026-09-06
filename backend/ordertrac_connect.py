@@ -14,7 +14,23 @@ from pathlib import Path
 from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
-SESSION_DIR = Path.home() / "Documents" / "ordertrac-session"
+
+
+def _session_dir() -> Path:
+    import os
+
+    from backend.config import resolve_data_dir
+
+    env = (os.environ.get("FAF_ORDERTRAC_SESSION_DIR") or "").strip()
+    if env:
+        return Path(env).expanduser()
+    portable = resolve_data_dir() / "ordertrac-session"
+    if portable.is_dir():
+        return portable
+    return Path.home() / "Documents" / "ordertrac-session"
+
+
+SESSION_DIR = _session_dir()
 STORAGE = SESSION_DIR / "storage_state.json"
 BASE_DEFAULT = "https://app.ordertracinventory.com"
 
@@ -41,7 +57,9 @@ def load_ordertrac_creds() -> dict[str, str]:
     pw = os.environ.get("ORDERTRAC_PASSWORD") or ""
     base = (os.environ.get("ORDERTRAC_BASE_URL") or BASE_DEFAULT).rstrip("/")
 
-    secrets = ROOT / ".streamlit" / "secrets.toml"
+    from backend.config import resolve_secrets_path
+
+    secrets = resolve_secrets_path()
     if secrets.is_file():
         text = secrets.read_text(encoding="utf-8", errors="replace")
         m = re.search(r"\[ordertrac\](.*?)(?=\n\[|\Z)", text, re.S | re.I)

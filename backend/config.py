@@ -8,10 +8,49 @@ from pathlib import Path
 # Project root: parent of backend/
 APP_DIR = Path(__file__).resolve().parent.parent
 
-# Local default: ./master_pricebook.db
-# Fly: set FAF_DB_PATH=/data/master_pricebook.db (volume mount)
-_env_db = (os.environ.get("FAF_DB_PATH") or os.environ.get("PRICEBOOK_DB_PATH") or "").strip()
-DB_PATH = Path(_env_db) if _env_db else (APP_DIR / "master_pricebook.db")
+
+def _env_path(*names: str) -> str:
+    for name in names:
+        value = (os.environ.get(name) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def resolve_data_dir() -> Path:
+    """Catalog, images, lessons, and secrets live here when traveling.
+
+    Set FAF_DATA_DIR from ./run.sh after ExternalSSD is plugged in.
+    Fly keeps using /data via FAF_DB_PATH. Tests leave this unset so they
+    stay on the checkout, not the live drive.
+    """
+    env = _env_path("FAF_DATA_DIR")
+    if env:
+        return Path(env).expanduser()
+    return APP_DIR
+
+
+def resolve_db_path() -> Path:
+    env_db = _env_path("FAF_DB_PATH", "PRICEBOOK_DB_PATH")
+    if env_db:
+        return Path(env_db).expanduser()
+    return resolve_data_dir() / "master_pricebook.db"
+
+
+def resolve_secrets_path() -> Path:
+    env = _env_path("FAF_SECRETS_PATH")
+    if env:
+        return Path(env).expanduser()
+    data = resolve_data_dir()
+    portable = data / "secrets.toml"
+    if portable.is_file():
+        return portable
+    return APP_DIR / ".streamlit" / "secrets.toml"
+
+
+DATA_DIR = resolve_data_dir()
+DB_PATH = resolve_db_path()
+SECRETS_PATH = resolve_secrets_path()
 
 DEFAULT_MULTIPLIER = 2.7
 DEFAULT_PRICE_BASIS = "wholesale"

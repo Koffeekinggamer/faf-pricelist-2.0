@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from backend.auth import session_from_user
-from backend.config import APP_DIR
+from backend.config import resolve_data_dir, resolve_db_path
 from backend.users import UserRepository
 
 COOKIE_NAME = "faf_login"
@@ -22,12 +22,21 @@ _SECRET_FILE = ".login_secret"
 _TOKEN_FILE = ".login_token"
 
 
+def may_use_persisted_login(*, local_browser: bool = False) -> bool:
+    """The traveling drive carries the signed-in session. Fly stays cookie-only."""
+    if (os.environ.get("FAF_DATA_DIR") or "").strip():
+        return True
+    if os.environ.get("FLY_APP_NAME") or os.environ.get("FLY_ALLOC_ID"):
+        return False
+    return bool(local_browser)
+
+
 def login_secret(*, root: Optional[Path] = None) -> str:
     """Stable HMAC key on this machine. Not a password."""
     env = (os.environ.get("FAF_LOGIN_SECRET") or "").strip()
     if env:
         return env
-    base = Path(root) if root is not None else APP_DIR
+    base = Path(root) if root is not None else resolve_data_dir()
     path = base / _SECRET_FILE
     if path.is_file():
         text = path.read_text(encoding="utf-8").strip()
@@ -96,7 +105,7 @@ def restore_login_session(
         return None
     username = str(payload.get("u") or "").strip()
     uid = payload.get("uid")
-    repo = UserRepository(db_path)
+    repo = UserRepository(db_path if db_path is not None else resolve_db_path())
     try:
         user = None
         if uid is not None:
@@ -111,7 +120,7 @@ def restore_login_session(
 
 
 def persist_token(token: str, *, root: Optional[Path] = None) -> None:
-    base = Path(root) if root is not None else APP_DIR
+    base = Path(root) if root is not None else resolve_data_dir()
     path = base / _TOKEN_FILE
     path.write_text((token or "").strip() + "\n", encoding="utf-8")
     try:
@@ -121,7 +130,7 @@ def persist_token(token: str, *, root: Optional[Path] = None) -> None:
 
 
 def load_persisted_token(*, root: Optional[Path] = None) -> str:
-    base = Path(root) if root is not None else APP_DIR
+    base = Path(root) if root is not None else resolve_data_dir()
     path = base / _TOKEN_FILE
     if not path.is_file():
         return ""
@@ -132,7 +141,7 @@ def load_persisted_token(*, root: Optional[Path] = None) -> str:
 
 
 def clear_persisted_token(*, root: Optional[Path] = None) -> None:
-    base = Path(root) if root is not None else APP_DIR
+    base = Path(root) if root is not None else resolve_data_dir()
     path = base / _TOKEN_FILE
     try:
         path.unlink()
@@ -143,3 +152,55 @@ def clear_persisted_token(*, root: Optional[Path] = None) -> None:
             path.write_text("", encoding="utf-8")
         except OSError:
             return
+
+
+def _travel_user(db_path: Path) -> Optional[dict]:
+    repo = UserRepository(db_path)
+    try:
+        frame = repo.list_users(active_only=True)
+    except Exception:
+        return None
+    if frame is None or getattr(frame, "empty", True):
+        return None
+    pool = frame
+    if "role" in frame.columns:
+        admins = frame[frame["role"].astype(str) == "admin"]
+        if not admins.empty:
+            pool = admins
+    if "last_login_at" in pool.columns:
+        pool = pool.sort_values("last_login_at", ascending=False, na_position="last")
+    row = pool.iloc[0]
+    try:
+        return repo.get_by_id(int(row["id"]))
+    except Exception:
+        return None
+
+
+def ensure_travel_login_token(
+    *,
+    root: Optional[Path] = None,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Keep a valid remember-me token on the traveling drive.
+
+    A new laptop browser has no cookie. The SSD token is what signs Judson in.
+    """
+    base = Path(root) if root is not None else resolve_data_dir()
+    catalog = Path(db_path) if db_path is not None else resolve_db_path()
+    secret = login_secret(root=base)
+    token = load_persisted_token(root=base)
+    if token:
+        session = restore_login_session(token, secret=secret, db_path=catalog)
+        if session:
+            return True
+    try:
+        from backend.auth import ensure_seed_admin
+
+        ensure_seed_admin(catalog)
+    except Exception:
+        pass
+    user = _travel_user(catalog)
+    if not user:
+        return False
+    persist_token(issue_login_token(session_from_user(user), secret=secret), root=base)
+    return True

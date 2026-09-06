@@ -3,7 +3,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DB="$ROOT/master_pricebook.db"
+# shellcheck source=scripts/faf_portable_data.sh
+source "$(dirname "$0")/faf_portable_data.sh"
+DB="${FAF_DB_PATH:-$ROOT/master_pricebook.db}"
 BACKUP_DIR="${FAF_PRICEBOOK_BACKUP_DIR:-$HOME/Documents/FAF-pricebook-backups}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
