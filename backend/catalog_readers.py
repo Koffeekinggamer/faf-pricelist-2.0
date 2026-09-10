@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Optional, Sequence
 
+import pandas as pd
+
 from backend.builder_reader_registry import ReaderEntry
 from backend.workbook_sheets import excel_engine
 
@@ -92,18 +94,29 @@ CATALOG_SPECS: tuple[CatalogSpec, ...] = (
         reader="backend.ajs_import:import_ajs_workbook",
     ),
     CatalogSpec("black_horse_furniture", "Black Horse Furniture"),
-    CatalogSpec("brookside_home_furnishings", "Brookside Home Furnishings", extra_tokens=("brookside",)),
+    CatalogSpec(
+        "brookside_home_furnishings", "Brookside Home Furnishings", extra_tokens=("brookside",)
+    ),
     CatalogSpec("crystal_valley_hardwoods", "Crystal Valley Hardwoods", extra_tokens=("cvh",)),
     CatalogSpec("dutch_creek_design", "Dutch Creek Design", extra_tokens=("dcd",)),
     CatalogSpec("ebony_woodworking", "Ebony Woodworking"),
     CatalogSpec("elite_designs", "Elite Designs"),
     CatalogSpec("farmside_wood", "Farmside Wood"),
     CatalogSpec("five_star_tables", "Five Star Tables"),
-    CatalogSpec("fredericksburg_furniture", "Fredericksburg Furniture"),
+    CatalogSpec(
+        "fredericksburg_furniture",
+        "Fredericksburg Furniture",
+        reader="backend.fredericksburg_import:import_fredericksburg_workbook",
+    ),
     CatalogSpec("frog_pond_furniture", "Frog Pond Furniture"),
     CatalogSpec("genuine_oak", "Genuine Oak"),
     CatalogSpec("hermies_table_shop", "Hermies Table Shop", extra_tokens=("hermie", "hts")),
-    CatalogSpec("hogback_design_and_finishing", "Hogback Design And Finishing", extra_tokens=("hogback",)),
+    CatalogSpec(
+        "hogback_design_and_finishing",
+        "Hogback Design And Finishing",
+        extra_tokens=("hogback",),
+        reader="backend.hogback_import:import_hogback_workbook",
+    ),
     CatalogSpec("hoosier_crafts", "Hoosier Crafts"),
     CatalogSpec("integ_wood_products", "INTEG Wood Products", extra_tokens=("integ",)),
     CatalogSpec("j_troyer_and_company", "J. Troyer & Company", extra_tokens=("j troyer",)),
@@ -126,14 +139,22 @@ CATALOG_SPECS: tuple[CatalogSpec, ...] = (
     CatalogSpec("signature_designs", "Signature Designs"),
     CatalogSpec("stone_river_furniture", "Stone River Furniture"),
     CatalogSpec("stoney_acres_furniture", "Stoney Acres Furniture"),
-    CatalogSpec("superior_woodcrafts", "Superior Woodcrafts"),
+    CatalogSpec(
+        "superior_woodcrafts",
+        "Superior Woodcrafts",
+        reader="backend.superior_import:import_superior_workbook",
+    ),
     CatalogSpec(
         "townline_furniture",
         "Townline Furniture",
         reader="backend.townline_import:import_townline_workbook",
     ),
     CatalogSpec("troyer_design_company", "Troyer Design Company", extra_tokens=("tdc",)),
-    CatalogSpec("troyer_ridge_furniture", "Troyer Ridge Furniture"),
+    CatalogSpec(
+        "troyer_ridge_furniture",
+        "Troyer Ridge Furniture",
+        reader="backend.troyer_ridge_import:import_troyer_ridge_workbook",
+    ),
 )
 
 
@@ -146,6 +167,74 @@ def spec_for_vendor(vendor: str) -> Optional[CatalogSpec]:
 
 
 _SHEET_COLLECTION = re.compile(r"(?i)^(pricelist|price list)$")
+
+
+_FIVE_STAR_WOOD_ADDONS = (
+    ("Sap Cherry / Brown Maple / Wormy Maple", 15.0),
+    ("Cherry / Maple / Elm", 35.0),
+    ("Hickory / Rustic Cherry", 25.0),
+    ("QSWO / Rustic QSWO / Flat Sawn White Oak", 45.0),
+    ("Rustic Hickory", 25.0),
+    ("Walnut", 80.0),
+    ("Rustic Walnut", 45.0),
+    ("Wormy Maple / Walnut Combo", 35.0),
+    ("Rustic Hickory / Walnut Combo", 35.0),
+)
+_FIVE_STAR_JUNK = re.compile(
+    r"(?i)^(terms|net 30|standard table|locks on all|levelers|please call|"
+    r"2%\s+will be added|table of contents)$"
+)
+
+
+def apply_five_star_oak_tables(df):
+    """Tables are priced in Oak; other woods are % Options on the book."""
+    if df is None or getattr(df, "empty", True):
+        return df
+    out = df.copy()
+    if "species" not in out.columns:
+        out["species"] = None
+    if "line_kind" in out.columns:
+        kind = out["line_kind"].fillna("item").astype(str).str.lower()
+    else:
+        kind = "item"
+        out["line_kind"] = "item"
+    blank = out["species"].isna() | out["species"].astype(str).str.strip().eq("")
+    if not isinstance(kind, str):
+        blank = blank & (kind != "addon")
+    out.loc[blank, "species"] = "Oak"
+    if "option_key" in out.columns and not isinstance(kind, str):
+        junk = kind.eq("addon") & out["option_key"].fillna("").astype(str).map(
+            lambda s: bool(_FIVE_STAR_JUNK.search(s))
+        )
+        out = out.loc[~junk].reset_index(drop=True)
+    have = set()
+    if "option_key" in out.columns:
+        have = {str(x).strip().lower() for x in out["option_key"].dropna() if str(x).strip()}
+    extra = []
+    vendor = ""
+    if "vendor" in out.columns and len(out):
+        vendor = str(out["vendor"].iloc[0] or "Five Star Tables")
+    for label, pct in _FIVE_STAR_WOOD_ADDONS:
+        if label.lower() in have:
+            continue
+        extra.append(
+            {
+                "vendor": vendor,
+                "collection": "Addons",
+                "part_number": label,
+                "description": label,
+                "option_key": label,
+                "species": None,
+                "finish_state": "finished",
+                "base_price": None,
+                "price_basis": "wholesale",
+                "line_kind": "addon",
+                "addon_pct": pct,
+            }
+        )
+    if extra:
+        out = pd.concat([out, pd.DataFrame(extra)], ignore_index=True)
+    return out
 
 
 def apply_piece_name_collections(df):
@@ -268,11 +357,7 @@ def hermies_product_context(data: bytes) -> dict[tuple[str, str], str]:
                 and not (isinstance(value, float) and math.isnan(value))
                 and float(value) > 1
             )
-            if (
-                numeric == 0
-                and 3 <= len(first) <= 70
-                and not _HERMIES_CONTEXT_JUNK.search(first)
-            ):
+            if numeric == 0 and 3 <= len(first) <= 70 and not _HERMIES_CONTEXT_JUNK.search(first):
                 current_label = first
     return context
 
@@ -298,16 +383,11 @@ def apply_catalog_description_fixes(
                 out[column] = None
         part = out["part_number"].fillna("").astype(str).str.strip()
         desc = out["description"].fillna("").astype(str).str.strip()
-        fabric_tier = part.str.fullmatch(
-            r"(?i)(?:standard|premium|leather|com)"
-        ) & desc.ne("")
-        option_blank = (
-            out["option_key"].isna()
-            | out["option_key"].fillna("").astype(str).str.strip().eq("")
-        )
-        out.loc[fabric_tier & option_blank, "option_key"] = part[
-            fabric_tier & option_blank
-        ]
+        fabric_tier = part.str.fullmatch(r"(?i)(?:standard|premium|leather|com)") & desc.ne("")
+        option_blank = out["option_key"].isna() | out["option_key"].fillna("").astype(
+            str
+        ).str.strip().eq("")
+        out.loc[fabric_tier & option_blank, "option_key"] = part[fabric_tier & option_blank]
         out.loc[fabric_tier, "part_number"] = desc[fabric_tier]
     elif vendor == "INTEG Wood Products":
         for column in (
@@ -362,15 +442,12 @@ def apply_catalog_description_fixes(
         for index, row in out.iterrows():
             collection = _context_text(row.get("collection"))
             part_number = _context_text(row.get("part_number"))
-            label = product_context.get(
-                (collection, part_number)
-            ) or product_context.get(("", part_number.upper()))
+            label = product_context.get((collection, part_number)) or product_context.get(
+                ("", part_number.upper())
+            )
             if label:
                 out.at[index, "collection"] = label
-    if (
-        vendor == "Mirror Lake Woodworks"
-        and "unfinished" in str(filename or "").lower()
-    ):
+    if vendor == "Mirror Lake Woodworks" and "unfinished" in str(filename or "").lower():
         out["finish_state"] = "unfinished"
     return out
 
@@ -396,6 +473,8 @@ def import_catalog_workbook(
     )
     if spec.parser_id == "millcraft":
         result.long_df = apply_piece_name_collections(result.long_df)
+    if spec.parser_id == "five_star_tables":
+        result.long_df = apply_five_star_oak_tables(result.long_df)
     if spec.vendor == "INTEG Wood Products":
         product_context = integ_product_context(data)
     elif spec.vendor == "Hermies Table Shop":

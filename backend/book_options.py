@@ -24,16 +24,14 @@ _INLINE_ADD_DOLLAR = re.compile(
 _LABELED_DOLLAR = re.compile(
     r"(?i)^\s*(?:[•\-\*]\s*)?(?:(?P<sku>[A-Z]{2,8}\d+[A-Z]{0,6})[\s\-]+)?(?P<label>[^:$]{3,48}?)\s*:\s*\$?\s*(?P<amt>\d+(?:\.\d+)?)\s*(?:each)?\s*$"
 )
-_DASH_DOLLAR = re.compile(
-    r"(?i)(?P<label>.{3,40}?)\s*[\-–]\s*add\s+\$?\s*(?P<amt>\d+(?:\.\d+)?)"
-)
+_DASH_DOLLAR = re.compile(r"(?i)(?P<label>.{3,40}?)\s*[\-–]\s*add\s+\$?\s*(?P<amt>\d+(?:\.\d+)?)")
 
 _SKIP_LABEL = re.compile(
     r"(?i)^(oak|maple|cherry|walnut|hickory|alder|qswo|standard wood|premium wood|"
     r"description|item number|item\s*#|collection|wholesale|retail|cover|index|"
     r"password|price|to|prices? for the year)$"
 )
-_JUNK_LABEL = re.compile(r"(?i)password|price list|option\s*:")
+_JUNK_LABEL = re.compile(r"(?i)password|price list|option\s*:|past due accounts|^terms$|^net\s*30$")
 _UNFINISHED_DEDUCT = re.compile(r"(?i)unfinish")
 _NO_UPCHARGE = re.compile(r"(?i)no\s+upcharge")
 _ADD_ON_BANNER = re.compile(r"(?i)add[\s\-]*on\s+options?")
@@ -78,9 +76,7 @@ def _builder_names() -> frozenset[str]:
             from backend.builder_reader_registry import DEFAULT_READER_REGISTRY
 
             _BUILDER_NAMES = frozenset(
-                entry.vendor.casefold()
-                for entry in DEFAULT_READER_REGISTRY.entries
-                if entry.vendor
+                entry.vendor.casefold() for entry in DEFAULT_READER_REGISTRY.entries if entry.vendor
             )
         except Exception:
             _BUILDER_NAMES = frozenset()
@@ -92,10 +88,7 @@ def _is_builder_name(label: str) -> bool:
     name = (label or "").casefold().strip()
     if not name:
         return False
-    return any(
-        name == builder or name.startswith(builder + " ")
-        for builder in _builder_names()
-    )
+    return any(name == builder or name.startswith(builder + " ") for builder in _builder_names())
 
 
 def _norm_label(raw: str) -> str:
@@ -132,7 +125,10 @@ def _addon(
     quote_only: bool = False,
 ) -> Optional[dict[str, Any]]:
     name = _norm_label(label)
-    if not name or _SKIP_LABEL.fullmatch(name) or _UNFINISHED_DEDUCT.search(name):
+    if not name or _UNFINISHED_DEDUCT.search(name):
+        return None
+    # Wood names are valid Options when the book prices a % adder (Walnut +50%).
+    if _SKIP_LABEL.fullmatch(name) and pct is None:
         return None
     if _is_builder_name(name):
         return None
@@ -307,9 +303,7 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
             no_upcharge = True
             current_pct = None
             continue
-        if _ADD_ON_BANNER.search(joined) or any(
-            _OPTIONS_BANNER.fullmatch(cell) for cell in cells
-        ):
+        if _ADD_ON_BANNER.search(joined) or any(_OPTIONS_BANNER.fullmatch(cell) for cell in cells):
             in_addons = True
             no_upcharge = False
         if _FINISH_SECTION.search(joined):
@@ -458,11 +452,7 @@ def merge_book_options(result: Any, data: bytes, *, vendor: str = "") -> Any:
     df = result.long_df
     existing = set()
     if df is not None and not df.empty and "option_key" in df.columns:
-        existing = {
-            str(x).strip().lower()
-            for x in df["option_key"].dropna()
-            if str(x).strip()
-        }
+        existing = {str(x).strip().lower() for x in df["option_key"].dropna() if str(x).strip()}
     new = [r for r in extra if r["option_key"].lower() not in existing]
     if not new:
         return result

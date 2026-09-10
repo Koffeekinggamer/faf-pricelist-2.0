@@ -1000,9 +1000,7 @@ def _is_finish_state_series(series: pd.Series) -> bool:
     values = series.dropna().astype(str).str.strip().str.lower()
     if values.empty:
         return False
-    finish = values.str.fullmatch(
-        r"(?:unf(?:inished)?|fin(?:ished)?|finshed|glaz(?:e|ed))"
-    )
+    finish = values.str.fullmatch(r"(?:unf(?:inished)?|fin(?:ished)?|finshed|glaz(?:e|ed))")
     return bool(finish.mean() >= 0.6)
 
 
@@ -1029,9 +1027,7 @@ def unpivot_wide_species(
     if not desc_col:
         for c in df.columns:
             if c != id_col and classify_column(c) in ("desc", "other"):
-                if not is_price_column(df[c], min_hits=5) and not _is_finish_state_series(
-                    df[c]
-                ):
+                if not is_price_column(df[c], min_hits=5) and not _is_finish_state_series(df[c]):
                     desc_col = c
                     break
     if not desc_col and id_col:
@@ -2676,8 +2672,7 @@ def _visible_addon(
 def _hope_wood_visible_options(raw: pd.DataFrame, vendor: str) -> pd.DataFrame:
     """Milano seat/back charges printed as prose below the product rows."""
     text = "\n".join(
-        " ".join(_norm(value) for value in row if _norm(value))
-        for row in raw.values.tolist()
+        " ".join(_norm(value) for value in row if _norm(value)) for row in raw.values.tolist()
     )
     if not re.search(r"(?i)fabric\s+seat\s*/\s*wood\s+back.*add\s*\$20", text):
         return pd.DataFrame()
@@ -2980,6 +2975,11 @@ def import_amish_aspen_workbook(
                         if d and re.search(r"\d", d) and re.search(r"[x×]", d, re.I):
                             dims = d
                             break
+                wood = (
+                    "White Cedar"
+                    if re.search(r"(?i)white cedar", str(current_collection or ""))
+                    else "Hickory / Aspen"
+                )
                 rows.append(
                     {
                         "vendor": vendor_name,
@@ -2988,7 +2988,7 @@ def import_amish_aspen_workbook(
                         "description": nm,
                         "dimensions": dims,
                         "option_key": None,
-                        "species": None,
+                        "species": wood,
                         "species_tier": None,
                         "finish_state": "finished",
                         "base_price": price,
@@ -3086,9 +3086,7 @@ def artisan_chairs_option_addons(data: bytes, *, vendor: str) -> list[dict]:
         indented = cells[3] if len(cells) > 3 and cells[3] else ""
         if label and re.search(r"(?i)priced with heartland standard fabric", label):
             special_collections = [
-                part.strip()
-                for part in label.split("-", 1)[0].split(",")
-                if part.strip()
+                part.strip() for part in label.split("-", 1)[0].split(",") if part.strip()
             ]
             continue
         if label:
@@ -3149,9 +3147,7 @@ def artisan_chairs_option_addons(data: bytes, *, vendor: str) -> list[dict]:
                 "price_basis": "wholesale",
                 "line_kind": "addon",
                 "notes": (
-                    "Wholesale Options · No upcharge"
-                    if no_upcharge
-                    else "Wholesale Options"
+                    "Wholesale Options · No upcharge" if no_upcharge else "Wholesale Options"
                 ),
             }
         )
@@ -3211,21 +3207,13 @@ def artisan_chairs_product_rows(data: bytes, *, vendor: str) -> list[dict]:
             break
 
         wood_cols = [
-            idx
-            for idx, cell in enumerate(cells)
-            if cell and looks_like_species_header(cell)
+            idx for idx, cell in enumerate(cells) if cell and looks_like_species_header(cell)
         ]
         if len(wood_cols) >= 4 and unf_start is not None and fin_start is not None:
             if cells and cells[0] and not looks_like_species_header(cells[0]):
                 current_collection = cells[0]
-            species_unf = [
-                (idx, cells[idx])
-                for idx in wood_cols
-                if unf_start <= idx < fin_start
-            ]
-            species_fin = [
-                (idx, cells[idx]) for idx in wood_cols if idx >= fin_start
-            ]
+            species_unf = [(idx, cells[idx]) for idx in wood_cols if unf_start <= idx < fin_start]
+            species_fin = [(idx, cells[idx]) for idx in wood_cols if idx >= fin_start]
             continue
 
         label = cells[0] if cells else ""
@@ -3280,9 +3268,7 @@ def count_artisan_option_lines(data: bytes) -> int:
             continue
         if re.search(r"(?i)internet policy", text):
             break
-        if re.search(r"(?i)^no upcharge$", text) or re.search(
-            r"(?i)\bADD\b\s*\$?\s*\d", text
-        ):
+        if re.search(r"(?i)^no upcharge$", text) or re.search(r"(?i)\bADD\b\s*\$?\s*\d", text):
             count += 1
     return count
 
@@ -3534,8 +3520,7 @@ def import_hillside_chair_workbook(
 def _maple_lane_visible_options(raw: pd.DataFrame, vendor: str) -> pd.DataFrame:
     """Named color/material choices printed in Maple Lane's visible notes."""
     text = "\n".join(
-        " ".join(_norm(value) for value in row if _norm(value))
-        for row in raw.values.tolist()
+        " ".join(_norm(value) for value in row if _norm(value)) for row in raw.values.tolist()
     )
     labels: list[str] = []
     if "Maui Quartz = MQ" in text:
