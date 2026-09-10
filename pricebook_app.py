@@ -23,8 +23,6 @@ import streamlit as st
 
 from backend import PriceBookService
 from backend.auth import login_user
-from backend.option_labels import option_widget_key
-from backend.product_descriptions import floor_part_number
 from backend.builder_profiles import (
     exclusive_option_conflicts,
     load_builder_profile,
@@ -32,6 +30,7 @@ from backend.builder_profiles import (
 )
 from backend.config import (
     APP_DIR,
+    DATA_DIR,
     DEFAULT_MULTIPLIER,
     DEFAULT_SEARCH_LIMIT,
     THIN_CATALOG_MAX_ROWS,
@@ -41,7 +40,6 @@ from backend.drop_parse_session import (
     DropSessionGone,
     DropUpload,
     drop_upload_from_path,
-    is_drop_filename,
 )
 from backend.dropzone_widget import render_dropzone
 from backend.login_session import (
@@ -54,6 +52,8 @@ from backend.login_session import (
     persist_token,
     restore_login_session,
 )
+from backend.option_labels import option_widget_key
+from backend.product_descriptions import floor_part_number
 
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
@@ -508,7 +508,10 @@ def _catalog_thumb_uri(rel_path: str, mtime: float) -> str | None:
     """
     path = Path(rel_path)
     if not path.is_absolute():
-        path = APP_DIR / path
+        path = next(
+            (candidate for candidate in (APP_DIR / path, DATA_DIR / path) if candidate.is_file()),
+            APP_DIR / path,
+        )
     if not path.is_file():
         return None
     try:
@@ -535,10 +538,13 @@ def _catalog_thumb(raw) -> str | None:
         return None
     path = Path(rel)
     if not path.is_absolute():
-        path = APP_DIR / path
+        path = next(
+            (candidate for candidate in (APP_DIR / path, DATA_DIR / path) if candidate.is_file()),
+            APP_DIR / path,
+        )
     if not path.is_file():
         return None
-    return _catalog_thumb_uri(rel, path.stat().st_mtime)
+    return _catalog_thumb_uri(str(path if path.is_absolute() else rel), path.stat().st_mtime)
 
 
 def _dataframe_column_config(
@@ -748,9 +754,7 @@ if SHOW_ORDERTRAC_QUOTE:
 # ---------------------------------------------------------------------------
 
 if SHOW_SIMPLE_UI:
-    st.caption(
-        f"**FAF Price Book** · {stats['rows']:,} rows · {stats['vendors']} builders"
-    )
+    st.caption(f"**FAF Price Book** · {stats['rows']:,} rows · {stats['vendors']} builders")
     if int(stats.get("rows") or 0) == 0:
         st.error(
             "**This copy has an empty catalog** (0 builders). "
@@ -897,9 +901,7 @@ if nav == "Search":
 
         # Auto-open the panel only when this builder already has checks saved.
         prechecked = [
-            opt
-            for opt in opt_list
-            if st.session_state.get(_option_checkbox_key(vf, opt))
+            opt for opt in opt_list if st.session_state.get(_option_checkbox_key(vf, opt))
         ]
         if "so_panel_open" not in st.session_state and prechecked:
             st.session_state["so_panel_open"] = True
@@ -1091,9 +1093,7 @@ if nav == "Search":
             if "image_path" in show_cols:
                 # Blank (not None) for un-photographed SKUs — ImageColumn prints
                 # the literal "None" otherwise.
-                thumbs = [
-                    _catalog_thumb(raw) or "" for raw in display["image_path"].tolist()
-                ]
+                thumbs = [_catalog_thumb(raw) or "" for raw in display["image_path"].tolist()]
                 display = display.copy()
                 display["image_path"] = thumbs
                 photo_vendors = _vendors_with_catalog_images()
@@ -2032,6 +2032,127 @@ if SHOW_ORDERTRAC_QUOTE and nav == "OrderTrac quote":
                         st.success(f"Status → {new_status}")
                         st.rerun()
 
+
+def _render_catalog_image_uploader(svc: PriceBookService) -> None:
+    """R6/R7: PDF + single-image upload after a successful pricebook Load."""
+    prompt = bool(st.session_state.get("drop_image_prompt"))
+    if prompt:
+        st.markdown("Do you want to add pdf of images?")
+        yes, not_now = st.columns(2)
+        with yes:
+            if st.button("Yes", key="drop_image_yes", type="primary"):
+                st.session_state["drop_image_prompt"] = False
+                st.session_state["drop_image_focus"] = True
+                st.rerun()
+        with not_now:
+            if st.button("Not now", key="drop_image_not_now"):
+                st.session_state["drop_image_prompt"] = False
+                st.session_state["drop_image_focus"] = False
+                st.rerun()
+
+    vendors = list(svc.list_vendors() or [])
+    hinted = list(st.session_state.get("drop_image_builders") or [])
+    for name in hinted:
+        if name and name not in vendors:
+            vendors.append(name)
+    if not vendors:
+        vendors = hinted or [""]
+
+    expanded = bool(st.session_state.get("drop_image_focus"))
+    with st.expander("Catalog images — PDF or single photo", expanded=expanded):
+        default_v = st.session_state.get("drop_image_vendor") or (vendors[0] if vendors else "")
+        idx = vendors.index(default_v) if default_v in vendors else 0
+        builder = st.selectbox("Builder", vendors, index=idx, key="drop_img_builder")
+        pdf = st.file_uploader(
+            "Catalog PDF of images",
+            type=["pdf"],
+            key="drop_img_pdf",
+        )
+        if pdf is not None and st.button("Attach PDF images", key="drop_img_pdf_go"):
+            result = svc.ingest_catalog_pdf_images(
+                vendor=str(builder),
+                pdf_bytes=pdf.getvalue(),
+                filename=pdf.name,
+            )
+            if result.get("ok"):
+                st.success(
+                    f"Matched {result.get('matched_count', 0)} SKU photo(s) as drafts. "
+                    f"Christina findings below."
+                )
+            else:
+                st.error(result.get("error") or "PDF attach failed.")
+            if result.get("viztech", {}).get("log"):
+                st.caption(result["viztech"]["log"])
+            for review in result.get("reviews") or []:
+                st.caption(
+                    f"{review.get('part_number')}: {review.get('verdict')} — "
+                    + "; ".join(review.get("findings") or [])
+                )
+
+        st.markdown("##### Single image")
+        items = st.text_input(
+            "Item(s)",
+            key="drop_img_items",
+            placeholder="1010 or 1010, 1021",
+            help="Exact catalog part number(s) for this builder.",
+        )
+        notes = st.text_input("Notes", key="drop_img_notes")
+        descriptor = st.text_input(
+            "Descriptor",
+            key="drop_img_desc",
+            help="Editable. Saving rebinds and reruns Christina.",
+        )
+        photo = st.file_uploader(
+            "Photo",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="drop_img_photo",
+        )
+        if photo is not None and st.button("Save image", key="drop_img_save"):
+            keys = [p.strip() for p in re.split(r"[,\s]+", items or "") if p.strip()]
+            result = svc.ingest_single_catalog_image(
+                vendor=str(builder),
+                items=keys,
+                image_bytes=photo.getvalue(),
+                filename=photo.name,
+                descriptor=descriptor,
+                notes=notes,
+            )
+            st.session_state["drop_img_last"] = result
+            if result.get("ok"):
+                st.success("Saved as draft. Search shows it after Christina pass or override.")
+            else:
+                st.error(result.get("error") or "Save failed.")
+
+        last = st.session_state.get("drop_img_last") or {}
+        for review in last.get("reviews") or []:
+            st.caption(
+                f"{review.get('part_number')}: {review.get('verdict')} — "
+                + "; ".join(review.get("findings") or [])
+            )
+            sku = str(review.get("part_number") or "")
+            if review.get("verdict") == "flag" and sku:
+                reason = st.text_input(
+                    f"Override reason for {sku}",
+                    key=f"drop_img_ovr_{sku}",
+                )
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("Override", key=f"drop_img_ovr_btn_{sku}"):
+                        out = svc.override_catalog_image(
+                            vendor=str(builder),
+                            part_number=sku,
+                            reason=reason,
+                        )
+                        if out.get("ok"):
+                            st.success(f"{sku} is Search-visible.")
+                        else:
+                            st.error(out.get("error") or "Override failed.")
+                with c2:
+                    if st.button("Remove", key=f"drop_img_rm_{sku}"):
+                        svc.remove_catalog_image(vendor=str(builder), part_number=sku)
+                        st.warning(f"Removed {sku} photo.")
+
+
 # ---------------------------------------------------------------------------
 # IMPORT — multi-file drop with per-builder multiplier
 # ---------------------------------------------------------------------------
@@ -2091,10 +2212,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
         else:
             disk_file = from_path
     if rejected_names:
-        st.warning(
-            "Not an Excel/PDF price list — skipped: "
-            + ", ".join(rejected_names)
-        )
+        st.warning("Not an Excel/PDF price list — skipped: " + ", ".join(rejected_names))
     if uploads or disk_file:
         names = [getattr(u, "name", "") for u in uploads]
         if disk_file:
@@ -2163,6 +2281,8 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
         if log:
             st.dataframe(pd.DataFrame(log), use_container_width=True, hide_index=True)
 
+    _render_catalog_image_uploader(svc)
+
     folder_uploads: list[DropUpload] = []
     folder_root = Path(str(folder_path or "").strip()).expanduser()
     if str(folder_path or "").strip():
@@ -2173,9 +2293,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
             if not found:
                 st.warning(f"No Excel/PDF price lists in `{folder_root}`.")
             else:
-                st.caption(
-                    f"Folder: {len(found)} file(s) — each will get the typo/grammar pass."
-                )
+                st.caption(f"Folder: {len(found)} file(s) — each will get the typo/grammar pass.")
                 for p in found:
                     folder_uploads.append(
                         DropUpload(
@@ -2225,9 +2343,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                 if with_bytes:
                     out.append(disk_file)
                 else:
-                    out.append(
-                        DropUpload(disk_file.filename, b"", size=disk_file.size)
-                    )
+                    out.append(DropUpload(disk_file.filename, b"", size=disk_file.size))
             return out
 
         sizes_ok = all(_upload_size(up) is not None for up in uploads)
@@ -2275,8 +2391,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                 if st.button("Re-parse", key="drop_reparse_btn"):
                     st.session_state["drop_vendor_overrides"] = {
                         f.filename: (
-                            st.session_state.get(f"drop_vend_{f.file_index}")
-                            or f.suggested_builder
+                            st.session_state.get(f"drop_vend_{f.file_index}") or f.suggested_builder
                         )
                         for f in session.files
                     }
@@ -2322,7 +2437,9 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                         elif f.notes:
                             st.caption(str(f.notes)[:480])
                     variants = getattr(f, "variants", None) or {}
-                    if variants and (variants.get("woods") or variants.get("addons") or variants.get("stains")):
+                    if variants and (
+                        variants.get("woods") or variants.get("addons") or variants.get("stains")
+                    ):
                         bits = []
                         if variants.get("woods"):
                             bits.append("Woods: " + ", ".join(variants["woods"][:8]))
@@ -2331,9 +2448,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                         if variants.get("addons"):
                             bits.append("Upcharges: " + ", ".join(variants["addons"][:6]))
                         if variants.get("customizations"):
-                            bits.append(
-                                "Options: " + ", ".join(variants["customizations"][:6])
-                            )
+                            bits.append("Options: " + ", ".join(variants["customizations"][:6]))
                         st.caption("Smart parse · " + " · ".join(bits))
                     with h2:
                         st.metric("Parsed rows", f"{int(f.row_count):,}")
@@ -2495,8 +2610,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
 
                 _load_n = len(by_vendor_idx)
                 _load_label = (
-                    f"Standardize & load {_load_n} builder"
-                    f"{'' if _load_n == 1 else 's'} into master"
+                    f"Standardize & load {_load_n} builder{'' if _load_n == 1 else 's'} into master"
                 )
                 if st.button(
                     _load_label,
@@ -2564,9 +2678,7 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                             st.session_state.pop("drop_session_id", None)
                             st.session_state.pop("drop_vendor_overrides", None)
                             _clear_drop_widget_state()
-                        saved_n = sum(
-                            1 for item in batch_result.results if item.profile_saved
-                        )
+                        saved_n = sum(1 for item in batch_result.results if item.profile_saved)
                         st.session_state["drop_load_msg"] = (
                             f"Loaded or skipped **{ok_n}** of **{len(bindings)}** builder(s). "
                             f"Master now has **{batch_result.master_row_count:,}** rows. "
@@ -2577,6 +2689,15 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                                 batch_result.blocking_warnings
                             )
                         st.session_state["drop_load_log"] = results_log
+                        loaded_builders = [
+                            item.builder
+                            for item in batch_result.results
+                            if item.status in {"loaded", "unchanged"} and item.builder
+                        ]
+                        if loaded_builders:
+                            st.session_state["drop_image_prompt"] = True
+                            st.session_state["drop_image_builders"] = loaded_builders
+                            st.session_state["drop_image_vendor"] = loaded_builders[0]
                         st.rerun()
 
 # ---------------------------------------------------------------------------
@@ -2690,8 +2811,7 @@ if nav == "Vendors":
                 _save_favorites(new_pins)
                 st.session_state.pop("vendor_mult_editor", None)
                 st.toast(
-                    f"Pins updated · {len(new_pins)} builder"
-                    f"{'s' if len(new_pins) != 1 else ''}",
+                    f"Pins updated · {len(new_pins)} builder{'s' if len(new_pins) != 1 else ''}",
                 )
                 st.rerun()
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from backend.config import APP_DIR, DB_PATH
 
@@ -134,7 +134,9 @@ def observe_drop(result: dict, *, path: Optional[Path] = None) -> dict:
         "issues": issues,
         "next_step": next_step,
         "learned": (
-            "Drop of {0} via {1} ({2} rows)".format(builder or filename, parser or "unknown", row_count)
+            "Drop of {0} via {1} ({2} rows)".format(
+                builder or filename, parser or "unknown", row_count
+            )
         ),
     }
     return _write(lesson, path=path)
@@ -193,6 +195,93 @@ def observe_load(
         "issues": issues,
         "next_step": next_step,
         "learned": learned,
+    }
+    return _write(lesson, path=path)
+
+
+def review_image_alignment(
+    *,
+    builder: str,
+    part_number: str,
+    item_number: str = "",
+    extracted_keys: Sequence[str] | None = None,
+    descriptor: str = "",
+    source: str = "",
+    asset_key: str = "",
+    prior_hero: Optional[str] = None,
+    vision_available: bool = False,
+    extra_attaches: Sequence[str] | None = None,
+    run_id: str = "",
+) -> dict:
+    """Christina image-alignment contract. Never fake a visual pass."""
+    from backend.image_alignment import keys_match
+
+    findings: list[str] = []
+    extracted = list(extracted_keys or [])
+    if not keys_match(
+        part_number=part_number,
+        item_number=item_number,
+        extracted=extracted or [part_number, item_number],
+    ):
+        findings.append("exact key mismatch for this builder SKU")
+    if extra_attaches:
+        findings.append("silent extra attach: " + ", ".join(extra_attaches))
+    if prior_hero and prior_hero != asset_key:
+        findings.append("hero replacement — prior photo displaced")
+    if not str(descriptor or "").strip():
+        findings.append("descriptor missing")
+    if not builder:
+        findings.append("builder missing")
+
+    if findings:
+        verdict = "flag"
+        score = 0.2
+    elif not vision_available:
+        verdict = "pending_vision"
+        score = 0.5
+        findings.append("pending_vision — no real vision path")
+    else:
+        verdict = "pass"
+        score = 0.9
+
+    return {
+        "verdict": verdict,
+        "score": score,
+        "findings": findings,
+        "raw_run_id": run_id or "christina-image",
+        "builder": builder,
+        "part_number": part_number,
+        "item_number": item_number,
+        "descriptor": descriptor,
+        "source": source,
+        "asset_key": asset_key,
+    }
+
+
+def observe_image(
+    review: dict,
+    *,
+    path: Optional[Path] = None,
+) -> dict:
+    lesson = {
+        "at": datetime.now(timezone.utc).isoformat(),
+        "step": "image",
+        "builder": review.get("builder") or "",
+        "filename": review.get("asset_key") or "",
+        "needs_fix": review.get("verdict") == "flag",
+        "issues": list(review.get("findings") or []),
+        "next_step": (
+            "Override with reason, remove, or edit descriptor"
+            if review.get("verdict") == "flag"
+            else "Wait for vision or leave draft"
+        ),
+        "learned": "Image {0} for {1} {2}".format(
+            review.get("verdict"),
+            review.get("builder"),
+            review.get("part_number"),
+        ),
+        "score": review.get("score"),
+        "raw_run_id": review.get("raw_run_id"),
     }
     return _write(lesson, path=path)
 
@@ -272,7 +361,9 @@ def next_step(*, path: Optional[Path] = None) -> str:
     fixes = unique_fixes(path=path)
     if fixes:
         last = fixes[-1]
-        return str(last.get("next_step") or "Fix {0}".format(last.get("builder") or "the last Drop"))
+        return str(
+            last.get("next_step") or "Fix {0}".format(last.get("builder") or "the last Drop")
+        )
     # Lock is learning for the next Drop of *this* factory. Holt's move after a
     # clean upload is still the last Load: Drop the next selling builder.
     for lesson in reversed(lessons):

@@ -145,9 +145,7 @@ class PriceBookRepository:
         r"^black$|^white$|^brown$|^grey$|^gray$|^green$|^blue$|^red$"
         r")"
     )
-    _WOOD_TIER_RE = re.compile(
-        r"(?i)^(wood\s*tier\s*\d+|(standard|premium)\s+woods?)$"
-    )
+    _WOOD_TIER_RE = re.compile(r"(?i)^(wood\s*tier\s*\d+|(standard|premium)\s+woods?)$")
     _OPTION_CODE_RE = re.compile(
         r"(?i)^("
         r"cat\.?\s*[123]|"
@@ -770,6 +768,15 @@ class PriceBookRepository:
         page: Optional[int] = None,
         match_method: Optional[str] = None,
         updated_at: Optional[str] = None,
+        status: Optional[str] = None,
+        descriptor: Optional[str] = None,
+        source: Optional[str] = None,
+        item_number: Optional[str] = None,
+        christina_verdict: Optional[str] = None,
+        christina_score: Optional[float] = None,
+        christina_findings: Optional[str] = None,
+        christina_run_id: Optional[str] = None,
+        override_reason: Optional[str] = None,
     ) -> None:
         """Insert or replace one catalog image row for (vendor, part_number)."""
         with self._conn() as conn:
@@ -777,14 +784,35 @@ class PriceBookRepository:
                 """
                 INSERT INTO catalog_images (
                     vendor, part_number, image_path, source_file,
-                    page, match_method, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    page, match_method, updated_at, status, descriptor,
+                    source, item_number, christina_verdict, christina_score,
+                    christina_findings, christina_run_id, override_reason
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(vendor, part_number) DO UPDATE SET
                     image_path = excluded.image_path,
                     source_file = excluded.source_file,
                     page = excluded.page,
                     match_method = excluded.match_method,
-                    updated_at = excluded.updated_at
+                    updated_at = excluded.updated_at,
+                    status = COALESCE(excluded.status, catalog_images.status),
+                    descriptor = COALESCE(excluded.descriptor, catalog_images.descriptor),
+                    source = COALESCE(excluded.source, catalog_images.source),
+                    item_number = COALESCE(excluded.item_number, catalog_images.item_number),
+                    christina_verdict = COALESCE(
+                        excluded.christina_verdict, catalog_images.christina_verdict
+                    ),
+                    christina_score = COALESCE(
+                        excluded.christina_score, catalog_images.christina_score
+                    ),
+                    christina_findings = COALESCE(
+                        excluded.christina_findings, catalog_images.christina_findings
+                    ),
+                    christina_run_id = COALESCE(
+                        excluded.christina_run_id, catalog_images.christina_run_id
+                    ),
+                    override_reason = COALESCE(
+                        excluded.override_reason, catalog_images.override_reason
+                    )
                 """,
                 (
                     vendor,
@@ -794,12 +822,42 @@ class PriceBookRepository:
                     page,
                     match_method,
                     updated_at,
+                    status,
+                    descriptor,
+                    source,
+                    item_number,
+                    christina_verdict,
+                    christina_score,
+                    christina_findings,
+                    christina_run_id,
+                    override_reason,
                 ),
             )
             conn.commit()
 
+    def catalog_image_row(self, vendor: str, part_number: str) -> Optional[dict]:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM catalog_images
+                WHERE vendor = ? AND part_number = ?
+                """,
+                (vendor, part_number),
+            ).fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
+    def delete_catalog_image(self, vendor: str, part_number: str) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "DELETE FROM catalog_images WHERE vendor = ? AND part_number = ?",
+                (vendor, part_number),
+            )
+            conn.commit()
+
     def catalog_image_paths(
-        self, pairs: Sequence[tuple[str, str]]
+        self, pairs: Sequence[tuple[str, str]], *, search_visible: bool = True
     ) -> dict[tuple[str, str], str]:
         """Map (vendor, part_number) → image_path for the given pairs."""
         if not pairs:
@@ -825,11 +883,15 @@ class PriceBookRepository:
                 params: list = []
                 for v, p in batch:
                     params.extend([v, p])
+                status_sql = ""
+                if search_visible:
+                    status_sql = " AND (status IS NULL OR status IN ('final', 'override'))"
                 rows = conn.execute(
                     f"""
                     SELECT vendor, part_number, image_path
                     FROM catalog_images
                     WHERE (vendor, part_number) IN ({placeholders})
+                    {status_sql}
                     """,
                     params,
                 ).fetchall()
@@ -845,7 +907,11 @@ class PriceBookRepository:
         """Builders that have at least one catalog photo."""
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT DISTINCT vendor FROM catalog_images WHERE image_path <> ''"
+                """
+                SELECT DISTINCT vendor FROM catalog_images
+                WHERE image_path <> ''
+                  AND (status IS NULL OR status IN ('final', 'override', 'draft'))
+                """
             ).fetchall()
         out: set[str] = set()
         for r in rows:
@@ -854,9 +920,7 @@ class PriceBookRepository:
                 out.add(str(vendor))
         return out
 
-    def get_addon_charge(
-        self, vendor: str, option_key: str
-    ) -> Optional[dict]:
+    def get_addon_charge(self, vendor: str, option_key: str) -> Optional[dict]:
         """Return one addon (upcharge) row for a builder's Option, or None.
 
         Prefers the *flat* form whose part_number equals the option label
@@ -915,13 +979,15 @@ class PriceBookRepository:
             pn = (r["part_number"] or "").strip()
             is_flat = pn == opt
             category = pn if is_flat else pn.rsplit(" - ", 1)[0]
-            out.append({
-                "category": category,
-                "base_price": r["base_price"],
-                "adjusted_price": r["adjusted_price"],
-                "addon_pct": r["addon_pct"],
-                "is_flat": is_flat,
-            })
+            out.append(
+                {
+                    "category": category,
+                    "base_price": r["base_price"],
+                    "adjusted_price": r["adjusted_price"],
+                    "addon_pct": r["addon_pct"],
+                    "is_flat": is_flat,
+                }
+            )
         return out
 
     # ------------------------------------------------------------------ write

@@ -136,6 +136,15 @@ CREATE TABLE IF NOT EXISTS catalog_images (
     page INTEGER,
     match_method TEXT,
     updated_at TEXT,
+    status TEXT DEFAULT 'final',
+    descriptor TEXT,
+    source TEXT,
+    item_number TEXT,
+    christina_verdict TEXT,
+    christina_score REAL,
+    christina_findings TEXT,
+    christina_run_id TEXT,
+    override_reason TEXT,
     PRIMARY KEY (vendor, part_number)
 );
 
@@ -170,6 +179,18 @@ QUOTE_NEW_COLUMNS = {
     "ordertrac_so_id": "TEXT",
     "ordertrac_url": "TEXT",
     "ordertrac_pushed_at": "TEXT",
+}
+
+CATALOG_IMAGE_NEW_COLUMNS = {
+    "status": "TEXT DEFAULT 'final'",
+    "descriptor": "TEXT",
+    "source": "TEXT",
+    "item_number": "TEXT",
+    "christina_verdict": "TEXT",
+    "christina_score": "REAL",
+    "christina_findings": "TEXT",
+    "christina_run_id": "TEXT",
+    "override_reason": "TEXT",
 }
 
 PRICEBOOK_COLS = [

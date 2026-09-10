@@ -32,6 +32,7 @@ from backend.builder_profiles import (
     resolve_option_groups,
 )
 from backend.config import (
+    DATA_DIR,
     DB_PATH,
     DEFAULT_MULTIPLIER,
     DEFAULT_SEARCH_LIMIT,
@@ -168,11 +169,7 @@ class PriceBookService:
         finish_state, opts = apply_finish_as_option(profile, opts, finish_state)
         if opts and vendor and vendor != "All":
             opts = resolve_option_groups(profile, opts)
-        if (
-            opts
-            and vendor
-            and vendor != "All"
-        ):
+        if opts and vendor and vendor != "All":
             upcharged = self._search_with_item_option_upcharge(
                 query,
                 vendor=vendor,
@@ -226,10 +223,275 @@ class PriceBookService:
         )
         paths = self.repo.catalog_image_paths(pairs)
         out = df.copy()
-        out["image_path"] = [
-            paths.get((v, p)) for v, p in pairs
-        ]
+        out["image_path"] = [paths.get((v, p)) for v, p in pairs]
         return out
+
+    def ingest_single_catalog_image(
+        self,
+        *,
+        vendor: str,
+        items: Sequence[str],
+        image_bytes: bytes,
+        filename: str = "",
+        descriptor: str = "",
+        notes: str = "",
+        image_root: Optional[Path] = None,
+    ) -> dict:
+        """R7: bind one operator photo to exact builder item keys. Draft until Christina."""
+        from datetime import datetime, timezone
+
+        from backend.builder_profiles import vendor_slug
+        from backend.catalog_images import relative_image_path
+        from backend.christina import observe_image, review_image_alignment
+        from backend.image_alignment import (
+            normalize_catalog_key,
+            viztech_image_policy,
+        )
+
+        vend = (vendor or "").strip()
+        keys = [str(i).strip() for i in items if str(i).strip()]
+        if not vend or not keys:
+            return {"ok": False, "error": "Builder and item(s) are required."}
+        if not image_bytes:
+            return {"ok": False, "error": "Image file is required."}
+
+        known = self.repo.list_part_numbers_for_vendor(vend)
+        known_ci = {normalize_catalog_key(k): k for k in known}
+        resolved: list[str] = []
+        unknown: list[str] = []
+        for raw in keys:
+            canon = known_ci.get(normalize_catalog_key(raw))
+            if canon:
+                resolved.append(canon)
+            else:
+                unknown.append(raw)
+        if not resolved:
+            return {"ok": False, "error": "No matching catalog item for this builder."}
+
+        extra = [k for k in resolved[1:]]
+        desc = (descriptor or "").strip() or (notes or "").strip() or Path(filename).stem
+        slug = vendor_slug(vend)
+        root = Path(image_root) if image_root else DATA_DIR
+        policy = viztech_image_policy(vend)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        reviews = []
+        first_path = ""
+        for part in resolved:
+            self.repo.delete_catalog_image(vend, part)
+            rel = relative_image_path(part, slug)
+            dest = root / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(image_bytes)
+            prior = self.repo.catalog_image_row(vend, part)
+            prior_hero = (prior or {}).get("image_path")
+            review = review_image_alignment(
+                builder=vend,
+                part_number=part,
+                item_number="",
+                extracted_keys=[part],
+                descriptor=desc,
+                source="single",
+                asset_key=rel,
+                prior_hero=prior_hero,
+                vision_available=False,
+                extra_attaches=extra if part == resolved[0] else [],
+            )
+            observe_image(review, path=self._christina_log_path())
+            self.repo.upsert_catalog_image(
+                vendor=vend,
+                part_number=part,
+                image_path=rel,
+                source_file=filename or Path(rel).name,
+                match_method="operator_descriptor",
+                updated_at=now,
+                status="draft",
+                descriptor=desc,
+                source="single",
+                christina_verdict=review["verdict"],
+                christina_score=review["score"],
+                christina_findings="; ".join(review["findings"]),
+                christina_run_id=review["raw_run_id"],
+            )
+            reviews.append(review)
+            if not first_path:
+                first_path = rel
+        return {
+            "ok": True,
+            "status": "draft",
+            "vendor": vend,
+            "items": resolved,
+            "unknown": unknown,
+            "image_path": first_path,
+            "descriptor": desc,
+            "reviews": reviews,
+            "viztech": policy,
+        }
+
+    def override_catalog_image(
+        self,
+        *,
+        vendor: str,
+        part_number: str,
+        reason: str,
+    ) -> dict:
+        reason = (reason or "").strip()
+        if not reason:
+            return {"ok": False, "error": "Override requires a reason."}
+        row = self.repo.catalog_image_row(vendor, part_number)
+        if not row:
+            return {"ok": False, "error": "No catalog photo for that SKU."}
+        from datetime import datetime, timezone
+
+        self.repo.upsert_catalog_image(
+            vendor=vendor,
+            part_number=part_number,
+            image_path=row["image_path"],
+            source_file=row.get("source_file"),
+            page=row.get("page"),
+            match_method=row.get("match_method"),
+            updated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            status="override",
+            descriptor=row.get("descriptor"),
+            source=row.get("source"),
+            override_reason=reason,
+            christina_verdict=row.get("christina_verdict"),
+            christina_score=row.get("christina_score"),
+            christina_findings=row.get("christina_findings"),
+            christina_run_id=row.get("christina_run_id"),
+        )
+        return {"ok": True, "status": "override"}
+
+    def remove_catalog_image(self, *, vendor: str, part_number: str) -> dict:
+        self.repo.delete_catalog_image(vendor, part_number)
+        return {"ok": True}
+
+    def ingest_catalog_pdf_images(
+        self,
+        *,
+        vendor: str,
+        pdf_bytes: bytes,
+        filename: str = "",
+        image_root: Optional[Path] = None,
+    ) -> dict:
+        """R5/R6: extract keyed product figures from a catalog PDF."""
+        from datetime import datetime, timezone
+        from io import BytesIO
+
+        from backend.builder_profiles import vendor_slug
+        from backend.catalog_images import (
+            captions_from_words,
+            match_captions_to_images,
+            plan_upserts,
+            product_images_from_page,
+            relative_image_path,
+        )
+        from backend.christina import observe_image, review_image_alignment
+        from backend.image_alignment import (
+            extract_sku_keys_from_text,
+            page_is_skipped_figure,
+            viztech_image_policy,
+        )
+
+        vend = (vendor or "").strip()
+        if not vend:
+            return {"ok": False, "error": "Builder is required."}
+        if not pdf_bytes:
+            return {"ok": False, "error": "PDF is required."}
+        try:
+            import pdfplumber
+        except ImportError:
+            return {"ok": False, "error": "pdfplumber is not installed."}
+
+        known = self.repo.list_part_numbers_for_vendor(vend)
+        slug = vendor_slug(vend)
+        root = Path(image_root) if image_root else DATA_DIR
+        policy = viztech_image_policy(vend)
+        matched = []
+        skipped_pages = []
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            for i, page in enumerate(pdf.pages, start=1):
+                text = page.extract_text() or ""
+                if page_is_skipped_figure(text) and not extract_sku_keys_from_text(text):
+                    skipped_pages.append(i)
+                    continue
+                words = page.extract_words() or []
+                caps = captions_from_words(words)
+                imgs = product_images_from_page(page.images or [], page_number=i)
+                matched.extend(match_captions_to_images(caps, imgs))
+
+        plan = plan_upserts(
+            matched,
+            known_part_numbers=known,
+            vendor=vend,
+            vendor_slug=slug,
+            source_file=filename,
+        )
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        reviews = []
+        # Persist matched rasters when pdfplumber exposes them.
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            by_page: dict[int, list] = {}
+            for row in plan["upserts"]:
+                by_page.setdefault(int(row["page"]), []).append(row)
+            for page_no, rows in by_page.items():
+                page = pdf.pages[page_no - 1]
+                page_images = product_images_from_page(page.images or [], page_number=page_no)
+                name_to_im = {im.name: im for im in page_images}
+                for row in rows:
+                    rel = relative_image_path(row["part_number"], slug)
+                    dest = root / rel
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    hit = name_to_im.get(row.get("_image_name") or "")
+                    raw = None
+                    if hit is not None:
+                        for src in page.images or []:
+                            if str(src.get("name") or "") == hit.name and src.get("stream"):
+                                try:
+                                    raw = src["stream"].get_data()
+                                except Exception:
+                                    raw = None
+                                break
+                    if raw:
+                        dest.write_bytes(raw)
+                    prior = self.repo.catalog_image_row(vend, row["part_number"])
+                    review = review_image_alignment(
+                        builder=vend,
+                        part_number=row["part_number"],
+                        extracted_keys=[row["part_number"]],
+                        descriptor=f"{vend} {row['part_number']}",
+                        source="pdf",
+                        asset_key=rel,
+                        prior_hero=(prior or {}).get("image_path"),
+                        vision_available=False,
+                    )
+                    observe_image(review, path=self._christina_log_path())
+                    self.repo.upsert_catalog_image(
+                        vendor=vend,
+                        part_number=row["part_number"],
+                        image_path=rel,
+                        source_file=filename,
+                        page=row.get("page"),
+                        match_method="nearest_caption",
+                        updated_at=now,
+                        status="draft",
+                        descriptor=f"{vend} {row['part_number']}",
+                        source="pdf",
+                        christina_verdict=review["verdict"],
+                        christina_score=review["score"],
+                        christina_findings="; ".join(review["findings"]),
+                        christina_run_id=review["raw_run_id"],
+                    )
+                    reviews.append(review)
+                    row["image_path"] = rel
+        return {
+            "ok": True,
+            "vendor": vend,
+            "matched_count": plan["matched_count"],
+            "unknown_count": plan["unknown_count"],
+            "skipped_pages": skipped_pages,
+            "reviews": reviews,
+            "viztech": policy,
+        }
 
     @staticmethod
     def _normalize_option_keys(
@@ -280,7 +542,9 @@ class PriceBookService:
             return True
         if re.search(r"\bper\s+(?:door|drawer|shel(?:f|ves)|knob|pull|light|opening)\b", o):
             return True
-        if re.search(r"\b(?:door|drawer|shel(?:f|ves)|knob|pull|light|opening)\b.*\b(?:each|per)\b", o):
+        if re.search(
+            r"\b(?:door|drawer|shel(?:f|ves)|knob|pull|light|opening)\b.*\b(?:each|per)\b", o
+        ):
             return True
         return False
 
@@ -426,8 +690,10 @@ class PriceBookService:
         drawer_exclude = profile.get("drawer_door_exclude_keywords") or []
 
         text = (
-            df.get("description").fillna("").astype(str) + " | "
-            + df.get("collection").fillna("").astype(str) + " | "
+            df.get("description").fillna("").astype(str)
+            + " | "
+            + df.get("collection").fillna("").astype(str)
+            + " | "
             + df.get("part_number").fillna("").astype(str)
         ).str.lower()
 
@@ -437,8 +703,9 @@ class PriceBookService:
 
         if is_drawer_door and flat:
             eligible = text.apply(
-                lambda s: any(k in s for k in drawer_keywords)
-                and not any(x in s for x in drawer_exclude)
+                lambda s: (
+                    any(k in s for k in drawer_keywords) and not any(x in s for x in drawer_exclude)
+                )
             )
             if not eligible.any():
                 return df, applied
@@ -480,11 +747,13 @@ class PriceBookService:
             return df, applied
 
         rc = sorted(
-            a["adjusted_price"] for a in cats
+            a["adjusted_price"]
+            for a in cats
             if a.get("adjusted_price") is not None and float(a["adjusted_price"] or 0) != 0
         )
         bc = sorted(
-            a["base_price"] for a in cats
+            a["base_price"]
+            for a in cats
             if a.get("base_price") is not None and float(a["base_price"] or 0) != 0
         )
         med_retail = rc[len(rc) // 2] if rc else (flat[0].get("adjusted_price") if flat else None)
@@ -952,9 +1221,7 @@ class PriceBookService:
                     r["price_basis"] = r.get("price_basis") or "wholesale"
                 out["rows"] = rows
                 out["row_count"] = len(rows)
-                out["priced_option_count"] = int(
-                    getattr(prev, "priced_option_count", 0) or 0
-                )
+                out["priced_option_count"] = int(getattr(prev, "priced_option_count", 0) or 0)
                 out["expected_finish_states"] = list(
                     getattr(prev, "expected_finish_states", []) or []
                 )
@@ -964,10 +1231,7 @@ class PriceBookService:
                 out["detected_importer"] = selected_parser or "pdf"
                 out["parser_source"] = "saved" if profile_parser else "guessed"
                 cap = variants_caption(out["variants"])
-                out["notes"] = (
-                    f"PDF strategy · {len(rows)} rows"
-                    + (f" · {cap}" if cap else "")
-                )
+                out["notes"] = f"PDF strategy · {len(rows)} rows" + (f" · {cap}" if cap else "")
                 out["suggested_mult"] = float(mult_hint)
             else:
                 # One Excel pass — markup detection piggybacks; no second parse.
@@ -998,9 +1262,7 @@ class PriceBookService:
                     r["price_basis"] = r.get("price_basis") or "wholesale"
                 out["rows"] = rows
                 out["row_count"] = len(rows)
-                out["priced_option_count"] = int(
-                    getattr(prev, "priced_option_count", 0) or 0
-                )
+                out["priced_option_count"] = int(getattr(prev, "priced_option_count", 0) or 0)
                 out["expected_finish_states"] = list(
                     getattr(prev, "expected_finish_states", []) or []
                 )
@@ -1023,17 +1285,14 @@ class PriceBookService:
                 )
                 cap = variants_caption(out["variants"])
                 if cap:
-                    out["notes"] = (
-                        (out["notes"] + " · " if out["notes"] else "") + cap
-                    )
+                    out["notes"] = (out["notes"] + " · " if out["notes"] else "") + cap
                 if out["hidden_product_candidates"]:
                     # Hidden stays hidden. Naming the tabs lets Judson ask the
                     # factory for a visible copy instead of guessing.
                     named = ", ".join(out["hidden_product_candidates"][:6])
                     out["notes"] = (
-                        (out["notes"] + " · " if out["notes"] else "")
-                        + f"Hidden tabs that look like product (not imported): {named}"
-                    )
+                        out["notes"] + " · " if out["notes"] else ""
+                    ) + f"Hidden tabs that look like product (not imported): {named}"
                 if not rows:
                     out["error"] = "0 rows parsed — check file layout."
         except Exception as e:
@@ -1247,9 +1506,7 @@ class PriceBookService:
                 results.append(
                     DropBuilderLoadResult(
                         builder=builder,
-                        filename=" + ".join(
-                            str(item[1].get("filename") or "") for item in parts
-                        ),
+                        filename=" + ".join(str(item[1].get("filename") or "") for item in parts),
                         status="blocked",
                         multiplier=mult,
                         catalog={},
