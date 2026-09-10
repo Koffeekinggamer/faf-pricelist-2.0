@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 import pandas as pd
 
 from backend.catalog_images import (
@@ -209,3 +211,225 @@ def test_vendors_with_catalog_images_lists_photographed_builders(tmp_path):
     # Search may land on SKUs without photos; the builder still counts, which is
     # what keeps the Image column from vanishing mid-search.
     assert svc.vendors_with_catalog_images() == {"J & M Woodworking"}
+
+
+# Live traveling catalog (SSD / Fly) stores files on image_assets.storage_key
+# and binds them with catalog_images.asset_id — there is no image_path column.
+_LIVE_IMAGE_SCHEMA = """
+CREATE TABLE image_assets (
+    id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    builder_id TEXT NOT NULL,
+    storage_key TEXT NOT NULL,
+    file_name TEXT,
+    mime_type TEXT,
+    size_bytes INTEGER,
+    page_number INTEGER,
+    bbox_json TEXT,
+    extracted_part_numbers_json TEXT NOT NULL DEFAULT '[]',
+    descriptor_raw TEXT NOT NULL DEFAULT '',
+    descriptor_parsed_json TEXT NOT NULL DEFAULT '{}',
+    christina_status TEXT NOT NULL DEFAULT 'pending',
+    christina_score REAL NOT NULL DEFAULT 0,
+    christina_findings_json TEXT NOT NULL DEFAULT '[]',
+    christina_raw_run_id TEXT,
+    christina_verified_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE catalog_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asset_id TEXT NOT NULL,
+    vendor TEXT NOT NULL,
+    part_number TEXT NOT NULL,
+    matched_key TEXT NOT NULL,
+    bind_status TEXT NOT NULL DEFAULT 'draft',
+    is_hero INTEGER NOT NULL DEFAULT 0,
+    match_method TEXT,
+    override_by TEXT,
+    override_reason TEXT,
+    created_at TEXT,
+    updated_at TEXT,
+    status TEXT DEFAULT 'final',
+    descriptor TEXT,
+    source TEXT,
+    item_number TEXT,
+    christina_verdict TEXT,
+    christina_score REAL,
+    christina_findings TEXT,
+    christina_run_id TEXT,
+    UNIQUE (asset_id, vendor, part_number),
+    FOREIGN KEY (asset_id) REFERENCES image_assets(id) ON DELETE CASCADE
+);
+"""
+
+
+def _seed_live_image_book(tmp_path):
+    db = tmp_path / "live.db"
+    with sqlite3.connect(db) as conn:
+        conn.executescript(_LIVE_IMAGE_SCHEMA)
+        conn.commit()
+    init_db(db)
+    svc = PriceBookService(db)
+    svc.init()
+    svc.repo.insert_rows(
+        [
+            {
+                "vendor": "J & M Woodworking",
+                "collection": "Beds",
+                "part_number": "1010",
+                "description": "Queen Slat Bed",
+                "species": "Br. Maple",
+                "finish_state": "finished",
+                "base_price": 100.0,
+                "multiplier": 2.7,
+                "adjusted_price": 270.0,
+                "line_kind": "item",
+                "source_file": "test",
+                "imported_at": "2026-01-01",
+            }
+        ]
+    )
+    return svc
+
+
+def test_search_reads_live_image_assets_storage_key(tmp_path):
+    svc = _seed_live_image_book(tmp_path)
+    rel = "assets/catalog_images/j-and-m-woodworking/1010.jpg"
+    with sqlite3.connect(svc.repo.db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO image_assets (
+                id, source, builder_id, storage_key, file_name,
+                created_at, updated_at
+            ) VALUES (?, 'legacy', ?, ?, 'catalog.pdf', '2026-01-01', '2026-01-01')
+            """,
+            ("legacy_1010", "J & M Woodworking", rel),
+        )
+        conn.execute(
+            """
+            INSERT INTO catalog_images (
+                asset_id, vendor, part_number, matched_key,
+                bind_status, is_hero, status
+            ) VALUES (?, ?, '1010', '1010', 'final', 1, 'final')
+            """,
+            ("legacy_1010", "J & M Woodworking"),
+        )
+        conn.commit()
+
+    df = svc.search("", vendor="J & M Woodworking")
+    assert not df.empty
+    assert df.iloc[0]["image_path"] == rel
+    assert svc.vendors_with_catalog_images() == {"J & M Woodworking"}
+
+
+def test_search_hides_draft_binds_on_live_image_schema(tmp_path):
+    svc = _seed_live_image_book(tmp_path)
+    svc.repo.upsert_catalog_image(
+        vendor="J & M Woodworking",
+        part_number="1010",
+        image_path="assets/catalog_images/j-and-m-woodworking/1010.jpg",
+        source_file="1010.jpg",
+        status="draft",
+        match_method="operator_descriptor",
+        updated_at="2026-01-01T00:00:00Z",
+    )
+    df = svc.search("1010", vendor="J & M Woodworking")
+    assert df.iloc[0]["image_path"] is None or pd.isna(df.iloc[0]["image_path"])
+    svc.override_catalog_image(
+        vendor="J & M Woodworking",
+        part_number="1010",
+        reason="floor photo confirmed",
+    )
+    df2 = svc.search("1010", vendor="J & M Woodworking")
+    assert str(df2.iloc[0]["image_path"]).endswith("1010.jpg")
+
+
+def test_live_schema_search_works_for_every_builder(tmp_path):
+    svc = _seed_live_image_book(tmp_path)
+    svc.repo.insert_rows(
+        [
+            {
+                "vendor": "LAMB",
+                "collection": "Occasional",
+                "part_number": "LA-CEN-125-D",
+                "description": "Coffee Table",
+                "species": "Oak",
+                "finish_state": "finished",
+                "base_price": 200.0,
+                "multiplier": 2.7,
+                "adjusted_price": 540.0,
+                "line_kind": "item",
+                "source_file": "test",
+                "imported_at": "2026-01-01",
+            },
+            {
+                "vendor": "Amish Aspen",
+                "collection": "Bedroom",
+                "part_number": "AA-100",
+                "description": "Nightstand",
+                "species": "Hickory / Aspen",
+                "finish_state": "unfinished",
+                "base_price": 80.0,
+                "multiplier": 2.7,
+                "adjusted_price": 216.0,
+                "line_kind": "item",
+                "source_file": "test",
+                "imported_at": "2026-01-01",
+            },
+        ]
+    )
+    with sqlite3.connect(svc.repo.db_path) as conn:
+        conn.executemany(
+            """
+            INSERT INTO image_assets (
+                id, source, builder_id, storage_key, file_name,
+                created_at, updated_at
+            ) VALUES (?, 'legacy', ?, ?, 'catalog.pdf', '2026-01-01', '2026-01-01')
+            """,
+            [
+                (
+                    "legacy_jm",
+                    "J & M Woodworking",
+                    "assets/catalog_images/j-and-m-woodworking/1010.jpg",
+                ),
+                (
+                    "legacy_lamb",
+                    "LAMB",
+                    "assets/catalog_images/lamb/LA-CEN-125-D.jpg",
+                ),
+            ],
+        )
+        conn.executemany(
+            """
+            INSERT INTO catalog_images (
+                asset_id, vendor, part_number, matched_key,
+                bind_status, is_hero, status
+            ) VALUES (?, ?, ?, ?, 'final', 1, 'final')
+            """,
+            [
+                ("legacy_jm", "J & M Woodworking", "1010", "1010"),
+                ("legacy_lamb", "LAMB", "LA-CEN-125-D", "LA-CEN-125-D"),
+            ],
+        )
+        conn.commit()
+
+    expected = {
+        "J & M Woodworking": "assets/catalog_images/j-and-m-woodworking/1010.jpg",
+        "LAMB": "assets/catalog_images/lamb/LA-CEN-125-D.jpg",
+        "Amish Aspen": None,
+    }
+    for vendor, path in expected.items():
+        df = svc.search("", vendor=vendor)
+        assert not df.empty, vendor
+        got = df.iloc[0]["image_path"]
+        if path is None:
+            assert got is None or pd.isna(got)
+        else:
+            assert got == path
+    mixed = svc.search("table OR bed OR nightstand")
+    assert set(mixed["vendor"]) == set(expected)
+    assert svc.vendors_with_catalog_images() == {
+        "J & M Woodworking",
+        "LAMB",
+    }

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Sequence, Union  # noqa: F401 — Optional used throughout
@@ -32,9 +34,34 @@ def identity_key(row: dict) -> tuple:
 class PriceBookRepository:
     def __init__(self, db_path: Optional[Union[str, Path]] = None):
         self.db_path = db_path
+        self._image_bind_mode: Optional[str] = None
 
     def _conn(self):
         return get_connection(self.db_path)
+
+    def _catalog_image_bind_mode(self, conn: sqlite3.Connection) -> str:
+        """Live catalogs bind photos via image_assets; tests use image_path."""
+        if self._image_bind_mode:
+            return self._image_bind_mode
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(catalog_images)").fetchall()}
+        if "asset_id" in cols:
+            tables = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='image_assets'"
+                ).fetchall()
+            }
+            if "image_assets" in tables:
+                self._image_bind_mode = "asset"
+                return "asset"
+        self._image_bind_mode = "path"
+        return "path"
+
+    @staticmethod
+    def _visible_status_sql(alias: str = "", *, drafts: bool = False) -> str:
+        col = f"{alias}.status" if alias else "status"
+        allowed = "'final', 'override', 'draft'" if drafts else "'final', 'override'"
+        return f" AND ({col} IS NULL OR {col} IN ({allowed}))"
 
     # ------------------------------------------------------------------ stats
     def row_count(self) -> int:
@@ -780,70 +807,280 @@ class PriceBookRepository:
     ) -> None:
         """Insert or replace one catalog image row for (vendor, part_number)."""
         with self._conn() as conn:
+            if self._catalog_image_bind_mode(conn) == "asset":
+                self._upsert_catalog_image_asset(
+                    conn,
+                    vendor=vendor,
+                    part_number=part_number,
+                    image_path=image_path,
+                    source_file=source_file,
+                    page=page,
+                    match_method=match_method,
+                    updated_at=updated_at,
+                    status=status,
+                    descriptor=descriptor,
+                    source=source,
+                    item_number=item_number,
+                    christina_verdict=christina_verdict,
+                    christina_score=christina_score,
+                    christina_findings=christina_findings,
+                    christina_run_id=christina_run_id,
+                    override_reason=override_reason,
+                )
+            else:
+                self._upsert_catalog_image_path(
+                    conn,
+                    vendor=vendor,
+                    part_number=part_number,
+                    image_path=image_path,
+                    source_file=source_file,
+                    page=page,
+                    match_method=match_method,
+                    updated_at=updated_at,
+                    status=status,
+                    descriptor=descriptor,
+                    source=source,
+                    item_number=item_number,
+                    christina_verdict=christina_verdict,
+                    christina_score=christina_score,
+                    christina_findings=christina_findings,
+                    christina_run_id=christina_run_id,
+                    override_reason=override_reason,
+                )
+            conn.commit()
+
+    def _upsert_catalog_image_path(
+        self,
+        conn: sqlite3.Connection,
+        **row,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO catalog_images (
+                vendor, part_number, image_path, source_file,
+                page, match_method, updated_at, status, descriptor,
+                source, item_number, christina_verdict, christina_score,
+                christina_findings, christina_run_id, override_reason
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(vendor, part_number) DO UPDATE SET
+                image_path = excluded.image_path,
+                source_file = excluded.source_file,
+                page = excluded.page,
+                match_method = excluded.match_method,
+                updated_at = excluded.updated_at,
+                status = COALESCE(excluded.status, catalog_images.status),
+                descriptor = COALESCE(excluded.descriptor, catalog_images.descriptor),
+                source = COALESCE(excluded.source, catalog_images.source),
+                item_number = COALESCE(excluded.item_number, catalog_images.item_number),
+                christina_verdict = COALESCE(
+                    excluded.christina_verdict, catalog_images.christina_verdict
+                ),
+                christina_score = COALESCE(
+                    excluded.christina_score, catalog_images.christina_score
+                ),
+                christina_findings = COALESCE(
+                    excluded.christina_findings, catalog_images.christina_findings
+                ),
+                christina_run_id = COALESCE(
+                    excluded.christina_run_id, catalog_images.christina_run_id
+                ),
+                override_reason = COALESCE(
+                    excluded.override_reason, catalog_images.override_reason
+                )
+            """,
+            (
+                row["vendor"],
+                row["part_number"],
+                row["image_path"],
+                row.get("source_file"),
+                row.get("page"),
+                row.get("match_method"),
+                row.get("updated_at"),
+                row.get("status"),
+                row.get("descriptor"),
+                row.get("source"),
+                row.get("item_number"),
+                row.get("christina_verdict"),
+                row.get("christina_score"),
+                row.get("christina_findings"),
+                row.get("christina_run_id"),
+                row.get("override_reason"),
+            ),
+        )
+
+    def _upsert_catalog_image_asset(
+        self,
+        conn: sqlite3.Connection,
+        **row,
+    ) -> None:
+        vendor = row["vendor"]
+        part_number = row["part_number"]
+        now = row.get("updated_at") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        status = row.get("status") or "draft"
+        source = row.get("source") or "operator"
+        descriptor = row.get("descriptor") or ""
+        findings = row.get("christina_findings") or ""
+        existing = conn.execute(
+            """
+            SELECT asset_id FROM catalog_images
+            WHERE vendor = ? AND part_number = ?
+            ORDER BY is_hero DESC, id DESC
+            LIMIT 1
+            """,
+            (vendor, part_number),
+        ).fetchone()
+        if existing:
+            asset_id = existing["asset_id"] if isinstance(existing, sqlite3.Row) else existing[0]
             conn.execute(
                 """
-                INSERT INTO catalog_images (
-                    vendor, part_number, image_path, source_file,
-                    page, match_method, updated_at, status, descriptor,
-                    source, item_number, christina_verdict, christina_score,
-                    christina_findings, christina_run_id, override_reason
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(vendor, part_number) DO UPDATE SET
-                    image_path = excluded.image_path,
-                    source_file = excluded.source_file,
-                    page = excluded.page,
-                    match_method = excluded.match_method,
-                    updated_at = excluded.updated_at,
-                    status = COALESCE(excluded.status, catalog_images.status),
-                    descriptor = COALESCE(excluded.descriptor, catalog_images.descriptor),
-                    source = COALESCE(excluded.source, catalog_images.source),
-                    item_number = COALESCE(excluded.item_number, catalog_images.item_number),
-                    christina_verdict = COALESCE(
-                        excluded.christina_verdict, catalog_images.christina_verdict
-                    ),
-                    christina_score = COALESCE(
-                        excluded.christina_score, catalog_images.christina_score
-                    ),
-                    christina_findings = COALESCE(
-                        excluded.christina_findings, catalog_images.christina_findings
-                    ),
-                    christina_run_id = COALESCE(
-                        excluded.christina_run_id, catalog_images.christina_run_id
-                    ),
-                    override_reason = COALESCE(
-                        excluded.override_reason, catalog_images.override_reason
-                    )
+                UPDATE image_assets SET
+                    storage_key = ?,
+                    file_name = ?,
+                    page_number = ?,
+                    source = ?,
+                    descriptor_raw = ?,
+                    extracted_part_numbers_json = ?,
+                    christina_status = ?,
+                    christina_score = ?,
+                    christina_findings_json = ?,
+                    christina_raw_run_id = ?,
+                    updated_at = ?
+                WHERE id = ?
                 """,
                 (
-                    vendor,
-                    part_number,
-                    image_path,
-                    source_file,
-                    page,
-                    match_method,
-                    updated_at,
-                    status,
-                    descriptor,
+                    row["image_path"],
+                    row.get("source_file"),
+                    row.get("page"),
                     source,
-                    item_number,
-                    christina_verdict,
-                    christina_score,
-                    christina_findings,
-                    christina_run_id,
-                    override_reason,
+                    descriptor,
+                    json.dumps([part_number]),
+                    row.get("christina_verdict") or "pending",
+                    float(row.get("christina_score") or 0),
+                    json.dumps([findings] if findings else []),
+                    row.get("christina_run_id"),
+                    now,
+                    asset_id,
                 ),
             )
-            conn.commit()
+            conn.execute(
+                """
+                UPDATE catalog_images SET
+                    matched_key = ?,
+                    bind_status = ?,
+                    is_hero = 1,
+                    match_method = COALESCE(?, match_method),
+                    override_reason = COALESCE(?, override_reason),
+                    updated_at = ?,
+                    status = COALESCE(?, status),
+                    descriptor = COALESCE(?, descriptor),
+                    source = COALESCE(?, source),
+                    item_number = COALESCE(?, item_number),
+                    christina_verdict = COALESCE(?, christina_verdict),
+                    christina_score = COALESCE(?, christina_score),
+                    christina_findings = COALESCE(?, christina_findings),
+                    christina_run_id = COALESCE(?, christina_run_id)
+                WHERE vendor = ? AND part_number = ?
+                """,
+                (
+                    part_number,
+                    status,
+                    row.get("match_method"),
+                    row.get("override_reason"),
+                    now,
+                    status,
+                    descriptor or None,
+                    source,
+                    row.get("item_number"),
+                    row.get("christina_verdict"),
+                    row.get("christina_score"),
+                    findings or None,
+                    row.get("christina_run_id"),
+                    vendor,
+                    part_number,
+                ),
+            )
+            return
+        asset_id = f"op_{uuid.uuid4().hex}"
+        conn.execute(
+            """
+            INSERT INTO image_assets (
+                id, source, builder_id, storage_key, file_name, page_number,
+                extracted_part_numbers_json, descriptor_raw,
+                christina_status, christina_score, christina_findings_json,
+                christina_raw_run_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                asset_id,
+                source,
+                vendor,
+                row["image_path"],
+                row.get("source_file"),
+                row.get("page"),
+                json.dumps([part_number]),
+                descriptor,
+                row.get("christina_verdict") or "pending",
+                float(row.get("christina_score") or 0),
+                json.dumps([findings] if findings else []),
+                row.get("christina_run_id"),
+                now,
+                now,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO catalog_images (
+                asset_id, vendor, part_number, matched_key, bind_status,
+                is_hero, match_method, override_reason, created_at, updated_at,
+                status, descriptor, source, item_number, christina_verdict,
+                christina_score, christina_findings, christina_run_id
+            ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                asset_id,
+                vendor,
+                part_number,
+                part_number,
+                status,
+                row.get("match_method"),
+                row.get("override_reason"),
+                now,
+                now,
+                status,
+                descriptor or None,
+                source,
+                row.get("item_number"),
+                row.get("christina_verdict"),
+                row.get("christina_score"),
+                findings or None,
+                row.get("christina_run_id"),
+            ),
+        )
 
     def catalog_image_row(self, vendor: str, part_number: str) -> Optional[dict]:
         with self._conn() as conn:
-            row = conn.execute(
-                """
-                SELECT * FROM catalog_images
-                WHERE vendor = ? AND part_number = ?
-                """,
-                (vendor, part_number),
-            ).fetchone()
+            if self._catalog_image_bind_mode(conn) == "asset":
+                row = conn.execute(
+                    """
+                    SELECT ci.*, ia.storage_key AS image_path,
+                           ia.file_name AS source_file,
+                           ia.page_number AS page
+                    FROM catalog_images ci
+                    LEFT JOIN image_assets ia ON ia.id = ci.asset_id
+                    WHERE ci.vendor = ? AND ci.part_number = ?
+                    ORDER BY ci.is_hero DESC, ci.id DESC
+                    LIMIT 1
+                    """,
+                    (vendor, part_number),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT * FROM catalog_images
+                    WHERE vendor = ? AND part_number = ?
+                    """,
+                    (vendor, part_number),
+                ).fetchone()
         if row is None:
             return None
         return dict(row)
@@ -877,6 +1114,7 @@ class PriceBookRepository:
         # Chunk IN queries to stay under SQLite variable limits.
         chunk = 400
         with self._conn() as conn:
+            asset_mode = self._catalog_image_bind_mode(conn) == "asset"
             for i in range(0, len(uniq), chunk):
                 batch = uniq[i : i + chunk]
                 placeholders = ",".join("(?, ?)" for _ in batch)
@@ -885,34 +1123,54 @@ class PriceBookRepository:
                     params.extend([v, p])
                 status_sql = ""
                 if search_visible:
-                    status_sql = " AND (status IS NULL OR status IN ('final', 'override'))"
-                rows = conn.execute(
-                    f"""
+                    status_sql = self._visible_status_sql("ci" if asset_mode else "")
+                if asset_mode:
+                    sql = f"""
+                    SELECT ci.vendor, ci.part_number, ia.storage_key AS image_path
+                    FROM catalog_images ci
+                    JOIN image_assets ia ON ia.id = ci.asset_id
+                    WHERE (ci.vendor, ci.part_number) IN ({placeholders})
+                    {status_sql}
+                    ORDER BY ci.is_hero DESC, ci.id DESC
+                    """
+                else:
+                    sql = f"""
                     SELECT vendor, part_number, image_path
                     FROM catalog_images
                     WHERE (vendor, part_number) IN ({placeholders})
                     {status_sql}
-                    """,
-                    params,
-                ).fetchall()
+                    """
+                rows = conn.execute(sql, params).fetchall()
                 for r in rows:
                     path = r["image_path"] if isinstance(r, sqlite3.Row) else r[2]
                     vendor = r["vendor"] if isinstance(r, sqlite3.Row) else r[0]
                     pn = r["part_number"] if isinstance(r, sqlite3.Row) else r[1]
-                    if path:
-                        out[(str(vendor), str(pn))] = str(path)
+                    key = (str(vendor), str(pn))
+                    if path and key not in out:
+                        out[key] = str(path)
         return out
 
     def vendors_with_catalog_images(self) -> set[str]:
         """Builders that have at least one catalog photo."""
         with self._conn() as conn:
-            rows = conn.execute(
-                """
-                SELECT DISTINCT vendor FROM catalog_images
-                WHERE image_path <> ''
-                  AND (status IS NULL OR status IN ('final', 'override', 'draft'))
-                """
-            ).fetchall()
+            if self._catalog_image_bind_mode(conn) == "asset":
+                rows = conn.execute(
+                    """
+                    SELECT DISTINCT ci.vendor
+                    FROM catalog_images ci
+                    JOIN image_assets ia ON ia.id = ci.asset_id
+                    WHERE ia.storage_key <> ''
+                    """
+                    + self._visible_status_sql("ci", drafts=True)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT DISTINCT vendor FROM catalog_images
+                    WHERE image_path <> ''
+                    """
+                    + self._visible_status_sql(drafts=True)
+                ).fetchall()
         out: set[str] = set()
         for r in rows:
             vendor = r["vendor"] if isinstance(r, sqlite3.Row) else r[0]
