@@ -41,8 +41,8 @@ _VIZTECH_NOISE_RE = re.compile(
 _ANON_DOWNLOAD_LABEL_RE = re.compile(
     r"(?i)^download(?:\s+20\d{2})?(?:\s+(?:unfinished|finished))?(?:\s+\d+)?$"
 )
-_SHORT_TOKEN_RE = re.compile(r"^[a-z]{2,4}$")
-_SHORT_TOKEN_PREFIX_RE = re.compile(r"^[a-z]{2,4}[_\s-]")
+_SHORT_TOKEN_RE = re.compile(rf"^[a-z]{{2,{SHORT_TOKEN_MAX_LEN}}}$")
+_SHORT_TOKEN_PREFIX_RE = re.compile(rf"^[a-z]{{2,{SHORT_TOKEN_MAX_LEN}}}[_-]")
 
 
 @dataclass(frozen=True)
@@ -88,12 +88,28 @@ def _norm_token(token: str) -> str:
 
 
 def is_short_token(token: str) -> bool:
+    """True for initials (ac/ao/fnc) or initial_prefix paths (ac_20, ao_pricelist).
+
+    Space-separated factory names (hope wood, fn chair) are not short tokens.
+    """
     text = _norm_token(token)
     if not text:
         return False
     if _SHORT_TOKEN_RE.fullmatch(text):
         return True
     return bool(_SHORT_TOKEN_PREFIX_RE.match(text))
+
+
+def catalog_spec_tokens(spec) -> tuple[str, ...]:
+    """Collision inventory tokens, including extra_tokens shorter than 3 chars."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in (*spec.tokens(), *spec.extra_tokens):
+        token = _norm_token(raw)
+        if token and token not in seen:
+            seen.add(token)
+            out.append(token)
+    return tuple(out)
 
 
 def identity_claims() -> tuple[IdentityClaim, ...]:
@@ -110,9 +126,9 @@ def identity_claims() -> tuple[IdentityClaim, ...]:
             claims.append(IdentityClaim(vendor, token, "vendor_canon"))
 
     for spec in CATALOG_SPECS:
-        for token in spec.tokens():
+        for token in catalog_spec_tokens(spec):
             claims.append(
-                IdentityClaim(spec.vendor, _norm_token(token), "catalog_token", spec.parser_id)
+                IdentityClaim(spec.vendor, token, "catalog_token", spec.parser_id)
             )
 
     for profile in iter_locked_profiles():

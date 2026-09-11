@@ -813,10 +813,6 @@ def standardize_part(val: Any) -> Optional[str]:
 # vendor names — ONE builder = ONE vendor (no year / filename twins)
 # ---------------------------------------------------------------------------
 
-_ANON_DOWNLOAD_LABEL_RE = re.compile(
-    r"(?i)^download(?:\s+20\d{2})?(?:\s+(?:unfinished|finished))?(?:\s+\d+)?$"
-)
-
 VENDOR_CANON = {
     "hope wood": "Hope Wood",
     "hopewood": "Hope Wood",
@@ -944,8 +940,11 @@ def resolve_builder_vendor(
             return canon
 
     leftover = s_clean or s
-    if leftover and _ANON_DOWNLOAD_LABEL_RE.fullmatch(str(leftover).strip()):
-        return None
+    if leftover:
+        from backend.builder_identity import is_anonymous_download_label
+
+        if is_anonymous_download_label(str(leftover)):
+            return None
     return leftover
 
 

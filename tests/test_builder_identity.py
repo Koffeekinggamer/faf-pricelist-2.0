@@ -12,8 +12,10 @@ from backend.builder_identity import (
     WATCHED_SHORT_TOKENS,
     IdentityClaim,
     ReaderHit,
+    catalog_spec_tokens,
     detector_path_collisions,
     identity_claims,
+    is_short_token,
     is_viztech_download_stem,
     known_builders,
     matching_filename_hint_vendors,
@@ -23,6 +25,7 @@ from backend.builder_identity import (
     token_collisions,
 )
 from backend.builder_parsers import guess_named_parser, identify_reader
+from backend.catalog_readers import CatalogSpec
 from backend.standardize import resolve_builder_vendor
 from tests.fixture_corpus import OPTIONS_FIXTURE, SETTLED_FIXTURES, WIDE_FIXTURE
 from tests.test_builder_parser_contract import SETTLED
@@ -49,6 +52,21 @@ def test_same_vendor_may_repeat_a_token_across_maps():
 def test_live_identity_maps_have_no_token_collisions():
     collisions = token_collisions()
     assert collisions == {}, _format_token_collisions(collisions)
+
+
+def test_space_separated_factory_names_are_not_short_tokens():
+    assert is_short_token("ac")
+    assert is_short_token("ao_pricelist")
+    assert is_short_token("fnc")
+    assert not is_short_token("hope wood")
+    assert not is_short_token("fn chair")
+    assert not is_short_token("artisan chairs")
+
+
+def test_catalog_inventory_keeps_short_extra_tokens():
+    spec = CatalogSpec("acme_chairs", "Acme Chairs", extra_tokens=("ac",))
+    assert "ac" in catalog_spec_tokens(spec)
+    assert "ac" not in spec.tokens()
 
 
 def test_watched_short_tokens_map_to_exactly_one_vendor():
