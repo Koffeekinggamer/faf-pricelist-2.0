@@ -35,6 +35,8 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install -r requirements.txt
+          # Pin the local gate tools so CI does not float past this tree.
+          .venv/bin/pip install ruff==0.16.5 pytest==9.1.1
 
       - name: Ruff
         # Same wrapper as local / lint-staged. Full-tree check; known debt is

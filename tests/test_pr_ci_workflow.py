@@ -19,6 +19,8 @@ def test_pr_ci_runs_ruff_and_pytest_on_pull_request():
     assert "pull_request" in text
     assert "3.11" in text
     assert "requirements.txt" in text
+    assert "ruff==0.16.5" in text
+    assert "pytest==9.1.1" in text
     assert "run_ruff.sh check" in text
     assert "python -m pytest -q" in text
     assert "FLY_API_TOKEN" not in text
