@@ -55,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Replace an existing generated profile (never used to downgrade a lock)",
+        help="Replace a stub:true template profile only; never overwrite a locked selling profile",
     )
     parser.add_argument("--repo", type=Path, default=root, help="Repo root for --write")
     args = parser.parse_args(argv)

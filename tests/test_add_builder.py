@@ -99,6 +99,11 @@ def test_plan_builder_refuses_generic_importer():
         plan_builder("Mystery Factory", parser_id="generic")
 
 
+def test_plan_builder_refuses_to_rekey_an_existing_lock():
+    with pytest.raises(AddBuilderError, match="fn_chair"):
+        plan_builder("FN Chair", parser_id="mystery_factory")
+
+
 def test_plan_builder_refuses_download_stem_vendor():
     with pytest.raises(AddBuilderError, match="Download"):
         plan_builder("Download_2027_Pricelist_111")
@@ -179,10 +184,20 @@ def test_write_scaffold_writes_profile_fixture_and_hook(tmp_path: Path):
     assert "Clone Example Wood" in hook
     assert "clone_example_wood" in hook
     assert "SETTLED" in hook
+    assert "import_workbook" in hook
+    assert "empty Options is a capture miss" in hook
+    assert "force_layout_guess=True" in hook
     splice = written.splice_path.read_text(encoding="utf-8")
     assert "CatalogSpec(" in splice
     assert "clone_example_wood" in splice
     assert "SETTLED" in splice
+    hook_run = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", str(written.hook_path)],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+    )
+    assert hook_run.returncode == 0, hook_run.stdout + hook_run.stderr
 
 
 def test_write_scaffold_does_not_overwrite_existing_profile(tmp_path: Path):
@@ -192,6 +207,25 @@ def test_write_scaffold_does_not_overwrite_existing_profile(tmp_path: Path):
     plan = plan_builder("Clone Example Wood")
     with pytest.raises(AddBuilderError, match="exists"):
         write_scaffold(plan, repo_root=tmp_path)
+
+
+def test_write_scaffold_refuses_overwrite_of_locked_selling_profile(tmp_path: Path):
+    dest = tmp_path / "config" / "builder_profiles" / "fn-chair.json"
+    dest.parent.mkdir(parents=True)
+    dest.write_text(
+        json.dumps(
+            {
+                "vendor": "FN Chair",
+                "option_groups": [{"name": "Finish category", "selection": "single"}],
+                "parser": {"importer": "fn_chair", "locked": True},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plan = plan_builder("FN Chair", kind="shape")
+    with pytest.raises(AddBuilderError, match="locked profile"):
+        write_scaffold(plan, repo_root=tmp_path, overwrite=True)
 
 
 def test_fallthrough_cannot_downgrade_stub_lock(tmp_path: Path):

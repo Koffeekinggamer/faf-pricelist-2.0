@@ -26,7 +26,9 @@ Shape-specific first lock (Tier B / job 5):
 ```
 
 `--token` adds an extra detect token. The command refuses watched short tokens
-(`ac` / `ao` / `fnc` / `jmw` / …) and tokens another vendor already claims.
+(`ac` / `ao` / `fnc` / `jmw` / …), tokens another vendor already claims, a
+`generic`/`pdf` importer, and `--write --overwrite` of a locked selling /
+SETTLED profile. Only a `stub: true` template may be overwritten.
 
 ## What the stub already did (clone these files)
 

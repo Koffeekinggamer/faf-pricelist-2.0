@@ -89,11 +89,15 @@ def existing_reader_for(vendor: str) -> Optional[ReaderEntry]:
 
 def parser_id_for(vendor: str, parser_id: str = "") -> str:
     raw = (parser_id or "").strip().lower()
-    if raw:
-        return raw
     existing = existing_reader_for(vendor)
     if existing:
+        if raw and raw != existing.parser_id:
+            raise AddBuilderError(
+                f"{vendor} already locks {existing.parser_id}; refusing {raw}"
+            )
         return existing.parser_id
+    if raw:
+        return raw
     return vendor_slug(vendor).replace("-", "_")
 
 
@@ -333,6 +337,8 @@ def render_test_hook(plan: BuilderScaffold) -> str:
         "\n"
         "from pathlib import Path\n"
         "\n"
+        "from wide_import import import_workbook\n"
+        "\n"
         f'VENDOR = "{plan.vendor}"\n'
         f'PARSER_ID = "{plan.parser_id}"\n'
         f'NEXT_FILE = "{plan.next_year_filename}"\n'
@@ -349,10 +355,33 @@ def render_test_hook(plan: BuilderScaffold) -> str:
         "    None,\n"
         ")\n"
         "\n"
+        "\n"
         "def test_scaffold_fixture_proves_options():\n"
-        "    assert FIXTURE.is_file(), \"run scripts/add_builder.py --write and commit the xlsx\"\n"
-        "    assert PARSER_ID != \"generic\"\n"
-        "    assert OPTION_KEYS, \"empty Options is a capture miss\"\n"
+        '    assert FIXTURE.is_file(), "run scripts/add_builder.py --write and commit the xlsx"\n'
+        '    assert PARSER_ID not in {"generic", "pdf"}\n'
+        "    result = import_workbook(\n"
+        "        FIXTURE.read_bytes(),\n"
+        "        filename=NEXT_FILE,\n"
+        "        vendor=VENDOR,\n"
+        "        force_layout_guess=True,\n"
+        "    )\n"
+        "    df = result.long_df\n"
+        "    assert df is not None and not df.empty\n"
+        '    if "line_kind" in df.columns:\n'
+        '        kind = df["line_kind"].fillna("item").astype(str).str.lower()\n'
+        '        addons = df[kind == "addon"]\n'
+        "    else:\n"
+        "        addons = df.iloc[0:0]\n"
+        '    assert not addons.empty, "empty Options is a capture miss"\n'
+        "    keys = set()\n"
+        '    if "option_key" in df.columns:\n'
+        "        keys = {\n"
+        '            str(key).strip()\n'
+        '            for key in df["option_key"].dropna()\n'
+        '            if str(key).strip()\n'
+        "        }\n"
+        "    missing = [key for key in OPTION_KEYS if key not in keys]\n"
+        "    assert not missing, missing\n"
     )
 
 
@@ -362,8 +391,24 @@ def write_profile(
     *,
     overwrite: bool = False,
 ) -> Path:
-    if path.exists() and not overwrite:
-        raise AddBuilderError(f"profile exists: {path}")
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            existing = {}
+        if not isinstance(existing, dict):
+            existing = {}
+        importer = str((existing.get("parser") or {}).get("importer") or "").strip().lower()
+        specific = importer in DEFAULT_READER_REGISTRY.specific_ids
+        if specific and importer != plan.parser_id:
+            raise AddBuilderError(
+                f"refusing to change locked importer {importer} to {plan.parser_id}"
+            )
+        if specific and existing.get("stub") is not True:
+            vendor = existing.get("vendor") or path.name
+            raise AddBuilderError(f"refusing to overwrite locked profile for {vendor}")
+        if not overwrite:
+            raise AddBuilderError(f"profile exists: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(plan.profile, indent=2) + "\n", encoding="utf-8")
     return path
