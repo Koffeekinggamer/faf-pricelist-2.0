@@ -4,14 +4,8 @@
   "parser": {
     "importer": "quality_fabrications",
     "source_file": "Quality_Fabrications/Download_2026_Pricelist_329206.xlsx",
-    "filename_hints": [
-      "quality fabrications",
-      "qualityfabrications"
-    ],
-    "layouts": [
-      "unknown",
-      "wide_species"
-    ],
+    "filename_hints": ["quality fabrications", "qualityfabrications"],
+    "layouts": ["unknown", "viewed_options", "wide_species"],
     "locked": true
   }
 }

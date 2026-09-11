@@ -160,3 +160,120 @@ def test_standard_premium_wood_columns_are_wood_not_options(tmp_path):
     assert "Premium Wood" not in opts
     assert "Standard Wood" in woods
     assert "Premium Wood" in woods
+
+
+def test_premium_wood_group_is_wood_not_option(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    repo = PriceBookRepository(db)
+    repo.insert_rows(
+        [
+            _row(
+                "J. Troyer & Company",
+                species="Premium / Cherry / QSWO",
+                part="7430-64",
+            ),
+            _row(
+                "J. Troyer & Company",
+                species="Brown Maple / Oak / Rustic Cherry",
+                part="7430-64b",
+            ),
+            _row(
+                "J. Troyer & Company",
+                species=None,
+                option_key="Two-Tone",
+                part="Two-Tone",
+                line_kind="addon",
+            ),
+        ]
+    )
+    opts = repo.list_option_keys("J. Troyer & Company")
+    woods = repo.list_species(vendor="J. Troyer & Company")
+    assert "Two-Tone" in opts
+    assert "Premium / Cherry / QSWO" not in opts
+    assert "Cherry" in woods
+    assert "QSWO" in woods
+    assert "Brown Maple" in woods
+
+
+def test_mixed_wood_pair_appears_in_wood_dropdown_as_wood_slash_wood(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    repo = PriceBookRepository(db)
+    repo.insert_rows(
+        [
+            _row("Meadow Lane Furniture", species="Cherry / Hickory", part="T1"),
+            _row("Meadow Lane Furniture", species="Oak / Brown Maple", part="T2"),
+            _row(
+                "Meadow Lane Furniture",
+                species="Wormy Maple / Walnut / Combo",
+                part="T3",
+            ),
+            _row("Meadow Lane Furniture", species="Cherry", part="T4"),
+            _row(
+                "Meadow Lane Furniture",
+                species="Elm / Cherry / Hickory / Maple",
+                part="T5",
+            ),
+        ]
+    )
+    woods = repo.list_species(vendor="Meadow Lane Furniture")
+    assert "Cherry/Hickory" in woods
+    assert "Oak/Brown Maple" in woods
+    assert "Wormy Maple/Walnut" in woods
+    assert "Cherry / Hickory" not in woods
+    assert "Cherry" in woods
+    assert "Hickory" in woods
+    assert "Elm/Cherry/Hickory/Maple" not in woods
+    hit = repo.search(
+        "",
+        vendor="Meadow Lane Furniture",
+        species="Cherry/Hickory",
+        finish_state="finished",
+        limit=20,
+    )
+    assert list(hit["part_number"]) == ["T1"]
+    combo = repo.search(
+        "",
+        vendor="Meadow Lane Furniture",
+        species="Wormy Maple/Walnut",
+        finish_state="finished",
+        limit=20,
+    )
+    assert list(combo["part_number"]) == ["T3"]
+
+
+def test_wood_named_addon_is_wood_not_option(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    repo = PriceBookRepository(db)
+    repo.insert_rows(
+        [
+            _row("Frog Pond Furniture", species="Oak", part="100K"),
+            _row(
+                "Frog Pond Furniture",
+                species="Rec. Barnwood Oak",
+                part="100K",
+            ),
+            _row(
+                "Frog Pond Furniture",
+                species=None,
+                option_key="Rec. Barnwood Oak",
+                part="Rec. Barnwood Oak",
+                line_kind="addon",
+            ),
+            _row(
+                "Frog Pond Furniture",
+                species=None,
+                option_key="Painting",
+                part="Painting",
+                line_kind="addon",
+            ),
+        ]
+    )
+    opts = repo.list_option_keys("Frog Pond Furniture")
+    woods = repo.list_species(vendor="Frog Pond Furniture")
+    assert "Painting" in opts
+    assert "Rec. Barnwood Oak" not in opts
+    assert "Rec. Barnwood Oak" in woods
+    assert "Oak" in woods

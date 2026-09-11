@@ -16,6 +16,11 @@ from backend.config import DEFAULT_MULTIPLIER, DEFAULT_SEARCH_LIMIT, IDENTITY_FI
 from backend.db import get_connection
 from backend.duplicate_verify import VERIFY_SELECT, verify_duplicate_group
 from backend.models import PRICEBOOK_COLS, SELECT_COLS
+from backend.standardize import (
+    is_wood_column_label,
+    mixed_wood_label,
+    mixed_wood_search_values,
+)
 
 
 def _norm_key_val(v) -> str:
@@ -223,7 +228,7 @@ class PriceBookRepository:
             ):
                 if raw:
                     s = str(raw).strip()
-                    if s:
+                    if s and not is_wood_column_label(s):
                         found.add(s)
             for (raw,) in conn.execute(
                 "SELECT DISTINCT option_key FROM pricebook "
@@ -233,7 +238,11 @@ class PriceBookRepository:
                 (vendor,),
             ):
                 s = str(raw).strip()
-                if s and self._is_option_dropdown_label(s, from_option_key=True):
+                if (
+                    s
+                    and not is_wood_column_label(s)
+                    and self._is_option_dropdown_label(s, from_option_key=True)
+                ):
                     found.add(s)
             for (raw,) in conn.execute(
                 "SELECT DISTINCT species FROM pricebook "
@@ -311,6 +320,9 @@ class PriceBookRepository:
                 if self._WOOD_TIER_RE.match(s):
                     atomic.add(s)
                     continue
+                mixed = mixed_wood_label(s)
+                if mixed:
+                    atomic.add(mixed)
                 # Split multi-wood tiers on " / " or "/"
                 if " / " in s or (s.count("/") >= 1 and not re.search(r"\d/\d", s)):
                     parts = [p.strip() for p in re.split(r"\s*/\s*", s) if p.strip()]
@@ -360,9 +372,11 @@ class PriceBookRepository:
             return True
         # Color / fabric / poly / leather tiers (not wood species)
         if self._OPTION_DROPDOWN_RE.search(s):
-            # "Rustic Cherry" is wood; "Ultra Leather" / "Bright Colors" are options
+            # "Rustic Cherry" and "Premium / Cherry / QSWO" are wood price
+            # groups. "Ultra Leather" / "Bright Colors" / "Standard Colors"
+            # stay Options. Premium/Standard alone is not a wood.
             if self._PURE_WOOD_RE.search(s) and not re.search(
-                r"(?i)color|fabric|leather|poly|woodgrain|premium|standard|cat\.?",
+                r"(?i)color|fabric|leather|poly|woodgrain|cat\.?",
                 s,
             ):
                 return False
@@ -665,14 +679,27 @@ class PriceBookRepository:
         if species and species != "All":
             # Exact tier/label, or multi-wood tier that includes this wood as a token
             sp = species.strip()
-            species_cond = (
-                "("
-                "trim(coalesce(species,'')) = ? OR "
-                "trim(coalesce(species,'')) LIKE ? ESCAPE '\\' OR "
-                "trim(coalesce(species,'')) LIKE ? ESCAPE '\\' OR "
-                "trim(coalesce(species,'')) LIKE ? ESCAPE '\\'"
-                ")"
-            )
+            mixed_vals = mixed_wood_search_values(sp)
+            if mixed_vals:
+                ph = ", ".join("?" * len(mixed_vals))
+                species_cond = f"lower(trim(coalesce(species,''))) IN ({ph})"
+                species_params = [v.lower() for v in mixed_vals]
+            else:
+                species_cond = (
+                    "("
+                    "trim(coalesce(species,'')) = ? OR "
+                    "trim(coalesce(species,'')) LIKE ? ESCAPE '\\' OR "
+                    "trim(coalesce(species,'')) LIKE ? ESCAPE '\\' OR "
+                    "trim(coalesce(species,'')) LIKE ? ESCAPE '\\'"
+                    ")"
+                )
+                esc = self._like_escape(sp)
+                species_params = [
+                    sp,
+                    esc + " / %",  # "Cherry / …"
+                    "% / " + esc + " / %",  # "… / Cherry / …"
+                    "% / " + esc,  # "… / Cherry"
+                ]
             if has_opt:
                 # Add-on rows have no wood — a Wood filter must not hide the
                 # selected option's charge (ADR-0008).
@@ -681,15 +708,7 @@ class PriceBookRepository:
                 )
             else:
                 clauses.append(species_cond)
-            esc = self._like_escape(sp)
-            params.extend(
-                [
-                    sp,
-                    esc + " / %",  # "Cherry / …"
-                    "% / " + esc + " / %",  # "… / Cherry / …"
-                    "% / " + esc,  # "… / Cherry"
-                ]
-            )
+            params.extend(species_params)
         if has_opt:
             # Match option_key column OR species stored as an option tier
             # (Patio Kraft colors, LuxHome leather, etc.). Multi = OR.

@@ -3,15 +3,9 @@
   "vendor": "Kidron Woodcraft",
   "parser": {
     "importer": "kidron_woodcraft",
-    "source_file": "Download_2026_Pricelists_3224_unzipped/Solo Galaxy.xlsx",
-    "filename_hints": [
-      "kidron woodcraft",
-      "kidronwoodcraft"
-    ],
-    "layouts": [
-      "viewed_markup",
-      "wide_species"
-    ],
+    "source_file": "Download_2026_Pricelists_3224_unzipped/Flint_Ridge.xlsx + Download_2026_Pricelists_3224_unzipped/Grand_Isle.xlsx + Download_2026_Pricelists_3224_unzipped/Harbor.xlsx + Download_2026_Pricelists_3224_unzipped/Occasionals.xlsx + Download_2026_Pricelists_3224_unzipped/Solo Galaxy.xlsx + Download_2026_Pricelists_3224_unzipped/Timberline.xlsx + Download_2026_Pricelists_3224_unzipped/Timberline_Entertainment_Center.xlsx + Download_2026_Pricelists_3224_unzipped/Urban_Retreat.xlsx",
+    "filename_hints": ["kidron woodcraft", "kidronwoodcraft"],
+    "layouts": ["viewed_markup", "wide_species"],
     "locked": true
   }
 }

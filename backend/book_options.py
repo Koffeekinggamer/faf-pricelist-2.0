@@ -16,11 +16,12 @@ from backend.workbook_sheets import read_all_sheets
 
 _ADD_PCT_HEADER = re.compile(r"(?i)^\s*ADD\s+(\d+(?:\.\d+)?)\s*%\s*$")
 _INLINE_ADD_PCT = re.compile(
-    r"(?i)(?:for\s+)?(?P<label>.{3,40}?)\s*[,:\-–]?\s*add(?:ing)?\s+(?P<pct>\d+(?:\.\d+)?)\s*%"
+    r"(?i)(?:for\s+)?(?P<label>.{3,60}?)\s*[,:\-–]?\s*add(?:ing)?\s+(?P<pct>\d+(?:\.\d+)?)\s*%"
 )
 _INLINE_ADD_DOLLAR = re.compile(
-    r"(?i)(?:for\s+)?(?P<label>.{3,40}?)\s*[,:\-–]?\s*add(?:ing)?\s+\$?\s*(?P<amt>\d+(?:\.\d+)?)"
+    r"(?i)(?:for\s+)?(?P<label>.{3,60}?)\s*[,:\-–]?\s*add(?:ing)?\s+\$?\s*(?P<amt>\d+(?:\.\d+)?)"
 )
+_COST_IS_PCT = re.compile(r"(?i)(?P<label>.{3,48}?)\s+cost is\s+(?P<pct>\d+(?:\.\d+)?)\s*%")
 _LABELED_DOLLAR = re.compile(
     r"(?i)^\s*(?:[•\-\*]\s*)?(?:(?P<sku>[A-Z]{2,8}\d+[A-Z]{0,6})[\s\-]+)?(?P<label>[^:$]{3,48}?)\s*:\s*\$?\s*(?P<amt>\d+(?:\.\d+)?)\s*(?:each)?\s*$"
 )
@@ -93,8 +94,16 @@ def _is_builder_name(label: str) -> bool:
 
 def _norm_label(raw: str) -> str:
     s = re.sub(r"\s+", " ", (raw or "").strip(" -–:•*"))
+    s = re.sub(
+        r"(?i)\s*add(?:ing)?\s+\$?\s*\d+(?:\.\d+)?\s*%?\s*(?:per\s+\w+)?\s*$",
+        "",
+        s,
+    )
     s = re.sub(r"(?i)\s*add(?:ing)?\s*$", "", s).strip(" -–:")
+    had_for = bool(re.match(r"(?i)^for\s+", s))
     s = re.sub(r"(?i)^for\s+", "", s).strip(" ,;:-–")
+    if had_for and s and s[:1].islower():
+        s = s[:1].upper() + s[1:]
     aliases = {
         r"(?i)^painting$": "Paint",
         r"(?i)^locks?\s+on\s+drawers?$": "Drawer lock",
@@ -127,7 +136,12 @@ def _addon(
     name = _norm_label(label)
     if not name or _UNFINISHED_DEDUCT.search(name):
         return None
-    # Wood names are valid Options when the book prices a % adder (Walnut +50%).
+    # Woods belong in the Wood column — including Rec. Barnwood Oak +30%
+    # and Walnut +50%. Features that mention a wood (Walnut Seat) stay Options.
+    from backend.standardize import is_wood_column_label
+
+    if is_wood_column_label(name):
+        return None
     if _SKIP_LABEL.fullmatch(name) and pct is None:
         return None
     if _is_builder_name(name):
@@ -162,6 +176,41 @@ def _addon(
     return rec
 
 
+def _take_wood(woods: dict[str, float], label: str, pct: Optional[float]) -> bool:
+    """Book-listed woods become Wood-column adders, never Options."""
+    from backend.standardize import is_wood_column_label, standardize_species
+
+    if pct is None:
+        return False
+    name = _norm_label(label)
+    if not is_wood_column_label(name) and not is_wood_column_label(label):
+        return False
+    species = standardize_species(name) or name
+    if not is_wood_column_label(species):
+        species = name
+    if re.search(r"(?i)pric(?:e|ing)|add\s+\d", species) or len(species) > 40:
+        if re.search(r"(?i)\bwalnut\b", name + " " + label):
+            species = "Walnut"
+        else:
+            return False
+    if not is_wood_column_label(species):
+        return False
+    amount = float(pct)
+    woods[species] = amount / 100.0 if amount > 1.05 else amount
+    return True
+
+
+def _emit_option(
+    woods: dict[str, float],
+    vendor: str,
+    label: str,
+    **kwargs: Any,
+) -> Optional[dict[str, Any]]:
+    if _take_wood(woods, label, kwargs.get("pct")):
+        return None
+    return _addon(vendor, label, **kwargs)
+
+
 def _is_sku_price_row(cells: list[str]) -> bool:
     nums = 0
     sku = False
@@ -176,11 +225,14 @@ def _is_sku_price_row(cells: list[str]) -> bool:
     return sku and nums >= 2
 
 
-def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict[str, Any]]:
+def extract_from_frame(
+    raw: Optional[pd.DataFrame], *, vendor: str
+) -> tuple[list[dict[str, Any]], dict[str, float]]:
     if raw is None or raw.empty:
-        return []
+        return [], {}
     df = raw.dropna(how="all").reset_index(drop=True)
     out: list[dict[str, Any]] = []
+    woods: dict[str, float] = {}
     current_pct: Optional[float] = None
     finish_section = False
     no_upcharge = False
@@ -207,7 +259,8 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
                 ("Side Mount Soft Close Slides", soft_close.group(1)),
                 ("Undermount Soft Close Slides", soft_close.group(2)),
             ):
-                rec = _addon(
+                rec = _emit_option(
+                    woods,
                     vendor,
                     label,
                     dollars=float(amount),
@@ -241,28 +294,32 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
                 pass
         row_rec = None
         if row_label and _QUOTE_ONLY.search(joined) and not explicit_pct:
-            row_rec = _addon(
+            row_rec = _emit_option(
+                woods,
                 vendor,
                 row_label,
                 quote_only=True,
                 notes="quote required — factory does not publish a price",
             )
         elif row_label and explicit_pct:
-            row_rec = _addon(
+            row_rec = _emit_option(
+                woods,
                 vendor,
                 row_label,
                 pct=float(explicit_pct.group(1)),
                 notes="percent option from visible row",
             )
         elif row_label and less:
-            row_rec = _addon(
+            row_rec = _emit_option(
+                woods,
                 vendor,
                 row_label,
                 dollars=-float(less.group(1)),
                 notes="deduction from visible row",
             )
         elif row_label and _NO_UPCHARGE.search(joined):
-            row_rec = _addon(
+            row_rec = _emit_option(
+                woods,
                 vendor,
                 row_label,
                 dollars=0,
@@ -278,7 +335,8 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
                 or re.search(r"(?i)paint|glaze|two[\s-]?tone|color|sheen", row_label)
             )
         ):
-            row_rec = _addon(
+            row_rec = _emit_option(
+                woods,
                 vendor,
                 row_label,
                 pct=numeric[0] * 100,
@@ -290,7 +348,8 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
             and re.search(r"(?i)\b(?:option|upgrade|add)\b", label_cell)
             and len({round(value, 4) for value in numeric if value > 0}) == 1
         ):
-            row_rec = _addon(
+            row_rec = _emit_option(
+                woods,
                 vendor,
                 row_label,
                 dollars=numeric[0],
@@ -335,7 +394,8 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
 
             labeled = _LABELED_DOLLAR.match(c) or _DASH_DOLLAR.search(c)
             if labeled:
-                rec = _addon(
+                rec = _emit_option(
+                    woods,
                     vendor,
                     labeled.group("label"),
                     dollars=float(labeled.group("amt")),
@@ -347,7 +407,8 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
 
             inline_p = _INLINE_ADD_PCT.search(c)
             if inline_p:
-                rec = _addon(
+                rec = _emit_option(
+                    woods,
                     vendor,
                     inline_p.group("label"),
                     pct=float(inline_p.group("pct")),
@@ -359,11 +420,28 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
 
             inline_d = _INLINE_ADD_DOLLAR.search(c)
             if inline_d and "%" not in c:
-                rec = _addon(
+                label = inline_d.group("label")
+                if re.match(r"(?i)^\s*for\s+", c) and label[:1].islower():
+                    label = label[:1].upper() + label[1:]
+                rec = _emit_option(
+                    woods,
                     vendor,
-                    inline_d.group("label"),
+                    label,
                     dollars=float(inline_d.group("amt")),
                     notes="flat add-on",
+                )
+                if rec:
+                    out.append(rec)
+                continue
+
+            cost_pct = _COST_IS_PCT.search(c)
+            if cost_pct:
+                rec = _emit_option(
+                    woods,
+                    vendor,
+                    cost_pct.group("label"),
+                    pct=float(cost_pct.group("pct")),
+                    notes="percent of piece from visible note",
                 )
                 if rec:
                     out.append(rec)
@@ -376,7 +454,8 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
                 if _SIZE_OVER.search(c) or (
                     current_pct >= 15 and _SIZE_OVER.search(joined) and _SIZE_UP_TO.search(c)
                 ):
-                    rec = _addon(
+                    rec = _emit_option(
+                        woods,
                         vendor,
                         'Size change (over 10")',
                         pct=current_pct,
@@ -386,7 +465,8 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
                         out.append(rec)
                     continue
                 if _SIZE_UP_TO.search(c):
-                    rec = _addon(
+                    rec = _emit_option(
+                        woods,
                         vendor,
                         'Size change (up to 10")',
                         pct=current_pct,
@@ -396,22 +476,28 @@ def extract_from_frame(raw: Optional[pd.DataFrame], *, vendor: str) -> list[dict
                         out.append(rec)
                     continue
                 if _TWO_TONE.search(c):
-                    rec = _addon(vendor, "Two-tone", pct=current_pct, notes="finish option")
+                    rec = _emit_option(
+                        woods, vendor, "Two-tone", pct=current_pct, notes="finish option"
+                    )
                     if rec:
                         out.append(rec)
                     continue
                 if finish_section and _DISTRESS.search(c):
-                    rec = _addon(vendor, "Distressing", pct=current_pct, notes="finish option")
+                    rec = _emit_option(
+                        woods, vendor, "Distressing", pct=current_pct, notes="finish option"
+                    )
                     if rec:
                         out.append(rec)
                     continue
                 if finish_section and _OIL.search(c):
-                    rec = _addon(vendor, "Hand-rubbed oil", pct=current_pct, notes="finish option")
+                    rec = _emit_option(
+                        woods, vendor, "Hand-rubbed oil", pct=current_pct, notes="finish option"
+                    )
                     if rec:
                         out.append(rec)
                     continue
 
-    return _dedupe(out)
+    return _dedupe(out), woods
 
 
 def _dedupe(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -431,34 +517,199 @@ def _dedupe(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(seen.values())
 
 
-def extract_book_options(data: bytes, *, vendor: str = "") -> list[dict[str, Any]]:
-    """Pull size-option % and finish/flat adders from every tab."""
+def extract_book_charges(
+    data: bytes, *, vendor: str = ""
+) -> tuple[list[dict[str, Any]], dict[str, float]]:
     rows: list[dict[str, Any]] = []
+    woods: dict[str, float] = {}
     try:
         views = read_all_sheets(data)
     except Exception:
-        return []
+        return [], {}
     for view in views:
         if view.role in {"cover", "markup", "empty", "error"}:
             continue
-        rows.extend(extract_from_frame(view.raw, vendor=vendor))
-    return _dedupe(rows)
+        found, extra_woods = extract_from_frame(view.raw, vendor=vendor)
+        rows.extend(found)
+        woods.update(extra_woods)
+    return _dedupe(rows), woods
+
+
+def extract_book_options(data: bytes, *, vendor: str = "") -> list[dict[str, Any]]:
+    """Pull size-option % and finish/flat adders from every tab."""
+    rows, _woods = extract_book_charges(data, vendor=vendor)
+    return rows
+
+
+def _wood_adders_from_rows(df: pd.DataFrame) -> dict[str, float]:
+    from backend.standardize import is_wood_column_label, standardize_species
+
+    adders: dict[str, float] = {}
+    if df is None or df.empty:
+        return adders
+    kind = (
+        df["line_kind"].fillna("item").astype(str).str.lower()
+        if "line_kind" in df.columns
+        else None
+    )
+    if kind is None:
+        return adders
+    addons = df[kind.eq("addon")]
+    for _, row in addons.iterrows():
+        label = str(row.get("option_key") or row.get("description") or "").strip()
+        if not is_wood_column_label(label):
+            continue
+        pct = row.get("addon_pct")
+        if pct is None or (isinstance(pct, float) and pd.isna(pct)):
+            continue
+        species = standardize_species(label) or label
+        amount = float(pct)
+        adders[species] = amount / 100.0 if amount > 1.05 else amount
+    return adders
+
+
+def _drop_wood_addons(df: pd.DataFrame) -> pd.DataFrame:
+    from backend.standardize import is_wood_column_label
+
+    if df is None or df.empty or "line_kind" not in df.columns:
+        return df
+    kind = df["line_kind"].fillna("item").astype(str).str.lower()
+    label = df["option_key"].fillna("").astype(str) if "option_key" in df.columns else ""
+    if isinstance(label, str):
+        return df
+    wood = label.map(is_wood_column_label)
+    return df.loc[~(kind.eq("addon") & wood)].reset_index(drop=True)
+
+
+def _expand_wood_adders(df: pd.DataFrame, adders: dict[str, float]) -> list[dict[str, Any]]:
+    if df is None or df.empty or not adders:
+        return []
+    kind = (
+        df["line_kind"].fillna("item").astype(str).str.lower()
+        if "line_kind" in df.columns
+        else "item"
+    )
+    items = df if isinstance(kind, str) else df[kind.ne("addon")]
+    if items is None or items.empty:
+        return []
+    extra: list[dict[str, Any]] = []
+    group_cols = [c for c in ("part_number", "finish_state") if c in items.columns]
+    if not group_cols:
+        return []
+    for _, group in items.groupby(group_cols, dropna=False):
+        prices = pd.to_numeric(group.get("base_price"), errors="coerce")
+        if prices is None or prices.dropna().empty:
+            continue
+        base = float(prices.min())
+        have = set()
+        if "species" in group.columns:
+            have = {str(s).strip().casefold() for s in group["species"].dropna() if str(s).strip()}
+        template = group.iloc[0].to_dict()
+        for species, frac in adders.items():
+            if species.casefold() in have:
+                continue
+            row = dict(template)
+            row["species"] = species
+            row["option_key"] = None
+            row["line_kind"] = "item"
+            row["addon_pct"] = None
+            amount = round(base * (1.0 + float(frac)), 2)
+            row["base_price"] = amount
+            try:
+                mult = float(row.get("multiplier") or 0)
+            except (TypeError, ValueError):
+                mult = 0
+            if mult > 0:
+                row["adjusted_price"] = round(amount * mult, 2)
+            extra.append(row)
+            have.add(species.casefold())
+    return extra
+
+
+def _fill_blank_species_from_wood_context(df: pd.DataFrame) -> pd.DataFrame:
+    """Collection/description that *is* a wood or steel/metal base belongs in Wood."""
+    from backend.standardize import (
+        base_material_label,
+        is_wood_column_label,
+        standardize_species,
+    )
+
+    if df is None or df.empty or "species" not in df.columns:
+        return df
+    out = df.copy()
+    kind = (
+        out["line_kind"].fillna("item").astype(str).str.lower()
+        if "line_kind" in out.columns
+        else None
+    )
+    blank = out["species"].isna() | out["species"].astype(str).str.strip().eq("")
+    if kind is not None:
+        blank = blank & kind.ne("addon")
+    for idx in out.index[blank]:
+        for col in ("collection", "description", "notes"):
+            if col not in out.columns:
+                continue
+            cand = str(out.at[idx, col] or "").strip()
+            material = base_material_label(cand)
+            if material:
+                out.at[idx, "species"] = material
+                break
+            if not is_wood_column_label(cand):
+                continue
+            out.at[idx, "species"] = standardize_species(cand) or cand
+            break
+    return out
+
+
+def apply_sheet_base_material(df: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
+    """Metal Bases / Steel Bases tabs stamp that material on blank item rows."""
+    from backend.standardize import base_material_label
+
+    material = base_material_label(sheet_name)
+    if not material or df is None or getattr(df, "empty", True) or "species" not in df.columns:
+        return df
+    out = df.copy()
+    kind = (
+        out["line_kind"].fillna("item").astype(str).str.lower()
+        if "line_kind" in out.columns
+        else None
+    )
+    blank = out["species"].isna() | out["species"].astype(str).str.strip().eq("")
+    if kind is not None:
+        blank = blank & kind.ne("addon")
+    out.loc[blank, "species"] = material
+    return out
+
+
+def convert_option_woods_to_species(
+    df: pd.DataFrame,
+    adders: Optional[dict[str, float]] = None,
+) -> pd.DataFrame:
+    """Turn book-listed woods into Wood-column item rows. Real options stay."""
+    if df is None or getattr(df, "empty", True):
+        return df
+    harvested = dict(adders or {})
+    harvested.update(_wood_adders_from_rows(df))
+    out = _fill_blank_species_from_wood_context(_drop_wood_addons(df))
+    extra = _expand_wood_adders(out, harvested)
+    if extra:
+        out = pd.concat([out, pd.DataFrame(extra)], ignore_index=True)
+    return out
 
 
 def merge_book_options(result: Any, data: bytes, *, vendor: str = "") -> Any:
-    extra = extract_book_options(data, vendor=vendor)
-    if not extra:
-        return result
+    extra, woods = extract_book_charges(data, vendor=vendor)
     df = result.long_df
-    existing = set()
-    if df is not None and not df.empty and "option_key" in df.columns:
-        existing = {str(x).strip().lower() for x in df["option_key"].dropna() if str(x).strip()}
-    new = [r for r in extra if r["option_key"].lower() not in existing]
-    if not new:
-        return result
-    add = pd.DataFrame(new)
-    if df is None or df.empty:
-        result.long_df = add
-    else:
-        result.long_df = pd.concat([df, add], ignore_index=True)
+    if extra:
+        existing = set()
+        if df is not None and not df.empty and "option_key" in df.columns:
+            existing = {str(x).strip().lower() for x in df["option_key"].dropna() if str(x).strip()}
+        new = [r for r in extra if r["option_key"].lower() not in existing]
+        if new:
+            add = pd.DataFrame(new)
+            if df is None or df.empty:
+                df = add
+            else:
+                df = pd.concat([df, add], ignore_index=True)
+    result.long_df = convert_option_woods_to_species(df, woods)
     return result

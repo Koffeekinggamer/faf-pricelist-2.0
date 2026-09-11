@@ -5,7 +5,7 @@ Goal: every vendor row looks the same shape for search / quotes / export.
   - vendor: clean display name
   - collection: human section (not sheet filenames)
   - part_number / description: trimmed; description falls back to part
-  - species: wood tier OR color/fabric option (never col_N / FINISHED)
+  - species: wood tier OR color/fabric option (never col_N / FINISHED / H" W" D")
   - finish_state: finished | unfinished | glazed | None
   - price_basis: wholesale
   - multiplier + adjusted_price: consistent math
@@ -67,15 +67,145 @@ _JUNK_SPECIES_RE = re.compile(
       \d+\.0)$
     """
 )
+# H" / W" / D" are Height × Width × Depth, never Wood.
+# HB H is headboard height. FB H is footboard height.
+_DIMENSION_SPECIES_RE = re.compile(
+    r"""(?ix)
+    ^(?:(?:hb|fb)\s*)?[hwd]["']?$|
+    ^(?:height|width|depth)["']?$|
+    ^(?:headboard|footboard)\s*(?:h(?:eight)?)?["']?$
+    """
+)
+_DIM_AXIS = {
+    "h": "H",
+    "w": "W",
+    "d": "D",
+    "height": "H",
+    "width": "W",
+    "depth": "D",
+    "hb h": "HB H",
+    "fb h": "FB H",
+    "hbh": "HB H",
+    "fbh": "FB H",
+    "headboard h": "HB H",
+    "footboard h": "FB H",
+    "headboard height": "HB H",
+    "footboard height": "FB H",
+}
+
+
+def dimension_axis(header: str) -> Optional[str]:
+    """Map a column header to H, W, D, HB H, or FB H. Never a wood."""
+    key = re.sub(r"[\"']", "", str(header or ""))
+    key = re.sub(r"\s+", " ", key).strip().lower()
+    return _DIM_AXIS.get(key)
+
+
+_WOOD_COLUMN_CORE = re.compile(
+    r"(?i)\b("
+    r"oak|maple|cherry|walnut|hickory|elm|birch|ash|poplar|pine|alder|"
+    r"beech|mahogany|qswo|pswo|qsw|barnwood|cedar|wormy"
+    r")\b"
+)
+_WOOD_COLUMN_MOD = re.compile(
+    r"(?i)\b("
+    r"rec|reclaimed|rustic|prime|clear|black|white|red|brown|hard|soft|"
+    r"sap|quarter\s*sawn|plain\s*sawn|rough\s*sawn|character|tiger|"
+    r"live\s*edge|wormy"
+    r")\b"
+)
+_WOOD_COLUMN_FEATURE = re.compile(
+    r"(?i)\b("
+    r"seat|seats|top|tops|headrest|chair|chairs|drawer|drawers|case|"
+    r"bookcase|dowel|dowels|door|doors|panel|panels|rail|rails|"
+    r"bottom|bottoms|wide|inch|lock|slide|hinge|paint|glaze|tone|"
+    r"stain|finish|desk|bed|table|nightstand"
+    r")\b"
+)
+_WOOD_COLUMN_STOP = re.compile(
+    r"(?i)\b("
+    r"and|or|the|a|an|to|for|of|on|are|is|all|other|species|column|fin|"
+    r"first|1st|combo|pricing|price|add|adding"
+    r")\b"
+)
+
+
+def is_wood_column_label(raw: str) -> bool:
+    """True when the label *is* a wood (or wood group), not a feature that mentions one."""
+    s = re.sub(r"\s+", " ", str(raw or "").replace("\n", " ")).strip(" -–:•*")
+    if not s:
+        return False
+    s = re.sub(r"(?i)^prices?\s+are\s+for\s+", "", s)
+    s = re.sub(r"\.{2,}.*$", "", s)
+    s = re.sub(
+        r"(?i)\s*add(?:ing)?\s+\$?\s*\d+(?:\.\d+)?\s*%?.*$",
+        "",
+        s,
+    )
+    s = re.sub(r"(?i)\s*\d+(?:\.\d+)?\s*%.*$", "", s)
+    s = s.strip(" -–:,.")
+    if not s or _WOOD_COLUMN_FEATURE.search(s):
+        return False
+    if not _WOOD_COLUMN_CORE.search(s):
+        return False
+    leftover = _WOOD_COLUMN_CORE.sub(" ", s)
+    leftover = _WOOD_COLUMN_MOD.sub(" ", leftover)
+    leftover = _WOOD_COLUMN_STOP.sub(" ", leftover)
+    leftover = re.sub(r"[^a-z]+", " ", leftover.lower()).strip()
+    return leftover == ""
+
+
+def mixed_wood_label(raw: str) -> Optional[str]:
+    """Two-wood mix (optional Combo) → Wood/Wood. Else None."""
+    s = re.sub(r"\s+", " ", str(raw or "").replace("\n", " ")).strip(" -–:•*")
+    if not s or "/" not in s:
+        return None
+    parts = [p.strip() for p in re.split(r"\s*/\s*", s) if p.strip()]
+    cleaned: list[str] = []
+    for part in parts:
+        if re.fullmatch(r"(?i)combos?", part):
+            continue
+        cleaned.append(re.sub(r"(?i)\s+combos?\s*$", "", part).strip())
+    if len(cleaned) != 2:
+        return None
+    woods: list[str] = []
+    for part in cleaned:
+        if not part or not is_wood_column_label(part):
+            return None
+        name = standardize_species(part) or part
+        if not name or "/" in name or not is_wood_column_label(name):
+            return None
+        woods.append(name)
+    return f"{woods[0]}/{woods[1]}"
+
 
 # Non-wood labels a builder legitimately prices by. Everything else that
 # carries no recognized wood is spreadsheet furniture, not a species.
 _SPECIES_KEEP_RE = re.compile(
     r"""(?ix)
     ^(all\s+woods?|standard\s+wood|premium\s+wood|painted|paint|
-      two\s*-?\s*tone|unfinished\s+wood)$
+      two\s*-?\s*tone|unfinished\s+wood|steel|metal|cushion)$
     """
 )
+_BASE_MATERIAL_FEATURE = re.compile(r"(?i)add\s+metal|metal\s+wave|metal\s+leg|metal\s+door")
+_BASE_MATERIAL_RE = re.compile(r"(?i)\b(?P<kind>steel|metal)(?:\s+base(?:s)?)?(?:\s+series)?\b")
+
+
+def base_material_label(raw: str) -> Optional[str]:
+    """Steel / Metal / Cushion when the row *is* that item, not a feature mention."""
+    s = re.sub(r"\s+", " ", str(raw or "").replace("\n", " ")).strip(" -–:•*")
+    if not s or _BASE_MATERIAL_FEATURE.search(s):
+        return None
+    if re.search(r"(?i)\bcushions?\b", s):
+        return "Cushion"
+    if not _BASE_MATERIAL_RE.search(s):
+        return None
+    if re.fullmatch(r"(?i)(steel|metal)", s) or re.search(
+        r"(?i)\b(steel|metal)(?:\s+base|\s+bases|\s+base\s+series)\b", s
+    ):
+        return "Steel" if re.search(r"(?i)\bsteel\b", s) else "Metal"
+    return None
+
 
 # Longest-first wood phrases for splitting ALL-CAPS multi-wood headers
 # e.g. "OAK BR. MAPLE SAP CHERRY" → Oak / Brown Maple / Sap Cherry
@@ -90,6 +220,11 @@ _WOOD_PHRASES = [
     "Rustic Walnut",
     "Rustic Hickory",
     "Rustic Maple",
+    "Reclaimed Barnwood Oak",
+    "Rec. Barnwood Oak",
+    "Clear Black Walnut",
+    "Barnwood Oak",
+    "Barnwood",
     "Character White Oak",
     "Character Hickory",
     "Character Cherry",
@@ -132,16 +267,24 @@ _WOOD_PHRASES = [
 
 # Abbreviation → phrase (applied before phrase split)
 _WOOD_ABBREV = [
+    (re.compile(r"(?i)\breclaimed\s+barnwood\s+oak\b"), "Rec. Barnwood Oak"),
+    (re.compile(r"(?i)\brec\.?\s*barnwood\s+oak\b"), "Rec. Barnwood Oak"),
+    (re.compile(r"(?i)\bclear\s+black\s+walnut\b"), "Clear Black Walnut"),
     (re.compile(r"(?i)\bbr\.?\s*maple\b"), "Brown Maple"),
     (re.compile(r"(?i)\bbrown\s*soft\s*maple\b"), "Brown Soft Maple"),
     (re.compile(r"(?i)\bbrown\s*maple\b"), "Brown Maple"),
     (re.compile(r"(?i)\bhd\.?\s*maple\b"), "Hard Maple"),
     (re.compile(r"(?i)\bhard\s*maple\b"), "Hard Maple"),
     (re.compile(r"(?i)\bsap\s*cherry\b"), "Sap Cherry"),
+    (re.compile(r"(?i)\bsap\s*chy\b"), "Sap Cherry"),
+    (re.compile(r"(?i)\bs\s*chy\b"), "Sap Cherry"),
     (re.compile(r"(?i)\bru\.?\s*qswo\b"), "Rustic QSWO"),
+    (re.compile(r"(?i)\br\.?\s*qswo\b"), "Rustic QSWO"),
     (re.compile(r"(?i)\bru\.?\s*cherry\b"), "Rustic Cherry"),
     (re.compile(r"(?i)\bru\.?\s*walnut\b"), "Rustic Walnut"),
+    (re.compile(r"(?i)\brus\.?\s*hick\b"), "Rustic Hickory"),
     (re.compile(r"(?i)\bru\.?\s*hickory\b"), "Rustic Hickory"),
+    (re.compile(r"(?i)\br\s*hic(?:k(?:ory)?)?\b"), "Rustic Hickory"),
     (re.compile(r"(?i)\brustic\s*qsw[o0]\b"), "Rustic QSWO"),
     (re.compile(r"(?i)\br\.?\s*walnut\b"), "Rustic Walnut"),
     (re.compile(r"(?i)\bqs\s*white\s*oak\b"), "QS White Oak"),
@@ -251,6 +394,10 @@ _SPECIES_ALIASES = {
     "brown maple / red oak / rustic qswo / rustic hickory": "Brown Maple / Red Oak / Rustic QSWO / Rustic Hickory",
     "cherry / qswo hickory / hard maple / rustic walnut": "Cherry / QSWO / Hickory / Hard Maple / Rustic Walnut",
     "cherry, qswo hickory, hard maple r walnut": "Cherry / QSWO / Hickory / Hard Maple / Rustic Walnut",
+    "rec. barnwood oak": "Rec. Barnwood Oak",
+    "rec barnwood oak": "Rec. Barnwood Oak",
+    "reclaimed barnwood oak": "Rec. Barnwood Oak",
+    "clear black walnut": "Clear Black Walnut",
     "standard colors": "Standard Colors",
     "bright colors": "Bright Colors",
     "woodgrain colors": "Woodgrain Colors",
@@ -322,6 +469,10 @@ def standardize_species(val: Any) -> Optional[str]:
     index_n = int(m_idx.group(1)) if m_idx else None
     base = _TRAILING_INDEX_RE.sub("", raw).strip()
 
+    material = base_material_label(raw) or base_material_label(base)
+    if material:
+        return material
+
     # FINISHED / UNFINISHED used as species (Windy Acres) → Wood Tier N
     if re.match(r"(?i)^(finished|unfinished|finshed)$", base):
         tier = index_n or 1
@@ -336,6 +487,8 @@ def standardize_species(val: Any) -> Optional[str]:
         return f"Wood Tier {int(n.group())}" if n else base
 
     if _JUNK_SPECIES_RE.match(base) or _JUNK_SPECIES_RE.match(raw):
+        return None
+    if _DIMENSION_SPECIES_RE.match(base) or _DIMENSION_SPECIES_RE.match(raw):
         return None
     if re.match(r"(?i)^col_\d+", base):
         return None
@@ -397,6 +550,21 @@ def standardize_species(val: Any) -> Optional[str]:
     return s or None
 
 
+def mixed_wood_search_values(raw: str) -> list[str]:
+    """Catalog spellings that match a Wood/Wood dropdown pick."""
+    label = mixed_wood_label(raw)
+    if not label or "/" not in label:
+        return []
+    a, b = label.split("/", 1)
+    return [
+        f"{a}/{b}",
+        f"{a} / {b}",
+        f"{a} / {b} / Combo",
+        f"{a}/{b} Combo",
+        f"{a} / {b} Combo",
+    ]
+
+
 def is_junk_species_row(species: Any) -> bool:
     """True if species was unrecoverable junk (row may still keep if we null species)."""
     if species is None:
@@ -407,6 +575,8 @@ def is_junk_species_row(species: Any) -> bool:
     if re.match(r"(?i)^\d+(\.\d+)?(\s*\(\d+\))?$", raw):
         return True
     if re.search(r"(?i)pricelist|price list", raw) and len(raw) > 20:
+        return True
+    if _DIMENSION_SPECIES_RE.match(raw) or _DIMENSION_SPECIES_RE.match(re.sub(r"\s+", " ", raw)):
         return True
     return False
 
@@ -478,9 +648,7 @@ _CATALOG_TYPOS = {
     "furnture": "furniture",
 }
 _CATALOG_TYPO_RE = re.compile(
-    r"\b("
-    + "|".join(re.escape(k) for k in sorted(_CATALOG_TYPOS, key=len, reverse=True))
-    + r")\b",
+    r"\b(" + "|".join(re.escape(k) for k in sorted(_CATALOG_TYPOS, key=len, reverse=True)) + r")\b",
     re.I,
 )
 _REPEATED_FUNCTION_WORD = re.compile(
@@ -969,19 +1137,14 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
             and base_f == 0
             and "no upcharge" in str(out.get("notes") or "").lower()
         )
-        percent_addon = (
-            line_kind == "addon" and addon_pct is not None and addon_pct > 0
-        )
+        percent_addon = line_kind == "addon" and addon_pct is not None and addon_pct > 0
         deduction_addon = (
             line_kind == "addon"
             and base_f is not None
             and base_f < 0
             and re.search(
                 r"(?i)\b(deduct(?:ion)?|less|credit)\b",
-                " ".join(
-                    str(value or "")
-                    for value in (option_key, part, desc, out.get("notes"))
-                ),
+                " ".join(str(value or "") for value in (option_key, part, desc, out.get("notes"))),
             )
         )
         quote_only_addon = (
@@ -1037,9 +1200,7 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
             "species": species,
             "species_tier": tier_i,
             "finish_state": finish,
-            "base_price": None
-            if base_f is None
-            else round(base_f, 2),
+            "base_price": None if base_f is None else round(base_f, 2),
             "price_basis": "wholesale",
             "multiplier": mult_f,
             "adjusted_price": None,  # set below via even-dollar rule

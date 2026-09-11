@@ -25,6 +25,7 @@ from backend.workbook_sheets import read_all_sheets
 from wide_import import import_workbook
 
 CACHE_ROOTS = [
+    Path("/Volumes/ExternalSSD/FAF-pricebook/viztech-downloads"),
     Path("/Users/lordjudsonmiller/Documents/viztech-downloads"),
     Path("/Users/lordjudsonmiller/Downloads"),
     Path("/Users/lordjudsonmiller/FAF-pricelist-2.0"),
@@ -191,9 +192,7 @@ def inspect_xlsx(path: Path) -> dict:
         "errors": [],
     }
     try:
-        wb = openpyxl.load_workbook(
-            path, data_only=False, read_only=True, keep_links=False
-        )
+        wb = openpyxl.load_workbook(path, data_only=False, read_only=True, keep_links=False)
     except InvalidFileException as exc:
         info["errors"].append(f"openpyxl: {exc}")
         return _jsonable(info)
@@ -305,9 +304,7 @@ def parse_files(paths: list[Path], vendor: str) -> dict:
             try:
                 views = read_all_sheets(data)
                 for v in views:
-                    out["sheet_roles"].append(
-                        {"file": path.name, "sheet": v.name, "role": v.role}
-                    )
+                    out["sheet_roles"].append({"file": path.name, "sheet": v.name, "role": v.role})
             except Exception as exc:
                 out["errors"].append(f"roles {path.name}: {exc}")
             try:
@@ -326,7 +323,11 @@ def parse_files(paths: list[Path], vendor: str) -> dict:
 
     df = pd.concat(frames, ignore_index=True)
     out["rows"] = int(len(df))
-    kind = df["line_kind"].fillna("item").astype(str).str.lower() if "line_kind" in df.columns else "item"
+    kind = (
+        df["line_kind"].fillna("item").astype(str).str.lower()
+        if "line_kind" in df.columns
+        else "item"
+    )
     if not isinstance(kind, str):
         out["item_rows"] = int((kind != "addon").sum())
         out["addon_rows"] = int((kind == "addon").sum())
@@ -335,13 +336,21 @@ def parse_files(paths: list[Path], vendor: str) -> dict:
         out["item_rows"] = int(len(df))
         items = df
     if "part_number" in items.columns:
-        out["parts"] = sorted({str(x).strip() for x in items["part_number"].dropna() if str(x).strip()})[:400]
+        out["parts"] = sorted(
+            {str(x).strip() for x in items["part_number"].dropna() if str(x).strip()}
+        )[:400]
     if "option_key" in df.columns:
-        out["option_keys"] = sorted({str(x).strip() for x in df["option_key"].dropna() if str(x).strip()})[:200]
+        out["option_keys"] = sorted(
+            {str(x).strip() for x in df["option_key"].dropna() if str(x).strip()}
+        )[:200]
     if "finish_state" in df.columns:
-        out["finish_states"] = sorted({str(x).strip().lower() for x in df["finish_state"].dropna() if str(x).strip()})
+        out["finish_states"] = sorted(
+            {str(x).strip().lower() for x in df["finish_state"].dropna() if str(x).strip()}
+        )
     if "species" in items.columns:
-        out["species"] = sorted({str(x).strip() for x in items["species"].dropna() if str(x).strip()})[:80]
+        out["species"] = sorted(
+            {str(x).strip() for x in items["species"].dropna() if str(x).strip()}
+        )[:80]
     out["book_options"] = sorted(set(out["book_options"]))
     return out
 
@@ -427,7 +436,9 @@ def catalog_snapshot(svc: PriceBookService, vendor: str, conn: sqlite3.Connectio
     }
 
 
-def score(book: dict, parsed: dict, cat: dict, missing_file: bool) -> tuple[str, list[str], list[str], str, str]:
+def score(
+    book: dict, parsed: dict, cat: dict, missing_file: bool
+) -> tuple[str, list[str], list[str], str, str]:
     issues = []
     missed = []
     if missing_file:
@@ -439,21 +450,20 @@ def score(book: dict, parsed: dict, cat: dict, missing_file: bool) -> tuple[str,
         if insp.get("errors"):
             issues.append("Workbook open error: " + "; ".join(insp["errors"][:2]))
         if insp.get("footnote_hits"):
-            missed.append("Footnote/contact-for-price text: " + "; ".join(insp["footnote_hits"][:4]))
+            missed.append(
+                "Footnote/contact-for-price text: " + "; ".join(insp["footnote_hits"][:4])
+            )
         if insp.get("comments"):
             missed.append(f"{insp['comments']} Excel comments")
         if insp.get("formulas"):
-            missed.append(f"{insp['formulas']} formula cells (parser uses cached/openpyxl values, not a recalc)")
+            missed.append(
+                f"{insp['formulas']} formula cells (parser uses cached/openpyxl values, not a recalc)"
+            )
     # Hidden sheets stay hidden — they are often leftover duplicates, not misses.
     option_sheets = [
         r
         for r in parsed.get("sheet_roles") or []
         if str(r.get("role") or "").lower() in {"options", "option", "addons"}
-    ]
-    skip_sheets = [
-        r
-        for r in parsed.get("sheet_roles") or []
-        if str(r.get("role") or "").lower() in {"skip", "cover", "markup"}
     ]
     if option_sheets and cat.get("addon_rows", 0) == 0 and not cat.get("option_keys"):
         issues.append(
@@ -478,26 +488,41 @@ def score(book: dict, parsed: dict, cat: dict, missing_file: bool) -> tuple[str,
         only_parse = sorted(parsed_parts - cat_parts)[:12]
         only_cat = sorted(cat_parts - parsed_parts)[:12]
         if only_parse:
-            issues.append(f"{len(parsed_parts - cat_parts)} parsed SKUs not in live catalog (sample {only_parse[:6]})")
+            issues.append(
+                f"{len(parsed_parts - cat_parts)} parsed SKUs not in live catalog (sample {only_parse[:6]})"
+            )
         if only_cat and len(only_cat) > 20:
-            missed.append(f"{len(cat_parts - parsed_parts)} catalog SKUs not in this re-parse (multi-file lock or standardize drop)")
-    if "unfinished" in (parsed.get("finish_states") or []) and "unfinished" not in (cat.get("finish_states") or []):
+            missed.append(
+                f"{len(cat_parts - parsed_parts)} catalog SKUs not in this re-parse (multi-file lock or standardize drop)"
+            )
+    if "unfinished" in (parsed.get("finish_states") or []) and "unfinished" not in (
+        cat.get("finish_states") or []
+    ):
         issues.append("Parse sees unfinished; catalog has no unfinished rows")
     excel_unf = any(
-        re.search(r"(?i)unfinish", " ".join(insp.get("optionish_hits") or []) + " " + " ".join(s.get("name", "") for s in insp.get("sheets") or []))
+        re.search(
+            r"(?i)unfinish",
+            " ".join(insp.get("optionish_hits") or [])
+            + " "
+            + " ".join(s.get("name", "") for s in insp.get("sheets") or []),
+        )
         for insp in book.get("inspections") or []
     )
-    if excel_unf and cat.get("unfinished_rows", 0) == 0 and "Unfinished" not in (cat.get("option_keys") or []):
-        missed.append("Unfinished mentioned in book; catalog has 0 unfinished rows and no Unfinished Option")
+    if (
+        excel_unf
+        and cat.get("unfinished_rows", 0) == 0
+        and "Unfinished" not in (cat.get("option_keys") or [])
+    ):
+        missed.append(
+            "Unfinished mentioned in book; catalog has 0 unfinished rows and no Unfinished Option"
+        )
     if parsed.get("errors"):
         issues.append("Parse errors: " + "; ".join(parsed["errors"][:2]))
     if not cat.get("item_rows"):
         issues.append("Zero sellable rows in live catalog")
     description_quality = cat.get("description_quality") or {}
     if description_quality.get("blank"):
-        issues.append(
-            f"{description_quality['blank']} item descriptions are blank"
-        )
+        issues.append(f"{description_quality['blank']} item descriptions are blank")
     if description_quality.get("placeholder"):
         issues.append(
             f"{description_quality['placeholder']} item descriptions are parser placeholders"
@@ -533,7 +558,6 @@ def main() -> None:
         )
     ]
     profile_dir = Path("/Users/lordjudsonmiller/FAF-pricelist-2.0/config/builder_profiles")
-    vendors = sorted(set(db_vendors) | {load_builder_profile(p.stem.replace("-", " ")) and None or p.stem for p in profile_dir.glob("*.json")})
     # Prefer canonical names from DB / profiles
     profile_vendors = []
     for p in sorted(profile_dir.glob("*.json")):
@@ -554,7 +578,17 @@ def main() -> None:
         print(f"START {vendor} source={source!r} files={len(paths)}", flush=True)
         inspections = [inspect_xlsx(p) for p in paths]
         print(f"  inspected {vendor}", flush=True)
-        parsed = parse_files(paths, vendor) if paths else {"importer": importer_lock, "errors": ["no source file"], "parts": [], "book_options": [], "sheet_roles": []}
+        parsed = (
+            parse_files(paths, vendor)
+            if paths
+            else {
+                "importer": importer_lock,
+                "errors": ["no source file"],
+                "parts": [],
+                "book_options": [],
+                "sheet_roles": [],
+            }
+        )
         print(f"  parsed {vendor} importer={parsed.get('importer')}", flush=True)
         cat = catalog_snapshot(svc, vendor, conn)
         status, issues, missed_items, summary, conf = score(
@@ -576,7 +610,9 @@ def main() -> None:
                 "confidence": conf,
                 "structure": summary,
                 "sheets": sheet_names,
-                "hidden_sheets": [h for insp in inspections for h in (insp.get("hidden_sheets") or [])],
+                "hidden_sheets": [
+                    h for insp in inspections for h in (insp.get("hidden_sheets") or [])
+                ],
                 "merged_ranges": sum(i.get("merged_ranges") or 0 for i in inspections),
                 "formulas": sum(i.get("formulas") or 0 for i in inspections),
                 "comments": sum(i.get("comments") or 0 for i in inspections),
@@ -598,7 +634,10 @@ def main() -> None:
                 "sheet_roles": parsed.get("sheet_roles") or [],
             }
         )
-        print(f"{status:12} {vendor:32} files={len(paths)} cat={cat.get('item_rows')} opts={len(cat.get('option_keys') or [])}", flush=True)
+        print(
+            f"{status:12} {vendor:32} files={len(paths)} cat={cat.get('item_rows')} opts={len(cat.get('option_keys') or [])}",
+            flush=True,
+        )
 
     orphan_files = []
     for name, paths in sorted(index.items()):

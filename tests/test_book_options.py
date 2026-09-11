@@ -30,7 +30,13 @@ def _millcraft_front_matter() -> bytes:
             ["", "Oak", "Brown Maple"],
             ["", "ADD 10%"],
             ["", "Size Changes", "", "", "ADD ON OPTIONS"],
-            ["", "Any casegood or bed can be customized up to 10''.", "", "", "Hidden Jewelry Tray: $30"],
+            [
+                "",
+                "Any casegood or bed can be customized up to 10''.",
+                "",
+                "",
+                "Hidden Jewelry Tray: $30",
+            ],
             ["", "Two Toning", "", "", "Lock: $25"],
             ["", "ADD 20%"],
             ["", "Size changes on any casegood or bed over 10''."],
@@ -46,8 +52,8 @@ def _millcraft_front_matter() -> bytes:
 def test_extracts_size_pct_finishes_and_flat_add_ons():
     rows = extract_book_options(_millcraft_front_matter(), vendor="Millcraft")
     by = {r["option_key"]: r for r in rows}
-    assert by["Size change (up to 10\")"]["addon_pct"] == 10
-    assert by["Size change (over 10\")"]["addon_pct"] == 20
+    assert by['Size change (up to 10")']["addon_pct"] == 10
+    assert by['Size change (over 10")']["addon_pct"] == 20
     assert by["Two-tone"]["addon_pct"] == 10
     assert by["Distressing"]["addon_pct"] == 20
     assert by["Hand-rubbed oil"]["addon_pct"] == 20
@@ -58,12 +64,205 @@ def test_extracts_size_pct_finishes_and_flat_add_ons():
     assert "Standard Wood" not in by
 
 
+def test_wood_percent_adders_are_not_options():
+    data = _xlsx(
+        [
+            ["Options"],
+            ["Rec. Barnwood Oak add", "30% on 1st Column Price"],
+            ["Clear black Walnut add", "50% on 1st Column Price"],
+            ["Walnut, add 75% to the oak price."],
+            ["Painting add 10%"],
+        ]
+    )
+    keys = {r["option_key"] for r in extract_book_options(data, vendor="Frog Pond Furniture")}
+    assert "Painting" in keys or "Paint" in keys
+    assert not any("barnwood" in k.lower() for k in keys)
+    assert not any("walnut" in k.lower() for k in keys)
+
+
+def test_book_listed_woods_become_species_for_any_builder():
+    existing = pd.DataFrame(
+        [
+            {
+                "vendor": "Any Factory",
+                "part_number": "NS1",
+                "description": "Nightstand",
+                "species": "Oak",
+                "finish_state": "finished",
+                "base_price": 200,
+                "multiplier": 2.7,
+                "adjusted_price": 540,
+                "line_kind": "item",
+                "option_key": None,
+            }
+        ]
+    )
+    result = WorkbookImportResult(
+        sheets_tried=[],
+        long_df=existing,
+        detected_markup=None,
+        sheet_names=["Pricelist"],
+    )
+    data = _xlsx(
+        [
+            ["Options"],
+            ["Painting add 10%"],
+            ["Walnut, ADD 50% to Oak pricing."],
+        ]
+    )
+    merged = merge_book_options(result, data, vendor="Any Factory")
+    items = merged.long_df[merged.long_df["line_kind"].fillna("item") != "addon"]
+    woods = set(items["species"].astype(str))
+    assert "Oak" in woods
+    assert "Walnut" in woods
+    walnut = items[items["species"] == "Walnut"]
+    assert float(walnut["base_price"].iloc[0]) == 300
+    assert float(walnut["adjusted_price"].iloc[0]) == 810
+    keys = {str(k) for k in merged.long_df.get("option_key", []).fillna("") if str(k).strip()}
+    assert any("paint" in k.lower() for k in keys)
+    assert "Walnut" not in keys
+
+
+def test_wood_named_collection_fills_blank_species():
+    from backend.book_options import convert_option_woods_to_species
+
+    df = pd.DataFrame(
+        [
+            {
+                "vendor": "Brookside Home Furnishings",
+                "part_number": "BA2341",
+                "description": "Arm Chair",
+                "species": None,
+                "collection": "Barnwood",
+                "finish_state": "finished",
+                "base_price": 200,
+                "line_kind": "item",
+            }
+        ]
+    )
+    out = convert_option_woods_to_species(df)
+    assert str(out.iloc[0]["species"]) == "Barnwood"
+
+
+def test_steel_and_metal_bases_fill_blank_species():
+    from backend.book_options import convert_option_woods_to_species
+
+    df = pd.DataFrame(
+        [
+            {
+                "vendor": "Troyer Design Company",
+                "part_number": "MHP-16",
+                "description": 'COFFEE — 16" H',
+                "species": None,
+                "collection": "Steel Bases Wholesale prices",
+                "finish_state": "finished",
+                "base_price": 170,
+                "line_kind": "item",
+            },
+            {
+                "vendor": "Stone River Furniture",
+                "part_number": "1100-10",
+                "description": "Single Pedestal End Table",
+                "species": None,
+                "collection": "Metal Bases",
+                "finish_state": "finished",
+                "base_price": 152,
+                "line_kind": "item",
+            },
+        ]
+    )
+    out = convert_option_woods_to_species(df)
+    steel = out[out["part_number"] == "MHP-16"].iloc[0]
+    metal = out[out["part_number"] == "1100-10"].iloc[0]
+    assert steel["species"] == "Steel"
+    assert metal["species"] == "Metal"
+
+
+def test_cushions_fill_blank_species():
+    from backend.book_options import convert_option_woods_to_species
+
+    df = pd.DataFrame(
+        [
+            {
+                "vendor": "Patio Kraft",
+                "part_number": "BRCS",
+                "description": "Replacement Cushion Sets (1 seat & 1 back)",
+                "species": None,
+                "collection": "Brooklyn Collection",
+                "finish_state": "finished",
+                "base_price": 209,
+                "line_kind": "item",
+            },
+            {
+                "vendor": "Patio Kraft",
+                "part_number": "BRAC",
+                "description": "Brooklyn Armrest Cushion (Set of 2)",
+                "species": None,
+                "collection": "Accessories",
+                "finish_state": "finished",
+                "base_price": 79,
+                "line_kind": "item",
+            },
+        ]
+    )
+    out = convert_option_woods_to_species(df)
+    assert (out["species"] == "Cushion").all()
+
+
+def test_named_parser_wood_addon_converts_to_species():
+    from backend.book_options import convert_option_woods_to_species
+
+    df = pd.DataFrame(
+        [
+            {
+                "vendor": "LAMB",
+                "part_number": "T1",
+                "description": "Table",
+                "species": "Oak",
+                "finish_state": "finished",
+                "base_price": 400,
+                "line_kind": "item",
+                "option_key": None,
+            },
+            {
+                "vendor": "LAMB",
+                "part_number": "Walnut",
+                "description": "Walnut",
+                "species": None,
+                "finish_state": "finished",
+                "base_price": None,
+                "line_kind": "addon",
+                "option_key": "Walnut",
+                "addon_pct": 50,
+            },
+            {
+                "vendor": "LAMB",
+                "part_number": "Paint",
+                "description": "Paint",
+                "species": None,
+                "finish_state": "finished",
+                "base_price": None,
+                "line_kind": "addon",
+                "option_key": "Paint",
+                "addon_pct": 10,
+            },
+        ]
+    )
+    out = convert_option_woods_to_species(df)
+    items = out[out["line_kind"].fillna("item") != "addon"]
+    assert "Walnut" in set(items["species"].astype(str))
+    assert float(items[items["species"] == "Walnut"]["base_price"].iloc[0]) == 600
+    keys = {str(k) for k in out.get("option_key", []).fillna("") if str(k).strip()}
+    assert "Paint" in keys
+    assert "Walnut" not in keys
+
+
 def test_import_workbook_puts_size_and_finish_on_search_options():
     data = _millcraft_front_matter()
     result = import_workbook(data, vendor="Millcraft", filename="Millcraft.xlsx")
     addons = result.long_df[result.long_df["line_kind"] == "addon"]
     keys = set(addons["option_key"].astype(str))
-    assert "Size change (up to 10\")" in keys
+    assert 'Size change (up to 10")' in keys
     assert "Two-tone" in keys
     assert "Lock" in keys
 
@@ -91,8 +290,28 @@ def test_skips_cover_sheet_and_catalog_fragments():
     assert "Prices for the year" not in keys
     assert not any("Hidden Chair" in k or "OPTION:" in k for k in keys)
     assert not any(k[:1].islower() for k in keys)
-    assert "Size change (up to 10\")" in keys
+    assert 'Size change (up to 10")' in keys
     assert "Two-tone" in keys
+
+
+def test_for_prefix_dollar_adders_and_cost_is_percent():
+    data = _xlsx(
+        [
+            ["Options"],
+            ["For hidden jewelry drawer add 100.00"],
+            ["For hidden hand gun storage (With sliding top) add 150.00"],
+            ["For platform bed add 200.00"],
+            ["Headboard only cost is 50% of bed"],
+        ]
+    )
+    by = {
+        row["option_key"]: row for row in extract_book_options(data, vendor="Windy Acres Furniture")
+    }
+    assert by["Hidden jewelry drawer"]["base_price"] == 100
+    assert by["Hidden hand gun storage (With sliding top)"]["base_price"] == 150
+    assert by["Platform bed"]["base_price"] == 200
+    assert by["Headboard only"]["addon_pct"] == 50
+    assert not any(k[:1].islower() for k in by)
 
 
 def test_merge_does_not_duplicate_existing_option_keys():
@@ -154,12 +373,7 @@ def test_extracts_formatted_finish_percent_rows_after_finish_banner():
 
 def test_extracts_per_drawer_hardware_charges_from_visible_note():
     data = _xlsx(
-        [
-            [
-                '*Add $10/drawer for side mount soft close, '
-                '$20/drawer for undermount soft close'
-            ]
-        ]
+        [["*Add $10/drawer for side mount soft close, $20/drawer for undermount soft close"]]
     )
 
     by = {row["option_key"]: row for row in extract_book_options(data, vendor="X")}
@@ -228,9 +442,30 @@ def test_builder_names_never_become_option_labels():
 def test_per_sku_finish_markup_rows_are_not_global_options():
     data = _xlsx(
         [
-            ["110 CSF", '36" Cubic Slat Footstool', 54.6, "Standard Wiping Stains", "List Price", "add 10%"],
-            ["10-36", 'AJ #1 36" Square End Table', 110.25, "Standard Wiping Stains", "List Price", "add 10%"],
-            ["PD-36", 'Pioneer 36" Coffee Table', 99.75, "Standard Wiping Stains", "List Price", "add 10%"],
+            [
+                "110 CSF",
+                '36" Cubic Slat Footstool',
+                54.6,
+                "Standard Wiping Stains",
+                "List Price",
+                "add 10%",
+            ],
+            [
+                "10-36",
+                'AJ #1 36" Square End Table',
+                110.25,
+                "Standard Wiping Stains",
+                "List Price",
+                "add 10%",
+            ],
+            [
+                "PD-36",
+                'Pioneer 36" Coffee Table',
+                99.75,
+                "Standard Wiping Stains",
+                "List Price",
+                "add 10%",
+            ],
             ["Paint", "add 20%"],
         ]
     )

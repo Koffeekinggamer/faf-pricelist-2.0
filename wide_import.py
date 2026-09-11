@@ -234,6 +234,10 @@ def looks_like_desc_header(col: str) -> bool:
 
 
 def looks_like_dim_header(col: str) -> bool:
+    from backend.standardize import dimension_axis
+
+    if dimension_axis(col):
+        return True
     k = _norm_key(col)
     if k in {"h", "w", "d", 'h"', 'w"', 'd"', "h'", "w'", "d'"}:
         return True
@@ -932,8 +936,13 @@ def _combine_dims(row: pd.Series, dim_cols: list[str]) -> Optional[str]:
         v = _norm(row.get(c))
         if v:
             # label short dim cols
+            from backend.standardize import dimension_axis
+
             label = _norm(c)
-            if label.lower() in {'h"', 'w"', 'd"', "h", "w", "d"}:
+            axis = dimension_axis(c) or dimension_axis(label)
+            if axis:
+                parts.append(f'{axis}"{v}')
+            elif label.lower() in {'h"', 'w"', 'd"', "h", "w", "d"}:
                 parts.append(f"{label}{v}" if v[-1] in "\"'" else f"{label}:{v}")
             else:
                 parts.append(v)
@@ -1583,9 +1592,11 @@ def parse_patio_kraft_sheet(
         # do not invent a woodgrain/black tier for those SKUs.
         # Two+ filled prices → real color-tier matrix.
         single_price = len(filled) == 1
+        from backend.standardize import base_material_label
+
         for tier_i, (j, label, price) in enumerate(filled, start=1):
             if single_price or label.lower() == "price":
-                species = None
+                species = base_material_label(desc) or base_material_label(current_collection or "")
                 stier = None
             else:
                 species = label
@@ -1741,6 +1752,13 @@ LAMB_SKIP_SECTIONS = re.compile(
     r"(?i)^(furniture\s*options|power\s*outlets|hardware|lighting|materials|"
     r"lift\s*tops|glass\s*options|quick\s*ship\s*items|notes?|options)$"
 )
+_LAMB_OPT_HDR = re.compile(r"(?i)^furniture\s*options$")
+_LAMB_OPT_STOP = re.compile(r"(?i)^(quick\s*ship|item\s*no\.?$|seating$)")
+_LAMB_OPT_SKIP = re.compile(
+    r"(?i)^(price|item\s*no\.?|size|description|notes?|most hardware|"
+    r"lamb customization|note:|start with base|^[0-9]+$)$"
+)
+_LAMB_WALNUT_ADD = re.compile(r"(?i)for\s+walnut.*add\s+(\d+(?:\.\d+)?)\s*%")
 
 
 def looks_like_lamb(
@@ -1821,6 +1839,8 @@ def parse_lamb_wholesale_sheet(
     fin_cols: list[tuple[int, str]] = []
     finish_cost_col: Optional[int] = None
     collection = (default_collection or "").strip() or None
+    option_rows: list[dict] = []
+    in_options = False
 
     def _to_price(v) -> Optional[float]:
         if v is None or (isinstance(v, float) and pd.isna(v)):
@@ -1856,6 +1876,41 @@ def parse_lamb_wholesale_sheet(
             }
         )
 
+    def _option_price(vals) -> Optional[float]:
+        """Price column sits under the Options 'Price' header (usually col 6)."""
+        for j in (6, 5, 7):
+            if j < n_cols:
+                p = _to_price(vals[j])
+                if p is not None and 1 < p < 2000:
+                    return p
+        return None
+
+    def _emit_option(label: str, price: Optional[float] = None, pct: Optional[float] = None):
+        name = re.sub(r"\s+", " ", label).strip(" -:")
+        if not name or _LAMB_OPT_SKIP.match(name) or LAMB_SKIP_SECTIONS.match(name):
+            return
+        if re.match(r"(?i)^most hardware", name):
+            return
+        option_rows.append(
+            {
+                "vendor": vendor or "LAMB",
+                "collection": "Furniture Options",
+                "part_number": name,
+                "description": name,
+                "dimensions": None,
+                "option_key": name,
+                "species": None,
+                "species_tier": None,
+                "finish_state": None,
+                "base_price": float(price) if price else 0.0,
+                "price_basis": price_basis,
+                "unit": None,
+                "notes": None,
+                "line_kind": "addon",
+                "addon_pct": pct,
+            }
+        )
+
     for i in range(len(work)):
         vals = [work.iat[i, j] if j < n_cols else None for j in range(n_cols)]
         v0 = _norm(vals[0]) if vals else ""
@@ -1865,6 +1920,21 @@ def parse_lamb_wholesale_sheet(
             unf_cols = hdr["unf"]
             fin_cols = hdr["fin"]
             finish_cost_col = hdr["finish_cost_col"]
+            continue
+
+        joined = " ".join(_norm(v) for v in vals if _norm(v))
+        walnut = _LAMB_WALNUT_ADD.search(joined)
+        if walnut:
+            _emit_option("Walnut", pct=float(walnut.group(1)))
+        if _LAMB_OPT_HDR.match(v0):
+            in_options = True
+            continue
+        if in_options and (_LAMB_OPT_STOP.match(v0) or LAMB_SKU_RE.match(v0)):
+            in_options = False
+        if in_options and v0 and not LAMB_SKU_RE.match(v0) and not _LAMB_OPT_SKIP.match(v0):
+            price = _option_price(vals)
+            if price is not None:
+                _emit_option(v0, price=price)
             continue
 
         # Section / collection header: ALEXIS, ARTS & CRAFTS, ASHTON, …
@@ -1909,15 +1979,15 @@ def parse_lamb_wholesale_sheet(
         # Quick-ship / oak-only: unfinished | finishing cost | finished in last 3 cols
         # when full wood matrix is not populated on this row
         if matrix_prices <= 1 and last3[0] is not None and last3[2] is not None:
-            _emit(part, desc, dims, "unfinished", last3[0], species=None, tier=None)
-            _emit(part, desc, dims, "finished", last3[2], species=None, tier=None)
+            _emit(part, desc, dims, "unfinished", last3[0], species="Oak", tier=None)
+            _emit(part, desc, dims, "finished", last3[2], species="Oak", tier=None)
             continue
 
         if not unf_cols and not fin_cols:
             # Fall back to last3 if no matrix header seen yet
             if last3[0] is not None and last3[2] is not None:
-                _emit(part, desc, dims, "unfinished", last3[0])
-                _emit(part, desc, dims, "finished", last3[2])
+                _emit(part, desc, dims, "unfinished", last3[0], species="Oak")
+                _emit(part, desc, dims, "finished", last3[2], species="Oak")
             continue
 
         for finish_state, col_list in (
@@ -1983,7 +2053,15 @@ def parse_lamb_wholesale_sheet(
         else:
             final.append(group[0])
 
-    return _clean_long_rows(pd.DataFrame(final))
+    items = _clean_long_rows(pd.DataFrame(final))
+    if not option_rows:
+        return items
+    opts = _clean_long_rows(pd.DataFrame(option_rows))
+    if items.empty:
+        return opts
+    if opts.empty:
+        return items
+    return pd.concat([items, opts], ignore_index=True)
 
 
 def import_lamb_workbook(
@@ -2352,9 +2430,18 @@ def _windy_species_label(cell) -> str:
         line = re.sub(r"\s+", " ", line).strip(" \t-•")
         if not line or not _WINDY_WOOD_HINT.search(line):
             continue
-        line = re.sub(r"(?i)\bru\.?\s*qswo\b", "Rustic QSWO", line)
-        line = re.sub(r"(?i)\br\.?\s*hickory\b", "Rustic Hickory", line)
-        line = re.sub(r"(?i)\br\.?\s*wal(?:nut)?\b", "Rustic Walnut", line)
+        line = re.sub(
+            r"(?i)\br(?:u)?\.?\s*(?P<wood>qswo|qsw|hickory|walnut|wal|cherry|oak|maple)\b",
+            lambda m: (
+                "Rustic "
+                + {
+                    "qswo": "QSWO",
+                    "qsw": "QSWO",
+                    "wal": "Walnut",
+                }.get(m.group("wood").lower(), m.group("wood").title())
+            ),
+            line,
+        )
         line = re.sub(r"(?i)cherry-hickory", "Cherry / Hickory", line)
         parts.append(line)
     seen = set()
@@ -2367,68 +2454,127 @@ def _windy_species_label(cell) -> str:
     return " / ".join(out)
 
 
+_WINDY_TITLE_SKIP = re.compile(
+    r"(?i)dimension|markup|instruction|read first|^options?$|password|"
+    r"portal|login|please read|^add\s|per (?:piece|drawer|bed)|cost is"
+)
+
+
+def _windy_item_header_col(raw: pd.DataFrame, i: int) -> Optional[int]:
+    """ITEM # can sit in column 0 (Master) or column 1 (Bedroom Collection)."""
+    for j in range(min(4, raw.shape[1])):
+        if re.match(r"(?i)^item\s*#?$", _norm(raw.iat[i, j])):
+            return j
+    return None
+
+
+def _windy_first_text(raw: pd.DataFrame, i: int) -> str:
+    for j in range(min(3, raw.shape[1])):
+        text = _norm(raw.iat[i, j])
+        if text:
+            return text
+    return ""
+
+
 def parse_windy_acres_sheet(
     raw: pd.DataFrame, *, vendor: str = "Windy Acres Furniture"
 ) -> pd.DataFrame:
     """
-    Walk Windy Master-style sheet:
+    Walk visible Windy sheets (Master or Bedroom Collection):
       [collection title]
-      DIMENSIONS | woodgroup1 | woodgroup2 | …
-      ITEM# | H | W | D | FINISHED | UNFINISHED | FINISHED | UNFINISHED | …
-      630-Coffee-TD | 19 | 40 | 20 | 267 | 227 | …
+      woodgroup1 | woodgroup2 | …
+      ITEM # | Description | D | W | H | FINISHED | UNFINISHED | …
+      1702 | Night stand | 16.25 | 22 | 27.75 | 429 | 377 | …
+    Hidden Master/backup tabs are never opened — callers pass visible frames only.
     """
     if raw is None or raw.empty:
         return pd.DataFrame()
 
     rows: list[dict] = []
     current_collection: Optional[str] = None
-    # active map: list of (col_idx, species_label, finish_state)
     price_cols: list[tuple[int, str, str]] = []
-    dim_cols: dict[str, int] = {}  # h/w/d -> col
+    dim_cols: dict[str, int] = {}
+    item_col = 0
+    desc_col: Optional[int] = None
+    last_wood_labels: dict[int, str] = {}
+    last_pair_species: list[str] = []
 
     def _is_item_header(s: str) -> bool:
-        return bool(re.match(r"(?i)^item\s*#?$", s.strip()))
+        return bool(re.match(r"(?i)^item\s*#?$", (s or "").strip()))
 
     def _is_finish(s: str) -> bool:
         k = s.strip().lower()
         return k in {"finished", "finshed", "unfinished", "unf"}
 
-    for i in range(len(raw)):
-        c0 = raw.iat[i, 0] if raw.shape[1] else None
-        s0 = _norm(c0) if pd.notna(c0) else ""
+    def _bind_price_cols(i: int, wood_labels_by_col: dict[int, str]) -> list[tuple[int, str, str]]:
+        bound: list[tuple[int, str, str]] = []
+        carry_species = ""
+        pair_i = 0
+        for j in range(raw.shape[1]):
+            cell = _norm(raw.iat[i, j])
+            if not cell:
+                continue
+            if _is_finish(cell):
+                sp = wood_labels_by_col.get(j) or carry_species
+                if not sp:
+                    for k in range(j, -1, -1):
+                        if k in wood_labels_by_col:
+                            sp = wood_labels_by_col[k]
+                            break
+                if (not sp or not _WINDY_WOOD_HINT.search(sp)) and pair_i < len(last_pair_species):
+                    sp = last_pair_species[pair_i]
+                if not sp or not _WINDY_WOOD_HINT.search(sp):
+                    sp = f"Wood Tier {len(bound) // 2 + 1}"
+                else:
+                    carry_species = sp
+                fin = "unfinished" if "unf" in cell.lower() else "finished"
+                bound.append((j, sp, fin))
+                if fin == "unfinished" or (bound and len(bound) % 2 == 0):
+                    pair_i = len(bound) // 2
+            elif j in wood_labels_by_col and _WINDY_WOOD_HINT.search(wood_labels_by_col[j]):
+                carry_species = wood_labels_by_col[j]
+        if not bound:
+            for j in range(raw.shape[1]):
+                lab = _windy_species_label(raw.iat[i, j])
+                if lab:
+                    bound.append((j, lab, "finished"))
+        return bound
 
-        # Collection / section titles (short, no prices)
-        if s0 and not _is_item_header(s0) and len(s0) < 80:
-            nums = [_to_float(raw.iat[i, j]) for j in range(1, min(raw.shape[1], 12))]
+    for i in range(len(raw)):
+        header_col = _windy_item_header_col(raw, i)
+        title = _windy_first_text(raw, i)
+
+        if header_col is None and title and not _is_item_header(title) and len(title) < 80:
+            nums = [_to_float(raw.iat[i, j]) for j in range(raw.shape[1])]
             if not any(n is not None for n in nums):
                 if re.search(
                     r"(?i)collection|bedroom|occasionals|with one drawer|without drawers|solid color",
-                    s0,
-                ) or (s0[0].isupper() and " " in s0 and len(s0) > 8):
-                    if not re.search(r"(?i)dimension|markup|instruction|read first", s0):
-                        current_collection = s0
+                    title,
+                ) or (title[0].isupper() and " " in title and len(title) > 8):
+                    if not _WINDY_TITLE_SKIP.search(title):
+                        current_collection = title
 
-        # ITEM# header → bind wood labels from row above + finish from this row
-        if s0 and _is_item_header(s0):
+        if header_col is not None:
+            item_col = header_col
             price_cols = []
             dim_cols = {}
+            desc_col = None
             wood_row = raw.iloc[i - 1] if i > 0 else None
-            # sometimes wood is two rows above (DIMENSIONS row)
             wood_row2 = raw.iloc[i - 2] if i > 1 else None
 
-            # detect H/W/D columns on header row
-            for j in range(1, min(raw.shape[1], 6)):
+            for j in range(raw.shape[1]):
                 lab = _norm(raw.iat[i, j]).lower().replace('"', "")
-                if lab in {"h", "h'", "hb h"} or lab.startswith("h"):
-                    if "w" not in lab and "d" not in lab:
-                        dim_cols["h"] = j
-                elif lab in {"w", "w'"} or (lab.startswith("w") and "hb" not in lab):
-                    dim_cols["w"] = j
-                elif lab in {"d", "d'"} or lab.startswith("d"):
-                    dim_cols["d"] = j
+                if _is_item_header(_norm(raw.iat[i, j])) or _is_finish(_norm(raw.iat[i, j])):
+                    continue
+                if lab in {"description", "desc"}:
+                    desc_col = j
+                    continue
+                from backend.standardize import dimension_axis
 
-            # Build species labels per finish column
-            # Prefer wood labels from DIMENSIONS row (i-1 or i-2)
+                axis = dimension_axis(raw.iat[i, j])
+                if axis:
+                    dim_cols[axis] = j
+
             wood_labels_by_col: dict[int, str] = {}
             for src in (wood_row2, wood_row):
                 if src is None:
@@ -2437,66 +2583,49 @@ def parse_windy_acres_sheet(
                     lab = _windy_species_label(src.iloc[j] if j < len(src) else None)
                     if lab and not re.match(r"(?i)^dimension", lab):
                         wood_labels_by_col[j] = lab
+            if not wood_labels_by_col and last_wood_labels:
+                wood_labels_by_col = dict(last_wood_labels)
+            elif wood_labels_by_col:
+                last_wood_labels = dict(wood_labels_by_col)
 
-            # Walk finish columns on ITEM# row; carry last wood label from left
-            carry_species = ""
-            for j in range(1, raw.shape[1]):
-                cell = _norm(raw.iat[i, j])
-                if not cell:
-                    # empty header but might still be price col under a wood group
-                    continue
-                if _is_finish(cell):
-                    # find wood label: this col or nearest left wood-labeled col
-                    sp = wood_labels_by_col.get(j) or carry_species
-                    if not sp:
-                        # look left for wood label on wood rows
-                        for k in range(j, -1, -1):
-                            if k in wood_labels_by_col:
-                                sp = wood_labels_by_col[k]
-                                break
-                    if not sp or not _WINDY_WOOD_HINT.search(sp):
-                        sp = f"Wood Tier {len(price_cols) // 2 + 1}"
-                    else:
-                        carry_species = sp
-                    fin = "unfinished" if "unf" in cell.lower() else "finished"
-                    price_cols.append((j, sp, fin))
-                elif j in wood_labels_by_col and _WINDY_WOOD_HINT.search(wood_labels_by_col[j]):
-                    carry_species = wood_labels_by_col[j]
-            # Bedroom-style: wood names sit on ITEM# row as price headers (no FIN/UNF)
-            if not price_cols:
-                for j in range(1, raw.shape[1]):
-                    lab = _windy_species_label(raw.iat[i, j])
-                    if lab:
-                        price_cols.append((j, lab, "finished"))
+            price_cols = _bind_price_cols(i, wood_labels_by_col)
+            if price_cols:
+                pairs: list[str] = []
+                for idx, (_j, sp, _fin) in enumerate(price_cols):
+                    if idx % 2 == 0:
+                        pairs.append(sp)
+                last_pair_species = pairs
             continue
 
-        # Data rows
-        if not price_cols or not s0:
+        if not price_cols:
             continue
-        if _is_item_header(s0) or re.match(r"(?i)^dimension", s0):
+        part = _norm(raw.iat[i, item_col]) if item_col < raw.shape[1] else ""
+        if not part:
+            part = title
+        if not part or _is_item_header(part) or re.match(r"(?i)^dimension", part):
             continue
-        # skip pure section rows without prices
         any_price = any(
             _to_float(raw.iat[i, j]) is not None for j, _, _ in price_cols if j < raw.shape[1]
         )
         if not any_price:
             continue
 
-        # description: humanize part if it has hyphens
-        part = s0
         desc = part
-        # 630-Coffee-TD → Coffee TD style
-        if "-" in part:
+        if desc_col is not None:
+            labeled = _norm(raw.iat[i, desc_col])
+            if labeled:
+                desc = labeled
+        elif "-" in part:
             bits = part.split("-", 1)
             if len(bits) == 2 and re.match(r"^[A-Za-z]", bits[1]):
                 desc = bits[1].replace("-", " ")
 
         dims_parts = []
-        for key in ("h", "w", "d"):
+        for key in ("H", "W", "D", "HB H", "FB H"):
             if key in dim_cols:
                 v = raw.iat[i, dim_cols[key]]
                 if pd.notna(v):
-                    dims_parts.append(f'{key.upper()}"{v}')
+                    dims_parts.append(f'{key}"{v}')
         dims = " × ".join(dims_parts) if dims_parts else None
 
         for tier_i, (j, species, finish) in enumerate(price_cols, start=1):
@@ -2534,31 +2663,29 @@ def import_windy_acres_workbook(
     sheet_filter: Optional[list[str]] = None,
     filename: str = "",
 ) -> WorkbookImportResult:
+    from backend.workbook_sheets import read_all_sheets
+
     names = list_excel_sheets(data)
     vendor_name = (vendor or "").strip() or "Windy Acres Furniture"
     frames = []
     tried = []
-    targets = (
-        sheet_filter
-        if sheet_filter is not None
-        else [n for n in names if not re.search(r"(?i)instruction|mark\s*up|read\s*first", str(n))]
-    )
-    # Prefer Master
-    if sheet_filter is None and any(str(n).lower() == "master" for n in names):
-        targets = [n for n in names if str(n).lower() == "master"]
-
-    for name in names:
-        if name not in targets:
-            tried.append({"sheet": name, "layout": "skip", "rows": 0, "note": "non-product"})
+    # Every visible tab is opened. Hidden Master / Braylon stay hidden.
+    for view in read_all_sheets(data):
+        name = view.name
+        if sheet_filter is not None and name not in sheet_filter:
+            tried.append({"sheet": name, "layout": "skip", "rows": 0, "note": "filtered"})
             continue
-        try:
-            from backend.workbook_sheets import read_sheet
-
-            raw = read_sheet(data, name, header=None)
-        except Exception as e:
-            tried.append({"sheet": name, "layout": "error", "rows": 0, "note": str(e)})
+        if view.role in {"cover", "markup", "empty", "error"}:
+            tried.append(
+                {
+                    "sheet": name,
+                    "layout": view.role,
+                    "rows": 0,
+                    "note": view.note or "non-product",
+                }
+            )
             continue
-        long = parse_windy_acres_sheet(raw, vendor=vendor_name)
+        long = parse_windy_acres_sheet(view.raw, vendor=vendor_name)
         n = len(long) if long is not None and not long.empty else 0
         tried.append(
             {
@@ -3877,7 +4004,7 @@ def import_workbook(
         if view is not None and view.role == "options" and view.raw is not None:
             from backend.book_options import extract_from_frame
 
-            opt_rows = extract_from_frame(view.raw, vendor=vendor or "")
+            opt_rows, _woods = extract_from_frame(view.raw, vendor=vendor or "")
             long_opt = pd.DataFrame(opt_rows)
             tried.append(
                 {
@@ -4037,6 +4164,9 @@ def import_workbook(
             if "collection" in long.columns:
                 long["collection"] = long["collection"].fillna(name)
                 long.loc[long["collection"].astype(str).str.strip() == "", "collection"] = name
+            from backend.book_options import apply_sheet_base_material
+
+            long = apply_sheet_base_material(long, str(name))
             frames.append(long)
 
     if frames:

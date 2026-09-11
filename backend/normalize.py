@@ -60,6 +60,10 @@ def normalize_dataframe(
     if df is None or df.empty:
         return []
 
+    from backend.book_options import convert_option_woods_to_species
+
+    df = convert_option_woods_to_species(df)
+
     mapping = column_map or map_columns(df)
     for canon in (
         "part_number",

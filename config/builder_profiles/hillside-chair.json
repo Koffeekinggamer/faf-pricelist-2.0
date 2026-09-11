@@ -3,14 +3,9 @@
   "vendor": "Hillside Chair",
   "parser": {
     "importer": "hillside_chair",
-    "source_file": "Download_2026_Pricelist_2184.xlsx",
-    "filename_hints": [
-      "hillside chair",
-      "hillsidechair"
-    ],
-    "layouts": [
-      "hillside_chair"
-    ],
+    "source_file": "Hillside_Chair/Download_2026_Pricelist_2184.xlsx",
+    "filename_hints": ["hillside chair", "hillsidechair"],
+    "layouts": ["hillside_unf_fin"],
     "locked": true
   }
 }

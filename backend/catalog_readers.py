@@ -17,8 +17,6 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Optional, Sequence
 
-import pandas as pd
-
 from backend.builder_reader_registry import ReaderEntry
 from backend.workbook_sheets import excel_engine
 
@@ -95,7 +93,10 @@ CATALOG_SPECS: tuple[CatalogSpec, ...] = (
     ),
     CatalogSpec("black_horse_furniture", "Black Horse Furniture"),
     CatalogSpec(
-        "brookside_home_furnishings", "Brookside Home Furnishings", extra_tokens=("brookside",)
+        "brookside_home_furnishings",
+        "Brookside Home Furnishings",
+        extra_tokens=("brookside",),
+        reader="backend.brookside_import:import_brookside_workbook",
     ),
     CatalogSpec("crystal_valley_hardwoods", "Crystal Valley Hardwoods", extra_tokens=("cvh",)),
     CatalogSpec("dutch_creek_design", "Dutch Creek Design", extra_tokens=("dcd",)),
@@ -108,7 +109,11 @@ CATALOG_SPECS: tuple[CatalogSpec, ...] = (
         "Fredericksburg Furniture",
         reader="backend.fredericksburg_import:import_fredericksburg_workbook",
     ),
-    CatalogSpec("frog_pond_furniture", "Frog Pond Furniture"),
+    CatalogSpec(
+        "frog_pond_furniture",
+        "Frog Pond Furniture",
+        reader="backend.frog_pond_import:import_frog_pond_workbook",
+    ),
     CatalogSpec("genuine_oak", "Genuine Oak"),
     CatalogSpec("hermies_table_shop", "Hermies Table Shop", extra_tokens=("hermie", "hts")),
     CatalogSpec(
@@ -119,7 +124,12 @@ CATALOG_SPECS: tuple[CatalogSpec, ...] = (
     ),
     CatalogSpec("hoosier_crafts", "Hoosier Crafts"),
     CatalogSpec("integ_wood_products", "INTEG Wood Products", extra_tokens=("integ",)),
-    CatalogSpec("j_troyer_and_company", "J. Troyer & Company", extra_tokens=("j troyer",)),
+    CatalogSpec(
+        "j_troyer_and_company",
+        "J. Troyer & Company",
+        extra_tokens=("j troyer",),
+        reader="backend.j_troyer_import:import_j_troyer_workbook",
+    ),
     CatalogSpec(
         "kidron_woodcraft",
         "Kidron Woodcraft",
@@ -187,7 +197,9 @@ _FIVE_STAR_JUNK = re.compile(
 
 
 def apply_five_star_oak_tables(df):
-    """Tables are priced in Oak; other woods are % Options on the book."""
+    """Tables are priced in Oak; other woods become Wood-column species."""
+    from backend.book_options import convert_option_woods_to_species
+
     if df is None or getattr(df, "empty", True):
         return df
     out = df.copy()
@@ -207,34 +219,8 @@ def apply_five_star_oak_tables(df):
             lambda s: bool(_FIVE_STAR_JUNK.search(s))
         )
         out = out.loc[~junk].reset_index(drop=True)
-    have = set()
-    if "option_key" in out.columns:
-        have = {str(x).strip().lower() for x in out["option_key"].dropna() if str(x).strip()}
-    extra = []
-    vendor = ""
-    if "vendor" in out.columns and len(out):
-        vendor = str(out["vendor"].iloc[0] or "Five Star Tables")
-    for label, pct in _FIVE_STAR_WOOD_ADDONS:
-        if label.lower() in have:
-            continue
-        extra.append(
-            {
-                "vendor": vendor,
-                "collection": "Addons",
-                "part_number": label,
-                "description": label,
-                "option_key": label,
-                "species": None,
-                "finish_state": "finished",
-                "base_price": None,
-                "price_basis": "wholesale",
-                "line_kind": "addon",
-                "addon_pct": pct,
-            }
-        )
-    if extra:
-        out = pd.concat([out, pd.DataFrame(extra)], ignore_index=True)
-    return out
+    adders = {label: pct / 100.0 for label, pct in _FIVE_STAR_WOOD_ADDONS}
+    return convert_option_woods_to_species(out, adders)
 
 
 def apply_piece_name_collections(df):

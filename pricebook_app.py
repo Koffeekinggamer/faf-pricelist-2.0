@@ -54,6 +54,7 @@ from backend.login_session import (
 )
 from backend.option_labels import option_widget_key
 from backend.product_descriptions import floor_part_number
+from backend.standardize import mixed_wood_label
 
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
@@ -865,6 +866,7 @@ if nav == "Search":
                 options=wood_opts,
                 key="sw",
                 help="Only woods available for the selected builder. "
+                "Mixed woods show as Wood/Wood. "
                 "Multi-wood price tiers match if they include the wood you pick.",
             )
             if vf != "All" and len(wood_opts) <= 1:
@@ -1034,9 +1036,14 @@ if nav == "Search":
         display = results.copy()
         # When a wood is selected, show only that wood in the Wood column —
         # hide the rest of the multi-wood tier (e.g. Barnwood / Brown Maple → Barnwood).
-        if not display.empty and wf and wf != "All" and "species" in display.columns:
+        if not display.empty and "species" in display.columns:
             display = display.copy()
-            display["species"] = wf
+            if wf and wf != "All":
+                # Selected mix shows as Wood/Wood; a single wood hides the rest
+                # of a multi-wood tier (e.g. Barnwood / Brown Maple → Barnwood).
+                display["species"] = wf
+            else:
+                display["species"] = display["species"].map(lambda s: mixed_wood_label(s) or s)
 
         # Floor table emphasizes RETAIL
         if display.empty:
@@ -2556,6 +2563,11 @@ The system will **standardize** rows (long-form: SKU × wood/option × finish) a
                             f"Retail preview uses x{mult_final:g} on sample only · "
                             f"**{f.row_count:,}** wholesale rows in session"
                         )
+                        q_pct = int(getattr(f, "quality_percent", 0) or 0)
+                        q_notes = list(getattr(f, "quality_deductions", ()) or ())
+                        st.markdown(f"**Upload quality {q_pct}%**")
+                        if q_notes:
+                            st.caption(" · ".join(q_notes[:4]))
                         readiness = getattr(f, "readiness", None)
                         if readiness is None or readiness.load_ready:
                             ready_indexes.append(i)
@@ -2745,6 +2757,10 @@ if nav == "Vendors":
                 "collections": "Collections",
             }
         )
+        quality_by = {r["vendor"]: r for r in (svc.list_upload_quality() or [])}
+        edit_df["Quality"] = edit_df["Builder"].map(
+            lambda name: int((quality_by.get(str(name)) or {}).get("percent") or 0)
+        )
         edit_df["Pinned"] = edit_df["Builder"].astype(str).isin(set(favorites))
         # Pinned builders first so the floor can spot them quickly
         edit_df = edit_df.sort_values(
@@ -2760,6 +2776,7 @@ if nav == "Vendors":
                 "Phone",
                 "Items",
                 "Collections",
+                "Quality",
                 "Multiplier",
             ]
             if c in edit_df.columns
@@ -2770,7 +2787,7 @@ if nav == "Vendors":
             hide_index=True,
             num_rows="fixed",
             # Lock stats columns; Pinned + Phone + Multiplier are editable
-            disabled=["Builder", "Items", "Collections"],
+            disabled=["Builder", "Items", "Collections", "Quality"],
             column_config={
                 "Pinned": st.column_config.CheckboxColumn(
                     "Pinned",
@@ -2787,6 +2804,14 @@ if nav == "Vendors":
                 ),
                 "Items": st.column_config.NumberColumn(format="%d", disabled=True),
                 "Collections": st.column_config.NumberColumn(format="%d", disabled=True),
+                "Quality": st.column_config.ProgressColumn(
+                    "Quality",
+                    help="Last upload capture score: Options, wood, descriptions, SKUs, prices, parser lock",
+                    min_value=0,
+                    max_value=100,
+                    format="%d%%",
+                    width="small",
+                ),
                 "Multiplier": st.column_config.NumberColumn(
                     "Multiplier",
                     min_value=0.1,
@@ -2815,7 +2840,19 @@ if nav == "Vendors":
                 )
                 st.rerun()
 
+        misses = [
+            f"{r['vendor']} {r['percent']}% — {'; '.join(r['deductions'][:3])}"
+            for r in quality_by.values()
+            if r.get("percent", 100) < 100 and r.get("deductions")
+        ]
+        if misses:
+            with st.expander(f"Quality notes · {len(misses)} builder(s) under 100%"):
+                for line in misses:
+                    st.caption(line)
+
         st.caption(
+            "**Quality** = 0–100% upload capture (Options 30, wood 25, descriptions 15, "
+            "SKUs 10, prices 10, parser lock 10). "
             "**Pinned** = quick picks on Search (Builder menu). "
             "Toggle the checkbox — pins save right away. "
             "Phone & multiplier still need **Save** below."

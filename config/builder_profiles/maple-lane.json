@@ -3,14 +3,9 @@
   "vendor": "Maple Lane",
   "parser": {
     "importer": "maple_lane",
-    "source_file": "Download_2026_Pricelist_466191.xlsx",
-    "filename_hints": [
-      "maple lane",
-      "maplelane"
-    ],
-    "layouts": [
-      "maple_lane"
-    ],
+    "source_file": "Maple_Lane_Woodshop/Download_2026_Pricelist_466191.xlsx",
+    "filename_hints": ["maple lane", "maplelane"],
+    "layouts": ["maple_lane_sku_next_price"],
     "locked": true
   }
 }

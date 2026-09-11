@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence
 
+from backend.upload_quality import rate_drop_parse
+
 DEFAULT_TTL_SECONDS = 24 * 3600
 SESSION_SCHEMA_VERSION = 2
 _CACHE_DIRNAME = "faf_drop_parse_sessions"
@@ -109,9 +111,7 @@ class DropFileOutcome:
         return cls(
             filename=str(payload.get("filename") or ""),
             kind=str(payload.get("kind") or "excel"),
-            suggested_builder=str(
-                payload.get("suggested_builder") or payload.get("vendor") or ""
-            ),
+            suggested_builder=str(payload.get("suggested_builder") or payload.get("vendor") or ""),
             suggested_mult=float(payload.get("suggested_mult") or _default_mult()),
             detected_markup=payload.get("detected_markup"),
             rows=tuple(dict(row) for row in (payload.get("rows") or [])),
@@ -182,6 +182,8 @@ class DropFilePreview:
     parser_source: str = ""
     readiness: DropReadiness = DropReadiness(True)
     lock_fields: DropLockFields = DropLockFields()
+    quality_percent: int = 0
+    quality_deductions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -245,9 +247,7 @@ def evaluate_readiness(file_payload: dict) -> DropReadiness:
 
     priced_options = int(file_payload.get("priced_option_count") or 0)
     addon_count = sum(
-        1
-        for row in rows
-        if str(row.get("line_kind") or "item").strip().lower() == "addon"
+        1 for row in rows if str(row.get("line_kind") or "item").strip().lower() == "addon"
     )
     if priced_options and addon_count == 0:
         return DropReadiness(
@@ -256,11 +256,7 @@ def evaluate_readiness(file_payload: dict) -> DropReadiness:
             f"{priced_options} priced option lines found but 0 addon rows parsed",
         )
 
-    items = [
-        row
-        for row in rows
-        if str(row.get("line_kind") or "item").strip().lower() != "addon"
-    ]
+    items = [row for row in rows if str(row.get("line_kind") or "item").strip().lower() != "addon"]
     expected_finish_states = {
         str(state or "").strip().lower()
         for state in (file_payload.get("expected_finish_states") or [])
@@ -344,6 +340,7 @@ def view_from_payload(payload: dict) -> DropParseSessionView:
     for i, f in enumerate(payload.get("files") or []):
         rows = list(f.get("rows") or [])
         sample = tuple(dict(r) for r in rows[:_SAMPLE_SIZE])
+        quality = rate_drop_parse(f)
         files_out.append(
             DropFilePreview(
                 file_index=i,
@@ -361,6 +358,8 @@ def view_from_payload(payload: dict) -> DropParseSessionView:
                 parser_source=str(f.get("parser_source") or ""),
                 readiness=_readiness_from_payload(f),
                 lock_fields=_lock_fields_from_payload(f),
+                quality_percent=int(quality.percent),
+                quality_deductions=tuple(quality.deductions),
             )
         )
     return DropParseSessionView(

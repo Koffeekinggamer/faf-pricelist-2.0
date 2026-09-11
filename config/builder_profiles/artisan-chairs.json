@@ -1,13 +1,8 @@
 {
   "version": 1,
   "vendor": "Artisan Chairs",
-  "item_upcharge_option_keywords": [
-    "kick plate"
-  ],
-  "drawer_door_item_keywords": [
-    "bar stool",
-    "barstool"
-  ],
+  "item_upcharge_option_keywords": ["kick plate"],
+  "drawer_door_item_keywords": ["bar stool", "barstool"],
   "drawer_door_exclude_keywords": [],
   "option_groups": [
     {
@@ -28,17 +23,14 @@
   },
   "parser": {
     "importer": "artisan_chairs",
-    "source_file": "Downloads/AC_2026_Pricelist_0226.xlsx",
+    "source_file": "Artisan_Chairs/Download_2026_Pricelist_8361.xlsx",
     "filename_hints": [
       "artisan chairs",
       "artisanchairs",
       "ac_20",
       "ac_pricelist"
     ],
-    "layouts": [
-      "viewed_retail",
-      "wide_species"
-    ],
+    "layouts": ["viewed_retail", "wide_species"],
     "locked": true
   }
 }

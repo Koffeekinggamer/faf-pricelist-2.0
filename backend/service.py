@@ -986,6 +986,20 @@ class PriceBookService:
         self.ensure_ready()
         return self.repo.vendor_summary()
 
+    def list_upload_quality(self) -> list[dict]:
+        """0–100% quality rating for every builder currently in the book."""
+        self.ensure_ready()
+        from backend.upload_quality import list_upload_quality
+
+        return list_upload_quality(self)
+
+    def rate_drop_parse(self, payload: dict) -> dict:
+        """0–100% quality rating for one Drop file parse."""
+        from backend.upload_quality import rate_drop_parse
+
+        rating = rate_drop_parse(payload)
+        return {"percent": rating.percent, "deductions": list(rating.deductions)}
+
     def list_thin_catalogs(self, *, max_rows: int = THIN_CATALOG_MAX_ROWS) -> pd.DataFrame:
         """Builders with fewer than max_rows sellable rows (ADR-0007).
 

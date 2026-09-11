@@ -10,11 +10,13 @@
       "brookside"
     ],
     "layouts": [
-      "multi_name_price",
+      "brookside_unit_woods",
+      "cover",
+      "markup",
+      "other",
       "unknown",
       "viewed_cover",
       "viewed_markup",
-      "wide_finish",
       "wide_species"
     ],
     "locked": true
