@@ -10,11 +10,51 @@ DATA="${FAF_DATA_DIR:-$SSD_ROOT/FAF-pricebook}"
 copy_if_present() {
   local src="$1"
   local dest="$2"
+  if [[ -L "$src" ]]; then
+    local target dest_real
+    target="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$src")"
+    dest_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$dest" 2>/dev/null || echo "$dest")"
+    if [[ "$target" == "$dest_real" ]]; then
+      echo "skip $dest — checkout already links at the drive"
+      return 0
+    fi
+  fi
   if [[ -e "$src" || -L "$src" ]]; then
     mkdir -p "$(dirname "$dest")"
     rsync -a "$src" "$dest"
     echo "copied $(du -sh "$dest" 2>/dev/null | awk '{print $1}')  $dest"
   fi
+}
+
+# Never replace the traveling catalog with a smaller leftover checkout copy.
+# If the checkout already links at the drive, skip — rsync -a would copy the
+# symlink over the real file and destroy the book.
+copy_catalog_if_safe() {
+  local src="$1"
+  local dest="$2"
+  if [[ ! -e "$src" && ! -L "$src" ]]; then
+    return 0
+  fi
+  if [[ -L "$src" ]]; then
+    local target
+    target="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$src")"
+    local dest_real
+    dest_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$dest" 2>/dev/null || echo "$dest")"
+    if [[ "$target" == "$dest_real" ]]; then
+      echo "skip $dest — checkout already links at the drive catalog"
+      return 0
+    fi
+  fi
+  if [[ -f "$dest" && -f "$src" ]]; then
+    local src_sz dest_sz
+    src_sz="$(stat -f%z "$src" 2>/dev/null || echo 0)"
+    dest_sz="$(stat -f%z "$dest" 2>/dev/null || echo 0)"
+    if (( dest_sz > src_sz )); then
+      echo "skip $dest — drive catalog (${dest_sz} bytes) is larger than checkout (${src_sz})"
+      return 0
+    fi
+  fi
+  copy_if_present "$src" "$dest"
 }
 
 replace_with_link() {
@@ -44,7 +84,7 @@ chmod 700 "$DATA"
 
 echo "Destination: $DATA"
 
-copy_if_present "$ROOT/master_pricebook.db" "$DATA/master_pricebook.db"
+copy_catalog_if_safe "$ROOT/master_pricebook.db" "$DATA/master_pricebook.db"
 copy_if_present "$ROOT/master_pricebook.db-wal" "$DATA/master_pricebook.db-wal"
 copy_if_present "$ROOT/master_pricebook.db-shm" "$DATA/master_pricebook.db-shm"
 if [[ -d "$ROOT/image_assets" && ! -L "$ROOT/image_assets" ]]; then

@@ -12,8 +12,12 @@
 
 Traveling catalog, images, secrets, and the signed-in session live on the price-book drive at `FAF-pricebook/` (usually `/Volumes/ExternalSSD/FAF-pricebook`).
 
-**As of 2026-09-10 (SSD catalog):** **210,188 rows · 48 builders · 67 source files.**  
+**As of 2026-09-10 (SSD catalog):** **194,898 rows · 48 builders · 2,262 collections.**  
+Restored from the Sep 1 drive backup after `migrate_local_data_to_ssd.sh` overwrote the live book with an old 4,723-row checkout copy. The 25 safe named parsers were reapplied. Today’s 210,188-row file was not recoverable.
+
 Retail = wholesale × mult (2.7 default, Genuine Oak 1.7). One builder = one vendor.
+
+Drive login file is the repo example (**Foothills** / **Amish**). Drop Viztech / OrderTrac secrets back onto `FAF-pricebook/secrets.toml` if this laptop had a fuller copy.
 
 ---
 
@@ -101,8 +105,9 @@ Docs: `AGENTS.md` → `CONTEXT.md` → this file → `STANDARDS.md` · `docs/adr
 
 - Named readers: Brookside, Frog Pond, J. Troyer (3 books), Windy Acres, LAMB Options + Walnut as Wood, Patio Kraft Cushion, Stone River Metal, Troyer Design Steel.
 - Mixed-wood dropdown (`Cherry/Hickory`). Drop Options unpack fix. Vendors Quality column.
-- Reloaded 25 factories where the new parse did not lose rows or explode twins. Left alone: J. Troyer live (3 books already in Search), Kidron (8 books), Farmside, Genuine Oak, Dutch Creek, Criswell, Frog Pond, Red Barn, Troyer Ridge, FN, Artisan, Ashery (live file newer than some SSD copies), Hermies / Elite / Meadow Lane / Crystal Valley / AJ’s / Five Star (parse inflate), Nisley (would shrink).
-- Code: GitHub `db9026f` · Fly image deployed 2026-09-10.
+- Reloaded 25 factories on the restored Sep 1 book. Left alone: J. Troyer, Kidron, Farmside, Genuine Oak, Dutch Creek, Criswell, Frog Pond, Red Barn, Troyer Ridge, FN, Artisan, Ashery, Hermies, Elite, Meadow Lane, Crystal Valley, AJ’s, Five Star, Nisley.
+- Patio Kraft `BRCS`/`BRAC` = Cushion · Stone River `1100-10` = Metal · Troyer Design `MHP-16` = Steel.
+- Code: GitHub `3476145`+ · Fly image deployed 2026-09-10. Catalog push follows this handoff.
 
 ---
 
