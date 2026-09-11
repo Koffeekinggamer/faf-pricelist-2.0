@@ -66,9 +66,20 @@ OPTIONS_FIXTURE = (
     ('Size change (up to 10")', "Two-tone", "Lock"),
 )
 
+# Template builder from scripts/add_builder.py — not a selling factory and
+# not in SETTLED. Later SETTLED-expansion jobs clone this row.
+STUB_FIXTURE = (
+    "Stub Workshop",
+    "stub_workshop",
+    "Stub_Workshop_2028_Pricelist.xlsx",
+    FIXTURES_DIR / "stubs" / "stub-workshop.xlsx",
+    ('Size change (up to 10")', "Two-tone", "Lock"),
+)
+
 
 def all_fixture_paths() -> list[Path]:
     paths = [row[3] for row in SETTLED_FIXTURES]
     paths.append(WIDE_FIXTURE[3])
     paths.append(OPTIONS_FIXTURE[3])
+    paths.append(STUB_FIXTURE[3])
     return paths

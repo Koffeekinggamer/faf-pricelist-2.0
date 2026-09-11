@@ -27,7 +27,7 @@ from backend.builder_identity import (
 from backend.builder_parsers import guess_named_parser, identify_reader
 from backend.catalog_readers import CatalogSpec
 from backend.standardize import resolve_builder_vendor
-from tests.fixture_corpus import OPTIONS_FIXTURE, SETTLED_FIXTURES, WIDE_FIXTURE
+from tests.fixture_corpus import OPTIONS_FIXTURE, SETTLED_FIXTURES, STUB_FIXTURE, WIDE_FIXTURE
 from tests.test_builder_parser_contract import SETTLED
 
 
@@ -117,6 +117,7 @@ def test_no_two_detectors_claim_the_same_next_year_filename():
     paths.extend(row[2] for row in SETTLED_FIXTURES)
     paths.append(WIDE_FIXTURE[2])
     paths.append(OPTIONS_FIXTURE[2])
+    paths.append(STUB_FIXTURE[2])
     collisions = detector_path_collisions(paths)
     assert collisions == {}, _format_detector_collisions(collisions)
 

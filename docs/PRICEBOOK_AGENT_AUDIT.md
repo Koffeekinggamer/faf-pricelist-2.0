@@ -366,7 +366,7 @@ Default mode is `replace_vendor`. `append` / `upsert` exist and will duplicate i
 
 - No CI pytest / Ruff on PR.
 - No fixture pack of anonymized/minimal factory sheets.
-- No `add-builder` checklist script (register + profile stub + SETTLED row + synthetic test).
+- `add-builder` checklist script (register + profile stub + SETTLED row + synthetic test) — landed as `scripts/add_builder.py` + Stub Workshop template. See `docs/ADD_BUILDER.md`.
 - No collision check on detector tokens.
 - Viztech sync does not fail closed on quality < N; it relies on the Drop gate per file.
 - No POS consumer test that `catalog_retail` stays stable.
@@ -600,7 +600,7 @@ Do not claim the loop is safe until most of these exist. **Must** vs **should**:
 ### Should (speed)
 
 - [ ] `SETTLED` generated from profiles, or ≥ all Tier B in the contract.
-- [ ] `add_builder` stub script / ticket template.
+- [x] `add_builder` stub script / ticket template.
 - [ ] Tombstone stale docs and wayfinder issues.
 - [ ] LuxHome / Millers / Rainbow disposition.
 - [ ] `backend/pricing.py` documented as the POS import surface.

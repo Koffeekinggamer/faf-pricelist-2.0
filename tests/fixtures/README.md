@@ -21,6 +21,7 @@ tabs only — nothing is hidden.
 | `settled/criswell-bedroom.xlsx` | Criswell left-pane wholesale + Options tab | Markup, Cover, Bloomfield Collection, `Options ` |
 | `wide/genuine-oak-wide-species.xlsx` | Token `genuine_oak` lock on a `wide_species` matrix + a small Options tab | Cover, Options, Pricelist |
 | `options/millcraft-options.xlsx` | Token `millcraft` lock + Options **tab** (size %, two-tone, flat $) | Cover, Options, Pricelist |
+| `stubs/stub-workshop.xlsx` | `add_builder` template (`stub_workshop`). Not a selling factory. Not SETTLED. Options tab must emit addons. | Cover, Options, Pricelist |
 
 Regenerate after changing a layout:
 

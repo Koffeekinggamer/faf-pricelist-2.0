@@ -124,6 +124,8 @@ cd ~/FAF-pricelist-2.0
 
 Thin scan after pull: `./scripts/ready_catalog.sh --no-pull` (or full `./scripts/ready_catalog.sh`).
 
+Add builder N via `scripts/add_builder.py` (clone the Stub Workshop template — `docs/ADD_BUILDER.md`). Do not hand-wire a 49th detector. Leave SETTLED as a placeholder until a shape test exists.
+
 Thin = rows < 150 (ADR-0007). Triage → grill Judson keep/replace/ignore. Never commit the DB.
 
 ```bash
