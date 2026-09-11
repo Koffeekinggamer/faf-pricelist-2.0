@@ -15,11 +15,11 @@ tabs only — nothing is hidden.
 | File | Proves | Visible tabs |
 | ---- | ------ | ------------ |
 | `settled/fn-chair.xlsx` | FN Chair `fn_chair` PL Print + fabric addon | Cover Page, PCL Color List, PL Print, PL With Markup, PL To Export |
-| `settled/ashery-oak.xlsx` | Ashery Oak Master/Products wood expand + Options&Portal addons | Cover, Markup, Options&Portal, Products |
-| `settled/j-and-m-woodworking.xlsx` | J&M Percentage woods + Hampton SKUs + Specialty Finish Options | Cover, Markup, ` Percentage`, Hampton, Specialty Finish Options |
+| `settled/ashery-oak.xlsx` | Ashery Oak visible Master wood expand + Products fill + Options&Portal addons | Cover, Markup, Options&Portal, Master, Products |
+| `settled/j-and-m-woodworking.xlsx` | J&M Percentage woods + Hampton SKUs + Java Fabric/Crypton/Leather panels + Specialty Finish Options | Cover, Markup, ` Percentage`, Hampton, Java, Specialty Finish Options |
 | `settled/artisan-chairs.xlsx` | Artisan Wholesale unfinished/finished matrix + Options block | Retail with MARKUP, Wholesale |
 | `settled/criswell-bedroom.xlsx` | Criswell left-pane wholesale + Options tab | Markup, Cover, Bloomfield Collection, `Options ` |
-| `wide/genuine-oak-wide-species.xlsx` | Token `genuine_oak` lock on a `wide_species` matrix | Cover, Pricelist |
+| `wide/genuine-oak-wide-species.xlsx` | Token `genuine_oak` lock on a `wide_species` matrix + a small Options tab | Cover, Options, Pricelist |
 | `options/millcraft-options.xlsx` | Token `millcraft` lock + Options **tab** (size %, two-tone, flat $) | Cover, Options, Pricelist |
 
 Regenerate after changing a layout:

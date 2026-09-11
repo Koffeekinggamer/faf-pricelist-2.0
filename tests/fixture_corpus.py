@@ -33,7 +33,7 @@ SETTLED_FIXTURES = [
         "jmw",
         "JMW_2027_Pricelist_0101.xlsx",
         FIXTURES_DIR / "settled" / "j-and-m-woodworking.xlsx",
-        ("2-tone Stain", "Paint", "Fabric"),
+        ("2-tone Stain", "Paint", "Fabric", "Crypton", "Leather"),
     ),
     (
         "Artisan Chairs",

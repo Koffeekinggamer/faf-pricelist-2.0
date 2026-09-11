@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from backend.db import init_db
 from backend.jmw_import import (
@@ -61,7 +62,7 @@ def test_specialty_finish_addons_mini():
 
 def test_uploaded_jmw_expands_woods_and_options():
     if not UPLOAD.is_file():
-        return
+        pytest.skip(f"{UPLOAD.name} not on this machine")
     data = UPLOAD.read_bytes()
     assert looks_like_jmw(UPLOAD.name, [" Percentage", "Specialty Finish Options", "Java"])
     result = import_workbook(data, vendor="J & M Woodworking", filename=UPLOAD.name)
@@ -103,7 +104,7 @@ def test_uploaded_jmw_expands_woods_and_options():
 
 def test_jmw_dropdowns_after_insert(tmp_path):
     if not UPLOAD.is_file():
-        return
+        pytest.skip(f"{UPLOAD.name} not on this machine")
     data = UPLOAD.read_bytes()
     result = import_jmw_workbook(data, vendor="J & M Woodworking", filename=UPLOAD.name)
     db = tmp_path / "jmw.db"

@@ -6,6 +6,7 @@ import io
 from pathlib import Path
 
 import openpyxl
+import pytest
 
 from backend import PriceBookService
 from backend.builder_reader_registry import DEFAULT_READER_REGISTRY
@@ -54,7 +55,7 @@ def test_lamb_viztech_download_filename_still_detects():
 
 def test_live_ac_book_parses_wholesale_only():
     if not LIVE.is_file():
-        return
+        pytest.skip(f"{LIVE.name} not on this machine")
     data = LIVE.read_bytes()
     result = DEFAULT_READER_REGISTRY.run(
         "artisan_chairs",
@@ -110,7 +111,7 @@ def test_live_ac_book_parses_wholesale_only():
 
 def test_artisan_chair_search_prices_collection_specific_seat_option(tmp_path):
     if not LIVE.is_file():
-        return
+        pytest.skip(f"{LIVE.name} not on this machine")
     preview = ImportService().preview_excel(
         LIVE.read_bytes(),
         filename=LIVE.name,
@@ -145,7 +146,7 @@ def test_artisan_chair_search_prices_collection_specific_seat_option(tmp_path):
 
 def test_artisan_kick_plates_price_per_selected_plate(tmp_path):
     if not LIVE.is_file():
-        return
+        pytest.skip(f"{LIVE.name} not on this machine")
     preview = ImportService().preview_excel(
         LIVE.read_bytes(),
         filename=LIVE.name,
@@ -176,7 +177,7 @@ def test_artisan_kick_plates_price_per_selected_plate(tmp_path):
 
 def test_artisan_unfinished_is_an_option_that_switches_the_finished_price(tmp_path):
     if not LIVE.is_file():
-        return
+        pytest.skip(f"{LIVE.name} not on this machine")
     preview = ImportService().preview_excel(
         LIVE.read_bytes(),
         filename=LIVE.name,
@@ -216,7 +217,7 @@ def test_artisan_unfinished_is_an_option_that_switches_the_finished_price(tmp_pa
 
 def test_aberdeen_desk_arm_chair_is_in_the_catalog(tmp_path):
     if not LIVE.is_file():
-        return
+        pytest.skip(f"{LIVE.name} not on this machine")
     preview = ImportService().preview_excel(
         LIVE.read_bytes(),
         filename=LIVE.name,
@@ -245,7 +246,7 @@ def test_aberdeen_desk_arm_chair_is_in_the_catalog(tmp_path):
 def test_expected_option_lines_survive_a_dead_addon_scanner(monkeypatch):
     """The gate counts source option lines, not the rows the reader emitted."""
     if not LIVE.is_file():
-        return
+        pytest.skip(f"{LIVE.name} not on this machine")
     import backend.book_options as book_options
     import wide_import
 

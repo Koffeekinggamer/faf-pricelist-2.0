@@ -131,6 +131,10 @@ def test_ashery_oak_fixture_expands_woods_and_options():
     hick = float(sofa[sofa["species"] == "Hickory"].iloc[0]["base_price"])
     assert oak == 350
     assert hick == 385.0
+    assert "BF-1648-END" in set(items["part_number"].astype(str))
+    tried = {s["sheet"]: s for s in (result.sheets_tried or [])}
+    assert tried["Master"]["layout"] == "ashery_oak_master_wood_expand"
+    assert tried["Products"]["layout"] == "ashery_oak_products_fill"
     addons = _addons(result.long_df)
     paint = addons[addons["option_key"].astype(str) == "Paint"].iloc[0]
     assert paint["addon_pct"] == 35.0
@@ -156,9 +160,9 @@ def test_jmw_fixture_expands_percentage_woods_and_finish_options():
     assert bm == 400
     assert ch == 440.0
     keys = _option_keys(result.long_df)
-    assert "Fabric" in keys
-    assert "Paint" in keys
-    assert "2-tone Stain" in keys
+    assert {"Fabric", "Crypton", "Leather", "Paint", "2-tone Stain"} <= keys
+    addons = _addons(result.long_df)
+    assert {"Paint", "2-tone Stain"} <= set(addons["option_key"].astype(str))
 
 
 def test_artisan_chairs_fixture_keeps_unfinished_and_options_block():
@@ -232,6 +236,12 @@ def test_wide_species_token_fixture_unpivots_woods():
     assert 140.0 in prices
     layouts = {str(t.get("layout") or "") for t in (result.sheets_tried or [])}
     assert any("wide_species" in layout for layout in layouts)
+    views = read_all_sheets(data)
+    assert any(v.role == "options" for v in views)
+    addons = _addons(result.long_df)
+    assert addons is not None and not addons.empty, (
+        "wide_species fixture must still encode Options — empty is a capture miss"
+    )
 
 
 def test_options_tab_fixture_proves_options_are_present():

@@ -105,11 +105,16 @@ def build_ashery_oak(path: Path) -> None:
                 ["For painting , Add:", None, None, 0.35],
                 ["For Locks on Drawers , Add:", None, None, 13],
             ],
-            "Products": [
+            "Master": [
                 [None, None, None, "Oak / Rustic Cherry", "Hickory", "QSWO / Cherry"],
                 ["Model #", "Description", "Overall Size", "Regular", "10% More", "35% More"],
                 ["BARN FLOOR OCCASIONAL TABLES", None, None, None, None, None],
                 ["BF-1648-DS", "Sofa Table", '48"W x 16"D x 30"H', 350, 366, 450],
+            ],
+            "Products": [
+                [None, None, None, "Oak / Rustic Cherry", "Hickory", "QSWO / Cherry"],
+                ["Model #", "Description", "Overall Size", "Regular", "10% More", "35% More"],
+                ["BARN FLOOR OCCASIONAL TABLES", None, None, None, None, None],
                 ["BF-1648-END", "End Table", '24"W x 16"D x 24"H', 220, 230, 280],
             ],
         },
@@ -133,7 +138,14 @@ def build_jmw(path: Path) -> None:
                 ["Hampton Collection"],
                 ["Item #", "Description", "Br. Maple"],
                 ["40", "Mule Chest", 400],
-                ["41", "Nightstand with Fabric Panel", 220],
+                ["41", "Nightstand", 220],
+            ],
+            "Java": [
+                ["Java Collection"],
+                ["Item #", "Description", "Br. Maple"],
+                ["80", "Side Chair Fabric", 180],
+                ["81", "Side Chair Crypton", 195],
+                ["82", "Side Chair Leather", 210],
             ],
             "Specialty Finish Options": [
                 ["Specialty Finish Options", None, None],
@@ -264,6 +276,11 @@ def build_genuine_oak_wide(path: Path) -> None:
         path,
         {
             "Cover": [["Genuine Oak Designs — synthetic CI wide_species fixture"]],
+            "Options": [
+                ["Options"],
+                ["For painting , Add 10%"],
+                ["Lock: $25"],
+            ],
             "Pricelist": [
                 ["Item #", "Description", "Oak", "Cherry", "Walnut"],
                 ["T-100", "Trestle Table", 500, 550, 600],
