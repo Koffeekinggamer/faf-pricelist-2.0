@@ -1,23 +1,31 @@
 # Agent Handoff — FAF Price Book
 
-**Date:** 2026-08-05  
+**Date:** 2026-09-10  
 **Owner / user:** Judson (Foothills Amish Furniture)  
 **Working copy:** `~/FAF-pricelist-2.0`  
 **Canonical git remote:** `origin` → https://github.com/Koffeekinggamer/faf-pricelist-2.0  
-**Active branch this session:** `cursor/hide-finish-keep-options-ee2a`  
+**Active branch:** `cursor/hide-finish-keep-options-ee2a`  
+**Tip:** `db9026f` — named readers + 0–100% upload quality  
 **Main UI:** `pricebook_app.py` — accuracy mode (Search · Drop · Vendors · Admin)  
 **OrderTrac:** UI flags still **off** — do not re-enable unless Judson asks  
 **Live app:** https://faf-pricebook.fly.dev · Login **Foothills** / **Amish**
+
+Traveling catalog, images, secrets, and the signed-in session live on the price-book drive at `FAF-pricebook/` (usually `/Volumes/ExternalSSD/FAF-pricebook`).
+
+**As of 2026-09-10 (SSD catalog):** **210,188 rows · 48 builders · 67 source files.**  
+Retail = wholesale × mult (2.7 default, Genuine Oak 1.7). One builder = one vendor.
 
 ---
 
 ## Switch to another computer (do this first)
 
+Plug the **ExternalSSD** in before `./run.sh`. Do not pull Fly over this book unless you intend to replace the drive catalog.
+
 ```bash
-# 1) Clone / pull code
+# 1) Code
 git clone https://github.com/Koffeekinggamer/faf-pricelist-2.0.git ~/FAF-pricelist-2.0
 cd ~/FAF-pricelist-2.0
-git checkout cursor/hide-finish-keep-options-ee2a   # or main after merge
+git checkout cursor/hide-finish-keep-options-ee2a
 git pull
 
 # 2) Python env + hooks
@@ -25,22 +33,20 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 npm install   # husky / lint-staged only
 
-# 3) Live catalog (gitignored — never in GitHub)
-export PATH="$HOME/.fly/bin:$PATH"
-fly auth login   # once
-./scripts/pull_db_from_fly.sh
-
-# 4) Run
+# 3) Plug ExternalSSD. Catalog + secrets are on that drive.
 ./run.sh
-# http://127.0.0.1:8501
+# http://127.0.0.1:8501 · Foothills / Amish
 ```
 
-J&M catalog photos ship in git under `assets/catalog_images/` (public catalog art).  
-Re-extract only if matching more SKUs: `.venv/bin/python scripts/match_jm_catalog_images.py /path/to/JM_catalog.pdf`
+`./run.sh` finds `FAF-pricebook/master_pricebook.db` on the drive, links secrets, and signs back in from the remember-me token stored there.
 
 **Do not commit:** `*.db`, `.env`, `.streamlit/secrets.toml`.
 
-Thin scan after pull: `./scripts/ready_catalog.sh --no-pull`.
+Thin scan: `./scripts/ready_catalog.sh --no-pull`.
+
+Refresh Fly catalog from this drive:  
+`FAF_LOCAL_DB=/Volumes/ExternalSSD/FAF-pricebook/master_pricebook.db ./scripts/push_db_to_fly.sh`  
+Deploy **code** only: `fly deploy -a faf-pricebook --remote-only`
 
 ---
 
@@ -52,12 +58,6 @@ cd ~/FAF-pricelist-2.0
 # http://127.0.0.1:8501 · Foothills / Amish
 ```
 
-Refresh Fly catalog after local DB changes: `./scripts/push_db_to_fly.sh`  
-Deploy **code** only: `fly deploy -a faf-pricebook --remote-only`
-
-**As of 2026-08-05 (this workspace):** ~**4,723 rows · 1 builder (J & M Woodworking)** on both local + Fly.  
-Full multi-builder book may live on another Mac / backup — confirm before overwriting Fly.
-
 ```bash
 .venv/bin/python -m backend.cli stats
 ```
@@ -66,7 +66,7 @@ Full multi-builder book may live on another Mac / backup — confirm before over
 
 ## What this app is
 
-Streamlit + SQLite **floor price book** for Amish furniture builders.
+Streamlit + SQLite **floor price book** for Amish furniture builders. One app, many builders. Each Drop **adds** a builder; re-drop replaces that builder only. After a good Load, the named parser locks in `config/builder_profiles/<vendor>.json`.
 
 | Layer | Path                       | Role                                                                 |
 | ----- | -------------------------- | -------------------------------------------------------------------- |
@@ -74,106 +74,65 @@ Streamlit + SQLite **floor price book** for Amish furniture builders.
 | Logic | `backend.PriceBookService` | All real operations                                                  |
 | Excel | `wide_import.py`           | Wide builder matrices → long rows                                    |
 | PDF   | `pdf_import.py`            | PDF price lists                                                      |
-| DB    | `master_pricebook.db`      | Long-form: SKU × species × finish                                    |
+| DB    | SSD `master_pricebook.db`  | Long-form: SKU × species × finish                                    |
 
 **Rules (locked):**
 
 - One builder = one vendor (`replace_vendor` on re-import)
 - Retail = wholesale × multiplier (even whole dollars)
 - Default mult **2.7**; **Genuine Oak 1.7**
-- **Undermount Drawer Slides** = no markup (retail = wholesale) for all builders, now and on future imports
-- Local DB never committed; backups under `~/Documents/FAF-pricebook-backups/`
+- **Undermount Drawer Slides** = no markup
+- Every builder Excel encodes Options — empty Search Options is a capture miss
+- Never unhide a sheet or row
+- H" / W" / D" = Height × Width × Depth, never Wood
+- All woods belong in the Wood column, never Options
+- Steel, Metal, and Cushion are row materials (Wood column)
+- Mixed woods show in the Wood dropdown as `wood/wood`
+- Upload quality is 0–100% on Vendors and Drop (100% = nothing left to fix)
+- Local DB never committed; backups on the drive under `FAF-pricebook/backups/`
+
+Thin KEEP (do not treat as broken): Amish Aspen, Maple Lane, Signature Designs, Ebony Woodworking. Patio Kraft KEEP (poly outdoor).
 
 Docs: `AGENTS.md` → `CONTEXT.md` → this file → `STANDARDS.md` · `docs/adr/`
 
 ---
 
-## Session work completed (2026-08-05)
+## Session (2026-09-10)
 
-### J&M catalog images
-
-- New table `catalog_images` (vendor + part_number PK → `image_path`, source/page/match_method).
-- Matcher: `backend/catalog_images.py` + `scripts/match_jm_catalog_images.py` (pdfplumber + Pillow).
-- **59** SKUs matched/extracted under `assets/catalog_images/j-and-m-woodworking/` (committed — public catalog art).
-- Search UI: `ImageColumn` via **inline JPEG data-URI thumbnails** (Streamlit cannot load bare filesystem paths).
-- Image column **stays visible** for builders that have any photos, even when the current search hits only un-photographed SKUs (cells blank, not dropped).
-- Coverage gap: Antique Mission / many beds (e.g. 1024–1027) have **no** PDF photo yet — blank Image cells are expected.
-
-### Pricing
-
-- `backend/pricing.py`: `is_no_markup_option` / `catalog_multiplier` / `catalog_retail` for **Undermount Drawer Slides**.
-- Wired through `standardize_row`, batch import, search upcharge, and SQL `reapply_multiplier` / `recompute_adjusted`.
-
-### Search UX
-
-- Clear button next to the search box (session_state safe).
-- Theme: white background + dark text again (`.streamlit/config.toml` + CSS in `pricebook_app.py`). Earlier royal-blue experiment reverted.
-
-### Tests
-
-- `tests/test_catalog_images.py`, undermount coverage in `tests/test_option_upcharge.py`.
-- Full suite green locally (~68 tests).
-
----
-
-## Architecture reminders
-
-```
-pricebook_app.py              # UI only (thumbs, Clear, theme)
-backend/service.py            # facade + _with_catalog_images
-backend/repository.py         # SQL + catalog_images CRUD
-backend/catalog_images.py     # PDF caption↔image matching
-backend/pricing.py            # multipliers + no-markup options
-scripts/match_jm_catalog_images.py
-```
-
-Import modes: `replace_vendor` (default), `upsert`, `append`, `replace_source`.
+- Named readers: Brookside, Frog Pond, J. Troyer (3 books), Windy Acres, LAMB Options + Walnut as Wood, Patio Kraft Cushion, Stone River Metal, Troyer Design Steel.
+- Mixed-wood dropdown (`Cherry/Hickory`). Drop Options unpack fix. Vendors Quality column.
+- Reloaded 25 factories where the new parse did not lose rows or explode twins. Left alone: J. Troyer live (3 books already in Search), Kidron (8 books), Farmside, Genuine Oak, Dutch Creek, Criswell, Frog Pond, Red Barn, Troyer Ridge, FN, Artisan, Ashery (live file newer than some SSD copies), Hermies / Elite / Meadow Lane / Crystal Valley / AJ’s / Five Star (parse inflate), Nisley (would shrink).
+- Code: GitHub `db9026f` · Fly image deployed 2026-09-10.
 
 ---
 
 ## Credentials (do not commit)
 
-| System    | Where                                                                                                |
-| --------- | ---------------------------------------------------------------------------------------------------- |
-| App login | defaults **Foothills** / **Amish** · optional `.streamlit/secrets.toml` `[auth]`                     |
-| Viztech   | `.streamlit/secrets.toml` `[viztech]` username/password (or env `VIZTECH_USER` / `VIZTECH_PASSWORD`) |
-| Fly       | `fly auth login` · deploy token may live in GitHub Actions `FLY_API_TOKEN`                           |
+| System    | Where                                                                            |
+| --------- | -------------------------------------------------------------------------------- |
+| App login | defaults **Foothills** / **Amish** · optional drive `FAF-pricebook/secrets.toml` |
+| Viztech   | drive secrets `[viztech]` or env `VIZTECH_USER` / `VIZTECH_PASSWORD`             |
+| Fly / gh  | drive `FAF-pricebook/credentials/` — `./run.sh` links them onto a new laptop     |
 
 Secrets files are gitignored. Example only: `.streamlit/secrets.toml.example`.
 
 ---
 
-## Fly notes (images)
-
-`assets/catalog_images/` is in the Docker image via `fly deploy` (public catalog art in git).  
-Push DB so live has `catalog_images` rows pointing at those paths:
-
-```bash
-./scripts/push_db_to_fly.sh
-```
-
-Only push when local catalog is the intended live book (this workspace: ~4.7k J&M rows).
-
----
-
 ## Known issues / next work
 
-1. **Reminder — do not build yet:** per-user login/password; pins per user; invite link → email + temp password → force new password; admin (Judson only) shows users/passwords, per-user logs, usage %; billing tab; later plan a subscription sellable app.
-2. **Reminder — Drop:** built-in Drop parser must know how to run each builder (locked named parser per factory; no generic fall-through).
-2. **Raise J&M photo match rate** — Antique Mission and other collections still missing; improve caption geometry / re-run matcher on full catalog PDF.
-2. **Confirm full multi-builder DB** before treating this 4.7k-row J&M book as production forever — restore from `~/Documents/FAF-pricebook-backups/` if needed.
-3. **Merge feature branch → `main`** when ready so GitHub Actions auto-deploy + other machines default to the same tip.
-4. OrderTrac UI remains off by design.
-5. Streamlit: after Python edits, **restart** `./run.sh` (no reliable hot reload for backend).
+1. **Reminder — do not build yet:** per-user login/password; pins per user; invite link; billing.
+2. Ashery / FN Chair source files in Downloads may be newer than the SSD Viztech copy — do not re-drop from the older file.
+3. OrderTrac UI remains off by design.
+4. Streamlit: after Python edits, **restart** `./run.sh`.
 
 ---
 
 ## Do / don’t
 
-| Do                                                        | Don’t                                             |
-| --------------------------------------------------------- | ------------------------------------------------- |
-| Work in `~/FAF-pricelist-2.0`                             | Commit `master_pricebook.db`                      |
-| `replace_vendor` for builder re-import                    | Duplicate same builder under two names            |
-| Backup before bulk ops: `python -m backend.cli backup-db` | Wipe vendors Viztech doesn’t have during sync     |
-| Keep OrderTrac flags off unless asked                     | Re-enable OrderTrac UI casually                   |
-| Pull includes `assets/catalog_images/`                    | Commit `*.db` / secrets                           |
+| Do                                     | Don’t                                  |
+| -------------------------------------- | -------------------------------------- |
+| Work in `~/FAF-pricelist-2.0`          | Commit `master_pricebook.db`           |
+| Plug ExternalSSD, then `./run.sh`      | Pull Fly onto a different app          |
+| `replace_vendor` for builder re-import | Duplicate same builder under two names |
+| Backup before bulk ops                 | Re-drop a settled factory              |
+| Keep OrderTrac flags off unless asked  | Unhide Excel sheets or rows            |
