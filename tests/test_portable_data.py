@@ -11,8 +11,9 @@ def test_portable_data_dir_keeps_tests_on_the_checkout(monkeypatch, tmp_path: Pa
     monkeypatch.delenv("FAF_DB_PATH", raising=False)
     monkeypatch.delenv("FAF_SECRETS_PATH", raising=False)
 
-    assert resolve_data_dir().name == "FAF-pricelist-2.0"
-    assert resolve_db_path().name == "master_pricebook.db"
+    checkout = Path(__file__).resolve().parents[1]
+    assert resolve_data_dir() == checkout
+    assert resolve_db_path() == checkout / "master_pricebook.db"
 
 
 def test_portable_data_dir_follows_env(monkeypatch, tmp_path: Path):
