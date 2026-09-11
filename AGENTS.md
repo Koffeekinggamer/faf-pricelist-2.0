@@ -63,7 +63,7 @@ Named parser lock ≠ shape-specific reader. Audit §2: only **SETTLED** factori
 
 A new specific reader ships with a **synthetic or checked-in fixture**. Live-Downloads / Mac-path tests are extra, not the only proof.
 
-PR CI (Ruff + pytest, no DB) is **not built yet**. Until kickoff job 1 lands, local proof is `npm test` + `./scripts/run_ruff.sh`. Fly deploy stays off feature branches.
+PR CI: `.github/workflows/pr-ci.yml` runs Ruff + pytest on pull requests and on push to `main` / the integration branch (no secrets, no `*.db`). Local proof is still `npm test` + `./scripts/run_ruff.sh check .`. Fly deploy stays off feature branches.
 
 ## Add a builder (minimum)
 

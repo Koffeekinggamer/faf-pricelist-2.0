@@ -26,7 +26,7 @@ Do not start a later job until the earlier one is merged or Judson explicitly sk
 
 | # | Job | Kill test | Notes |
 | - | --- | --------- | ----- |
-| 1 | **PR CI** | Every PR runs Ruff + pytest with no secrets and no `*.db`. Fly deploy stays off feature branches. | `.github/workflows/` today is deploy-on-`main` only. Do not add deploy-on-PR. |
+| 1 | **PR CI** | Every PR runs Ruff + pytest with no secrets and no `*.db`. Fly deploy stays off feature branches. | Landed: `.github/workflows/pr-ci.yml`. Do not add deploy-on-PR. |
 | 2 | **Fixtures** | CI can parse bytes for the five SETTLED builders + one `wide_species` token builder + one Options-tab builder. | Synthetic openpyxl or stripped visible tabs. Kill Downloads-only tests as the **sole** proof. Live Mac paths may remain as extra. |
 | 3 | **Identity tests** | No two detectors claim the same next-year filename. A `Download_*` stem never wins as the vendor. | Required before factory #49+. Covers `VENDOR_CANON`, profile hints, `CATALOG_SPECS` tokens, registry order. |
 | 4 | **`add_builder` stub** | One command or ticket template writes slug, vendor string, ReaderEntry/CatalogSpec stub, profile stub, synthetic test, and a SETTLED row placeholder. | Tracer only — does not invent a real factory. |
