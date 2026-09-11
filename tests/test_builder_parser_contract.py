@@ -174,6 +174,7 @@ def test_christina_blocks_a_load_when_the_reader_misses(
 def test_live_book_parses_under_its_locked_reader(
     builder, importer, next_file, sheets, detector, live_book
 ):
+    # Extra: the real Mac book when present. CI proof is tests/test_ci_fixtures.py.
     if not live_book.is_file():
         pytest.skip(f"{live_book.name} not on this machine")
     data = live_book.read_bytes()
