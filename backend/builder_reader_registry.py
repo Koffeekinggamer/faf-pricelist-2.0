@@ -61,14 +61,15 @@ class BuilderReaderRegistry:
                     return entry.parser_id
         return "generic"
 
-    def detect(
+    def _detector_hits(
         self,
         filename: str = "",
         *,
         sheet_names: Optional[list[str]] = None,
         data: Optional[bytes] = None,
-    ) -> tuple[str, str]:
+    ) -> list[tuple[str, str]]:
         names = list(sheet_names or [])
+        hits: list[tuple[str, str]] = []
         for entry in self.entries:
             if not entry.specific:
                 continue
@@ -89,8 +90,32 @@ class BuilderReaderRegistry:
             except (TypeError, ValueError, OSError):
                 matched = False
             if matched:
-                return entry.vendor, entry.parser_id
-        return "", ""
+                hits.append((entry.vendor, entry.parser_id))
+        return hits
+
+    def detect(
+        self,
+        filename: str = "",
+        *,
+        sheet_names: Optional[list[str]] = None,
+        data: Optional[bytes] = None,
+    ) -> tuple[str, str]:
+        hits = self._detector_hits(filename, sheet_names=sheet_names, data=data)
+        return hits[0] if hits else ("", "")
+
+    def detect_all(
+        self,
+        filename: str = "",
+        *,
+        sheet_names: Optional[list[str]] = None,
+        data: Optional[bytes] = None,
+    ) -> tuple[tuple[str, str], ...]:
+        """Every specific reader that claims this file. Empty if none.
+
+        ``detect`` stays first-win. Collision tests use this so a later
+        factory cannot hide behind registry order.
+        """
+        return tuple(self._detector_hits(filename, sheet_names=sheet_names, data=data))
 
     def run(
         self,

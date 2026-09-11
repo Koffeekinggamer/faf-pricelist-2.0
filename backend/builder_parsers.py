@@ -79,18 +79,25 @@ def identify_reader(
     Preview and import_workbook both call this so lock, filename hints, and
     content detect cannot drift.
     """
+    from backend.builder_identity import (
+        is_anonymous_download_label,
+        is_viztech_download_stem,
+    )
     from backend.standardize import resolve_builder_vendor
 
     name = filename or ""
     typed = (vendor_override or "").strip()
     vend = resolve_builder_vendor(typed or vendor or name, filename=name) or (vendor or "").strip()
+    if vend and not typed and is_anonymous_download_label(vend):
+        vend = ""
     if not vend or not preferred_parser_for(vend, root=root):
         hinted = match_vendor_from_saved_parsers(name, root=root)
         if hinted:
             vend = hinted
     if typed and not preferred_parser_for(vend or "", root=root):
         vend = resolve_builder_vendor(typed, filename=name) or typed
-    vend = vend or Path(name).stem
+    if not vend and name and not is_viztech_download_stem(name):
+        vend = Path(name).stem
 
     chosen = (preferred_parser or "").strip().lower()
     source = ""

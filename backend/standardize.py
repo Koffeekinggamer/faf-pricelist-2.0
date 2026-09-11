@@ -813,6 +813,10 @@ def standardize_part(val: Any) -> Optional[str]:
 # vendor names — ONE builder = ONE vendor (no year / filename twins)
 # ---------------------------------------------------------------------------
 
+_ANON_DOWNLOAD_LABEL_RE = re.compile(
+    r"(?i)^download(?:\s+20\d{2})?(?:\s+(?:unfinished|finished))?(?:\s+\d+)?$"
+)
+
 VENDOR_CANON = {
     "hope wood": "Hope Wood",
     "hopewood": "Hope Wood",
@@ -939,7 +943,10 @@ def resolve_builder_vendor(
         if rx.search(s) or rx.search(s_clean):
             return canon
 
-    return s_clean or s
+    leftover = s_clean or s
+    if leftover and _ANON_DOWNLOAD_LABEL_RE.fullmatch(str(leftover).strip()):
+        return None
+    return leftover
 
 
 def Path_stem_safe(filename: str) -> str:
