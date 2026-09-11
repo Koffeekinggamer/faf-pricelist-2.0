@@ -137,7 +137,8 @@ def test_maple_lane_fixture_reads_code_then_next_row_prices():
     oak = items[items["species"].astype(str).str.contains("Oak", case=False)]
     assert 220.0 in set(float(p) for p in oak["base_price"])
     keys = set(addons["option_key"].astype(str))
-    assert "Corian top — Maui Quartz" in keys or "Two-tone" in keys
+    assert "Corian top — Maui Quartz" in keys
+    assert "Crypton fabric pad — Breeze" in keys
 
 
 def test_patio_kraft_fixture_explodes_color_tiers():

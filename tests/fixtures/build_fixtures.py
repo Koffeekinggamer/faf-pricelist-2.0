@@ -13,13 +13,13 @@ if str(ROOT) not in sys.path:
 
 from backend.add_builder import plan_builder  # noqa: E402
 from backend.add_builder import write_fixture as write_stub_fixture  # noqa: E402
-from tests.fixtures.build_tier_b import TIER_B_BUILDERS  # noqa: E402
 from tests.fixture_corpus import (  # noqa: E402
     OPTIONS_FIXTURE,
     SETTLED_FIXTURES,
     STUB_FIXTURE,
     WIDE_FIXTURE,
 )
+from tests.fixtures.build_tier_b import TIER_B_BUILDERS  # noqa: E402
 
 
 def _book(sheets: dict[str, list[list]]) -> openpyxl.Workbook:

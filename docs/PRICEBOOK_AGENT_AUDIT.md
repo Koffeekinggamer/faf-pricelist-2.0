@@ -166,7 +166,7 @@ No sample factory workbook is in the repo, so “has a book” means “profile 
 
 ### 2.2 Tier A — perfected lock (SETTLED contract)
 
-These are the only factories the repo **promises** will keep their own reader on next year’s file.
+These were the first factories the repo **promised** would keep their own reader on next year’s file. Kickoff job 5 also SETTLED every fixture-backed Tier B shape reader (see §2.3). Five Star Tables stays out.
 
 | Builder | Importer | Reader | Rich profile | Dedicated tests | SETTLED |
 | ------- | -------- | ------ | ------------ | --------------- | ------- |
@@ -599,7 +599,7 @@ Do not claim the loop is safe until most of these exist. **Must** vs **should**:
 
 ### Should (speed)
 
-- [ ] `SETTLED` generated from profiles, or ≥ all Tier B in the contract.
+- [x] `SETTLED` covers all Tier B builders that have fixture bytes (Five Star still blocked: token + post-pass, no shape test).
 - [x] `add_builder` stub script / ticket template.
 - [ ] Tombstone stale docs and wayfinder issues.
 - [ ] LuxHome / Millers / Rainbow disposition.

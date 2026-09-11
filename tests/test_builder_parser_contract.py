@@ -360,7 +360,9 @@ def test_live_book_parses_under_its_locked_reader(
     )
     assert result.detected_importer == importer
     assert result.parser_source == "saved"
-    assert len(result.long_df) > 100
+    # Thin KEEP catalogs (ADR-0007) are still extras, not a 100-row floor.
+    min_rows = 2 if builder in {"Amish Aspen", "Maple Lane"} else 100
+    assert len(result.long_df) > min_rows
 
 
 SETTLED_FIXTURE_BY_BUILDER = {row[0]: row for row in SETTLED_FIXTURES}
