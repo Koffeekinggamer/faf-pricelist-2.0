@@ -3,14 +3,14 @@
   "vendor": "Frog Pond Furniture",
   "parser": {
     "importer": "frog_pond_furniture",
-    "source_file": "Download_2026_Pricelist_2499.xlsx",
+    "source_file": "Frog_Pond_Furniture/Download_2026_Pricelist_2499.xlsx",
     "filename_hints": ["frog pond furniture", "frogpondfurniture"],
     "layouts": [
-      "frog_pond_wood_groups",
+      "cover",
       "frog_pond_drawers",
-      "viewed_cover",
-      "viewed_markup",
-      "viewed_options"
+      "frog_pond_wood_groups",
+      "markup",
+      "options"
     ],
     "locked": true
   }
