@@ -176,9 +176,9 @@ These are the only factories the repo **promises** will keep their own reader on
 | Artisan Chairs | `artisan_chairs` | shape (`wide_import`) | option_groups + finish_as_option | `test_artisan_chairs` | yes |
 | Criswell Bedroom | `criswell` | shape (`criswell_import`) | no | `test_criswell`, `test_criswell_left_pane` | yes |
 
-### 2.3 Tier B — shape-specific or dedicated module, not SETTLED
+### 2.3 Tier B — shape-specific or dedicated module
 
-Named reader is real code. Next-year filename contract is **not** in `SETTLED`. Several still live in `wide_import.py`.
+Named reader is real code. Kickoff job 5 (2026-09-11) promoted every Tier B factory that has fixture bytes + a shape test into `tests/test_builder_parser_contract.py` `SETTLED`. Five Star Tables stays blocked (token + oak-tables post-pass, no dedicated shape reader). Stub Workshop stays out. Several readers still live in `wide_import.py` (job 6 splits them).
 
 | Builder | Importer | Reader home | Dedicated tests |
 | ------- | -------- | ----------- | --------------- |

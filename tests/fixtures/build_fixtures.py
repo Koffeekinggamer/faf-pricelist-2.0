@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 
 from backend.add_builder import plan_builder  # noqa: E402
 from backend.add_builder import write_fixture as write_stub_fixture  # noqa: E402
+from tests.fixtures.build_tier_b import TIER_B_BUILDERS  # noqa: E402
 from tests.fixture_corpus import (  # noqa: E402
     OPTIONS_FIXTURE,
     SETTLED_FIXTURES,
@@ -335,6 +336,7 @@ def main() -> None:
         "J & M Woodworking": build_jmw,
         "Artisan Chairs": build_artisan_chairs,
         "Criswell Bedroom": build_criswell,
+        **TIER_B_BUILDERS,
     }
     for builder, _importer, _next_file, path, _opts in SETTLED_FIXTURES:
         builders[builder](path)

@@ -15,7 +15,7 @@ from tests.fixture_corpus import (
     WIDE_FIXTURE,
     all_fixture_paths,
 )
-from tests.test_builder_parser_contract import SETTLED
+from tests.test_builder_parser_contract import SETTLED, _call_detector
 from wide_import import import_workbook, list_excel_sheets
 
 SETTLED_BY_BUILDER = {row[0]: row for row in SETTLED}
@@ -75,7 +75,7 @@ def test_settled_fixture_keeps_the_locked_reader(
     detector = contract[4]
     data = path.read_bytes()
     sheets = list_excel_sheets(data)
-    assert detector(next_file, sheets) is True
+    assert _call_detector(detector, next_file, sheets, data=data) is True
     assert guess_named_parser(next_file, sheet_names=sheets, data=data)[1] == importer
     assert preferred_parser_for(builder, filename=next_file) == importer
 
