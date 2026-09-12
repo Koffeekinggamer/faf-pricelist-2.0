@@ -9,6 +9,10 @@
     {
       "field": "part_number",
       "prefix": "Options"
+    },
+    {
+      "field": "collection",
+      "prefix": "Upgrades"
     }
   ],
   "parser": {

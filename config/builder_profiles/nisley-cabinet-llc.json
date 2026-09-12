@@ -1,6 +1,24 @@
 {
   "version": 1,
   "vendor": "Nisley Cabinet LLC",
+  "search_item_exclude_prefixes": [
+    {
+      "field": "part_number",
+      "prefix": "OPTIONS:"
+    },
+    {
+      "field": "part_number",
+      "prefix": "OPTION "
+    },
+    {
+      "field": "part_number",
+      "prefix": "Add $"
+    },
+    {
+      "field": "description",
+      "prefix": "Add $"
+    }
+  ],
   "parser": {
     "importer": "nisley_cabinet_llc",
     "source_file": "Nisley_Cabinet_LLC/Download_2026_Pricelist_18179.xlsx",
