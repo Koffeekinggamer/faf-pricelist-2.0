@@ -7,7 +7,8 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from wide_import import import_windy_acres_workbook, import_workbook
+from backend.windy_acres_import import import_windy_acres_workbook
+from wide_import import import_workbook
 
 LIVE = Path(
     "/Volumes/ExternalSSD/FAF-pricebook/viztech-downloads/all-20260717/"

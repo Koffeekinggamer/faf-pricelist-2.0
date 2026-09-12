@@ -40,7 +40,7 @@ OrderTrac quote / connection UI stays in the codebase behind flags (`SHOW_ORDERT
 ## Docs
 
 - **[HANDOFF.md](HANDOFF.md)** — agent / operator handoff
-- **[DEPLOY.md](DEPLOY.md)** — Fly / Streamlit Cloud
+- **[DEPLOY.md](DEPLOY.md)** — Fly (canonical). Streamlit Cloud / `pricebook-system` sections are historical.
 - **[FLOOR_CHEAT_SHEET.md](FLOOR_CHEAT_SHEET.md)** — floor staff
 - **[ORDERTRAC_CONNECTION.md](ORDERTRAC_CONNECTION.md)** — OrderTrac setup (hidden in UI for now)
 

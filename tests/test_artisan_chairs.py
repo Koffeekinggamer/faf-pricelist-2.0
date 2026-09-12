@@ -9,11 +9,12 @@ import openpyxl
 import pytest
 
 from backend import PriceBookService
+from backend.artisan_chairs_import import looks_like_artisan_chairs
 from backend.builder_reader_registry import DEFAULT_READER_REGISTRY
 from backend.drop_parse_session import evaluate_readiness
 from backend.import_service import ImportService
 from backend.standardize import resolve_builder_vendor
-from wide_import import import_workbook, looks_like_artisan_chairs
+from wide_import import import_workbook
 
 DOWNLOADS = Path.home() / "Downloads"
 LIVE = DOWNLOADS / "AC_2026_Pricelist_0226.xlsx"
@@ -247,11 +248,11 @@ def test_expected_option_lines_survive_a_dead_addon_scanner(monkeypatch):
     """The gate counts source option lines, not the rows the reader emitted."""
     if not LIVE.is_file():
         pytest.skip(f"{LIVE.name} not on this machine")
+    import backend.artisan_chairs_import as artisan_chairs_import
     import backend.book_options as book_options
-    import wide_import
 
     monkeypatch.setattr(
-        wide_import, "artisan_chairs_option_addons", lambda data, *, vendor: []
+        artisan_chairs_import, "artisan_chairs_option_addons", lambda data, *, vendor: []
     )
     monkeypatch.setattr(book_options, "extract_book_options", lambda *a, **k: [])
     preview = ImportService().preview_excel(

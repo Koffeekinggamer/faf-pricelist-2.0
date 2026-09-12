@@ -19,6 +19,7 @@ from tests.fixture_corpus import (  # noqa: E402
     STUB_FIXTURE,
     WIDE_FIXTURE,
 )
+from tests.fixtures.build_tier_b import TIER_B_BUILDERS  # noqa: E402
 
 
 def _book(sheets: dict[str, list[list]]) -> openpyxl.Workbook:
@@ -335,6 +336,7 @@ def main() -> None:
         "J & M Woodworking": build_jmw,
         "Artisan Chairs": build_artisan_chairs,
         "Criswell Bedroom": build_criswell,
+        **TIER_B_BUILDERS,
     }
     for builder, _importer, _next_file, path, _opts in SETTLED_FIXTURES:
         builders[builder](path)

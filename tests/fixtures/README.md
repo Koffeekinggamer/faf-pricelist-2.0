@@ -21,6 +21,23 @@ tabs only — nothing is hidden.
 | `settled/criswell-bedroom.xlsx` | Criswell left-pane wholesale + Options tab | Markup, Cover, Bloomfield Collection, `Options ` |
 | `wide/genuine-oak-wide-species.xlsx` | Token `genuine_oak` lock on a `wide_species` matrix + a small Options tab | Cover, Options, Pricelist |
 | `options/millcraft-options.xlsx` | Token `millcraft` lock + Options **tab** (size %, two-tone, flat $) | Cover, Options, Pricelist |
+| `settled/aj-s-furniture.xlsx` | AJ's fabric-tier + OPTIONS band | Cover, Finished Wholesale MARKUP, Options |
+| `settled/amish-aspen.xlsx` | Amish Aspen flyer name/price pairs + Hickory/Aspen | Cover, Options, Pricelist |
+| `settled/brookside-home-furnishings.xlsx` | Brookside Heritage hutch title-row woods | Cover, Heritage  Hutches, Options, Markup |
+| `settled/fredericksburg-furniture.xlsx` | Fredericksburg left-hand wholesale woods | Cover, Bedroom, Options |
+| `settled/frog-pond-furniture.xlsx` | Frog Pond title-row wood groups + Options | Cover, `1 Weston `, Options, Markup, Index |
+| `settled/hillside-chair.xlsx` | Hillside Unf/Fin under woods on Sheet3 | Cover, Options, Sheet3 |
+| `settled/hogback-design-and-finishing.xlsx` | Hogback two wood-group columns | Cover, Pricing, Options |
+| `settled/hope-wood.xlsx` | Hope Wood / HW Chair markup calculator | Cover, Markup Calculator, Options |
+| `settled/j-troyer-and-company.xlsx` | J. Troyer Item# × wood groups | Cover, Buffet, Options |
+| `settled/kidron-woodcraft.xlsx` | Kidron wholesale finish twins, not left retail | Cover, Prices, Options |
+| `settled/lamb.xlsx` | LAMB wood matrix + Furniture Options | Cover, Wholesale, Options |
+| `settled/maple-lane.xlsx` | Maple Lane CODE + next-row prices + named colors | Cover, Wholesale, Options |
+| `settled/patio-kraft.xlsx` | Patio Kraft Item # × color tiers | Cover, Retail, Wholesale, Options |
+| `settled/superior-woodcrafts.xlsx` | Superior ITEM # × wood × unf/fin wholesale | Cover, Pricelist, Options |
+| `settled/townline-furniture.xlsx` | Townline visible Finished/Unfinished twins | Cover, Finished, Unfinished, Options |
+| `settled/troyer-ridge-furniture.xlsx` | Troyer Ridge stacked wood groups | Cover, Bedroom, Options |
+| `settled/windy-acres-furniture.xlsx` | Windy Acres ITEM # + finish pairs + in-sheet Options | Cover, Bedroom Collection, Instructions, MarkUp |
 | `stubs/stub-workshop.xlsx` | `add_builder` template (`stub_workshop`). Not a selling factory. Not SETTLED. Options tab must emit addons. | Cover, Options, Pricelist |
 
 Regenerate after changing a layout:
