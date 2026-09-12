@@ -1,6 +1,16 @@
 {
   "version": 1,
   "vendor": "Genuine Oak",
+  "search_item_exclude_prefixes": [
+    {
+      "field": "part_number",
+      "prefix": "OPTIONS:"
+    },
+    {
+      "field": "description",
+      "prefix": "OPTIONS:"
+    }
+  ],
   "parser": {
     "importer": "genuine_oak",
     "source_file": "Genuine_Oak_Designs/Download_2026_Pricelist_3481.xlsx",

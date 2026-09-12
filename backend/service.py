@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence, Union
 
@@ -30,7 +31,6 @@ from backend.builder_profiles import (
     load_builder_profile,
     override_applies,
     resolve_option_groups,
-    single_select_group,
 )
 from backend.config import (
     DATA_DIR,
@@ -51,6 +51,16 @@ from backend.option_fit import (
 from backend.quotes import QuoteRepository
 from backend.repository import PriceBookRepository
 from backend.users import UserRepository
+
+
+@dataclass(frozen=True)
+class SearchItemIdentity:
+    """Exact item key presented by Search before Options are loaded."""
+
+    vendor: str
+    collection: str
+    part_number: str
+    description: str
 
 
 def _wholesale_fingerprint(rows: list[dict]) -> str:
@@ -205,9 +215,46 @@ class PriceBookService:
                 finish_state=finish_state,
                 species=species,
                 option_key=repo_opt,
+                exclude_item_prefixes=profile.get("search_item_exclude_prefixes"),
                 limit=limit,
             )
         )
+
+    def list_search_item_identities(
+        self,
+        query: str,
+        *,
+        vendor: str,
+        species: Optional[str] = None,
+        limit: int = DEFAULT_SEARCH_LIMIT,
+    ) -> list[SearchItemIdentity]:
+        """Ranked, distinct items for the Search Item selector."""
+        rows = self.search(
+            query,
+            vendor=vendor,
+            finish_state=None,
+            species=species,
+            limit=limit,
+        )
+        found: dict[tuple[str, str, str], SearchItemIdentity] = {}
+        for row in rows.to_dict("records"):
+            key = (
+                str(row.get("vendor") or "").strip(),
+                str(row.get("collection") or "").strip(),
+                str(row.get("part_number") or "").strip(),
+            )
+            if not key[2]:
+                continue
+            found.setdefault(
+                key,
+                SearchItemIdentity(
+                    vendor=key[0],
+                    collection=key[1],
+                    part_number=key[2],
+                    description=str(row.get("description") or key[2]).strip(),
+                ),
+            )
+        return list(found.values())
 
     def vendors_with_catalog_images(self) -> set[str]:
         """Builders that have catalog photos, so the UI can keep the column."""
@@ -626,8 +673,6 @@ class PriceBookService:
         profile: dict,
     ) -> bool:
         """Whether a locked builder proves a flat Option belongs to these items."""
-        if single_select_group(profile, option_key) is not None:
-            return True
         for pattern in profile.get("global_option_patterns") or []:
             try:
                 if re.search(str(pattern), option_key, re.IGNORECASE):
@@ -642,27 +687,7 @@ class PriceBookService:
             + " | "
             + items.get("notes", pd.Series("", index=items.index)).fillna("").astype(str)
         ).map(lambda value: re.sub(r"\s+", " ", value).casefold())
-        if text.str.contains(re.escape(label), regex=True).any():
-            return True
-
-        # Printed titles often shorten the stored label ("Leather Seat") to
-        # "Leather $40". A priced OPTIONS/ADD phrase plus a distinctive shared
-        # word is still item-level evidence.
-        stop = {"add", "added", "available", "option", "options", "seat", "seats"}
-
-        def evidence_terms(value: str) -> set[str]:
-            words = re.findall(r"[a-z]{4,}", value.casefold())
-            return {word[:-1] if word.endswith("s") else word for word in words if word not in stop}
-
-        label_terms = evidence_terms(label)
-        if not label_terms:
-            return False
-        for value in text:
-            if not re.search(r"(?i)\boptions?\s*:|\badd\s*\$|\$\s*\d", value):
-                continue
-            if label_terms & evidence_terms(value):
-                return True
-        return False
+        return bool(text.str.contains(re.escape(label), regex=True).any())
 
     def _match_addon_category(
         self,
@@ -980,6 +1005,7 @@ class PriceBookService:
             finish_state=finish_state,
             species=species,
             option_key=item_options or None,
+            exclude_item_prefixes=profile.get("search_item_exclude_prefixes"),
             limit=max(int(limit) * 6, 400),
         )
         if df.empty:
@@ -1058,6 +1084,7 @@ class PriceBookService:
             part_number=part_number,
             species=species,
             finish_state=None,
+            exclude_item_prefixes=profile.get("search_item_exclude_prefixes"),
             limit=max(DEFAULT_SEARCH_LIMIT * 6, 400),
         )
         if items.empty:

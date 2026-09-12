@@ -189,8 +189,8 @@ def test_primary_search_never_returns_addons_or_lists_plain_items_as_options(tmp
 def test_primary_search_hides_known_legacy_option_titles_mislabeled_as_items(tmp_path):
     db = tmp_path / "t.db"
     init_db(db)
-    repo = PriceBookRepository(db)
-    repo.insert_rows(
+    svc = PriceBookService(db)
+    svc.repo.insert_rows(
         [
             _row("Crystal Valley Hardwoods", part="CV-100"),
             _row("Crystal Valley Hardwoods", part="OPTION P-1"),
@@ -206,10 +206,10 @@ def test_primary_search_hides_known_legacy_option_titles_mislabeled_as_items(tmp
         ]
     )
 
-    assert set(repo.search("", vendor="Crystal Valley Hardwoods")["part_number"]) == {"CV-100"}
-    assert set(repo.search("", vendor="INTEG Wood Products")["part_number"]) == {"I-100"}
-    assert set(repo.search("", vendor="Genuine Oak")["part_number"]) == {"GO-100"}
-    assert set(repo.search("", vendor="Five Star Tables")["part_number"]) == {"T-100"}
+    assert set(svc.search("", vendor="Crystal Valley Hardwoods")["part_number"]) == {"CV-100"}
+    assert set(svc.search("", vendor="INTEG Wood Products")["part_number"]) == {"I-100"}
+    assert set(svc.search("", vendor="Genuine Oak")["part_number"]) == {"GO-100"}
+    assert set(svc.search("", vendor="Five Star Tables")["part_number"]) == {"T-100"}
 
 
 def test_crystal_valley_end_table_does_not_get_vendor_wide_options(tmp_path):
@@ -303,8 +303,8 @@ def test_five_star_stool_keeps_only_seat_options_printed_in_title(tmp_path):
                     line_kind="addon",
                 )
                 for label in (
-                    "Fabric Seat",
-                    "Leather Seat",
+                    "Fabric Seats Add $20",
+                    "Leather $40",
                     "Butterfly Leaves",
                     "Horseshoe Base",
                     "Pub Height",
@@ -319,7 +319,7 @@ def test_five_star_stool_keeps_only_seat_options_printed_in_title(tmp_path):
         query="145S",
         collection="Casegoods",
         part_number="145S",
-    ) == ["Fabric Seat", "Leather Seat"]
+    ) == ["Fabric Seats Add $20", "Leather $40"]
 
 
 def test_artisan_bar_stool_keeps_profile_declared_seat_options(tmp_path):

@@ -609,6 +609,7 @@ class PriceBookRepository:
         finish_state: Optional[str] = None,
         species: Optional[str] = None,
         option_key: Optional[Union[str, list]] = None,
+        exclude_item_prefixes: Optional[list[dict]] = None,
         limit: int = DEFAULT_SEARCH_LIMIT,
     ) -> pd.DataFrame:
         """
@@ -650,32 +651,14 @@ class PriceBookRepository:
             opt_filters = [option_key.strip()]
         has_opt = bool(opt_filters)
         clauses.append("lower(COALESCE(line_kind, 'item')) != 'addon'")
-        # Compatibility guard for known settled catalogs imported before
-        # line_kind was reliable. These are unmistakable option headings/rows,
-        # not sellable SKUs, and must never flood primary Search.
-        clauses.append(
-            """
-            NOT (
-                (vendor = 'Crystal Valley Hardwoods'
-                 AND lower(trim(COALESCE(part_number, ''))) LIKE 'option%')
-                OR
-                (vendor = 'INTEG Wood Products'
-                 AND lower(trim(COALESCE(collection, ''))) LIKE 'option%')
-                OR
-                (vendor = 'Genuine Oak'
-                 AND (
-                     lower(trim(COALESCE(part_number, ''))) LIKE 'options:%'
-                     OR lower(trim(COALESCE(description, ''))) LIKE 'options:%'
-                 ))
-                OR
-                (vendor = 'Five Star Tables'
-                 AND (
-                     lower(trim(COALESCE(part_number, ''))) LIKE 'add $%'
-                     OR lower(trim(COALESCE(description, ''))) LIKE 'add $%'
-                 ))
-            )
-            """
-        )
+        allowed_prefix_fields = {"collection", "part_number", "description"}
+        for rule in exclude_item_prefixes or []:
+            field = str(rule.get("field") or "").strip()
+            prefix = str(rule.get("prefix") or "").strip().lower()
+            if field not in allowed_prefix_fields or not prefix:
+                continue
+            clauses.append(f"lower(trim(COALESCE({field}, ''))) NOT LIKE ? ESCAPE '\\'")
+            params.append(self._like_escape(prefix) + "%")
 
         bare_terms: list[str] = []
         if q:

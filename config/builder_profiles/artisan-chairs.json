@@ -2,6 +2,9 @@
   "version": 1,
   "vendor": "Artisan Chairs",
   "item_upcharge_option_keywords": ["kick plate"],
+  "global_option_patterns": [
+    "^(Fabric Seat|Premium Seat \\+ Revolutionary \\+ Crypton|Faux or Ultra Leather Seat|Leather Seat)$"
+  ],
   "drawer_door_item_keywords": ["bar stool", "barstool"],
   "drawer_door_exclude_keywords": [],
   "option_groups": [

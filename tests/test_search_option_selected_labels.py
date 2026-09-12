@@ -7,9 +7,8 @@ crashed with ``AttributeError: 'int' object has no attribute 'strip'``.
 
 from __future__ import annotations
 
-import pandas as pd
-
-from pricebook_app import _format_selected_option_labels, _search_item_identities
+from backend.service import PriceBookService, SearchItemIdentity
+from pricebook_app import _format_selected_option_labels
 
 
 def test_format_selected_option_labels_leaves_search_query_untouched():
@@ -34,8 +33,10 @@ def test_format_selected_option_labels_shows_qty_when_above_one():
     assert bits == ["Extra Drawers or Doors ×3"]
 
 
-def test_search_item_picker_deduplicates_variants_but_keeps_collection_identity():
-    rows = pd.DataFrame(
+def test_search_item_picker_deduplicates_variants_but_keeps_collection_identity(tmp_path):
+    svc = PriceBookService(tmp_path / "items.db")
+    svc.init()
+    svc.repo.insert_rows(
         [
             {
                 "vendor": "LuxHome",
@@ -43,6 +44,9 @@ def test_search_item_picker_deduplicates_variants_but_keeps_collection_identity(
                 "part_number": "21 HRR",
                 "description": "Harmony Rocker Recliner",
                 "option_key": "Standard",
+                "finish_state": "finished",
+                "base_price": 100,
+                "line_kind": "item",
             },
             {
                 "vendor": "LuxHome",
@@ -50,6 +54,9 @@ def test_search_item_picker_deduplicates_variants_but_keeps_collection_identity(
                 "part_number": "21 HRR",
                 "description": "Harmony Rocker Recliner",
                 "option_key": "Premium",
+                "finish_state": "finished",
+                "base_price": 110,
+                "line_kind": "item",
             },
             {
                 "vendor": "LuxHome",
@@ -57,18 +64,26 @@ def test_search_item_picker_deduplicates_variants_but_keeps_collection_identity(
                 "part_number": "21 HRR",
                 "description": "Lookalike SKU",
                 "option_key": "Standard",
+                "finish_state": "finished",
+                "base_price": 120,
+                "line_kind": "item",
             },
         ]
     )
 
-    assert _search_item_identities(rows) == [
-        (
-            "LuxHome",
-            "Harmony Collection",
-            "21 HRR",
-            "Harmony Rocker Recliner",
+    assert svc.list_search_item_identities("21 HRR", vendor="LuxHome") == [
+        SearchItemIdentity(
+            vendor="LuxHome",
+            collection="Harmony Collection",
+            part_number="21 HRR",
+            description="Harmony Rocker Recliner",
         ),
-        ("LuxHome", "Other Collection", "21 HRR", "Lookalike SKU"),
+        SearchItemIdentity(
+            vendor="LuxHome",
+            collection="Other Collection",
+            part_number="21 HRR",
+            description="Lookalike SKU",
+        ),
     ]
 
 

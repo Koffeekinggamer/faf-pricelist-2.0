@@ -519,23 +519,6 @@ def _format_selected_option_labels(
     return bits
 
 
-def _search_item_identities(rows: pd.DataFrame) -> list[tuple[str, str, str, str]]:
-    """Distinct Search item identities, preserving the ranked row order."""
-    if rows is None or rows.empty:
-        return []
-    found: dict[tuple[str, str, str], str] = {}
-    for row in rows.to_dict("records"):
-        key = (
-            str(row.get("vendor") or "").strip(),
-            str(row.get("collection") or "").strip(),
-            str(row.get("part_number") or "").strip(),
-        )
-        if not key[2]:
-            continue
-        found.setdefault(key, str(row.get("description") or key[2]).strip())
-    return [(*key, description) for key, description in found.items()]
-
-
 def _enforce_single_select_options(
     vendor_key: str,
     option_label: str,
@@ -1069,25 +1052,30 @@ if nav == "Search":
         item_collection = ""
         if vf != "All" and item_query.strip():
             try:
-                base_items = svc.search(
+                item_identities = svc.list_search_item_identities(
                     item_query,
                     vendor=vf,
-                    finish_state=None,
                     species=None if wf == "All" else wf,
                     limit=DEFAULT_SEARCH_LIMIT,
                 )
             except Exception:
-                base_items = pd.DataFrame()
-            item_identities = _search_item_identities(base_items)
+                item_identities = []
             if item_identities:
                 if st.session_state.get("search_item_identity") not in item_identities:
                     st.session_state["search_item_identity"] = item_identities[0]
 
-                def _item_label(identity: tuple[str, str, str, str]) -> str:
-                    _vendor, collection, part, description = identity
-                    detail = description if description and description != part else ""
-                    label = f"{part} — {detail}" if detail else part
-                    return f"{label} · {collection}" if collection else label
+                def _item_label(identity) -> str:
+                    detail = (
+                        identity.description
+                        if identity.description and identity.description != identity.part_number
+                        else ""
+                    )
+                    label = (
+                        f"{identity.part_number} — {detail}" if detail else identity.part_number
+                    )
+                    return (
+                        f"{label} · {identity.collection}" if identity.collection else label
+                    )
 
                 selected_item = st.selectbox(
                     "Item",
@@ -1097,9 +1085,9 @@ if nav == "Search":
                     help="Options and results are scoped to this exact builder, "
                     "part number, and collection.",
                 )
-                item_query = selected_item[2]
-                item_part_number = selected_item[2]
-                item_collection = selected_item[1]
+                item_query = selected_item.part_number
+                item_part_number = selected_item.part_number
+                item_collection = selected_item.collection
 
         # Option — under the search box; scoped to the selected item, then kind fit.
         opt_list = _option_dropdown_options(
