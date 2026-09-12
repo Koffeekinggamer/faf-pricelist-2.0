@@ -228,8 +228,8 @@ DEFAULT_READER_REGISTRY = BuilderReaderRegistry(
         ReaderEntry(
             "luxhome",
             "LuxHome",
-            "wide_import:looks_like_luxhome",
-            "wide_import:import_luxhome_workbook",
+            "backend.luxhome_import:looks_like_luxhome",
+            "backend.luxhome_import:import_luxhome_workbook",
             ("luxhome",),
         ),
         ReaderEntry(

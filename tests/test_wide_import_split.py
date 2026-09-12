@@ -13,6 +13,7 @@ MOVED = (
     ("maple_lane", "backend.maple_lane_import"),
     ("hw_chair_markup", "backend.hw_chair_import"),
     ("artisan_chairs", "backend.artisan_chairs_import"),
+    ("luxhome", "backend.luxhome_import"),
 )
 
 
