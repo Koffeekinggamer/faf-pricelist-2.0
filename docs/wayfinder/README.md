@@ -1,4 +1,4 @@
-# Wayfinder issues #12–#31 — superseded
+# SUPERSEDED — wayfinder issues #12–#31
 
 > **Do not pick up GitHub issues #12–#31 as a backlog.** Those tickets were the thin-catalog and smart-reimport wayfinder maps. The decisions are already **accepted** ADRs. An agent that “starts issue 20” will re-litigate shipped work and may choose price-only upsert.
 >
