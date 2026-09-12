@@ -16,6 +16,7 @@ def test_account_ready_message_includes_the_temp_password(monkeypatch) -> None:
     assert "https://faf-pricebook.fly.dev" in link
     assert "https://faf-pricebook.fly.dev" in body
     assert "Your temporary password is Admin." in body
+    assert "first sign-in" in body.lower()
 
 
 def test_account_ready_message_omits_a_password_when_none_was_set(monkeypatch) -> None:

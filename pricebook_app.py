@@ -374,10 +374,10 @@ def _require_login() -> bool:
 if not _require_login():
     st.stop()
 
-# Force password change for OrderTrac-synced accounts
+# First sign-in (temp password / admin reset) — block the book until they change it.
 _auth_sess = st.session_state.get("auth_session") or {}
 if _auth_sess.get("must_change_password") and st.session_state.get("auth_user_id"):
-    st.warning("You must set a new password before continuing.")
+    st.warning("First sign-in: choose a new password before you can use the price book.")
     with st.form("force_pw_change"):
         npw = st.text_input("New password", type="password")
         npw2 = st.text_input("Confirm new password", type="password")

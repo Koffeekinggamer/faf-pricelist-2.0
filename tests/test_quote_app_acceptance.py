@@ -136,6 +136,12 @@ def test_08_admin_creates_jane_as_sales(tmp_path: Path, monkeypatch: pytest.Monk
     )
     assert jane.role == "sales"
     assert jane.email == "jane@example.com"
+    assert jane.must_change_password is True
+    signed_in = store.authenticate("jane@example.com", "jane-pass-1")
+    assert signed_in.must_change_password is True
+    store.set_password_direct(signed_in.id, "jane-pass-2x", must_change=False)
+    after = store.authenticate("jane@example.com", "jane-pass-2x")
+    assert after.must_change_password is False
 
 
 def test_admin_create_user_accepts_a_short_temp_password(

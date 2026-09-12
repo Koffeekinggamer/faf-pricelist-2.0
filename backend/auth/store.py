@@ -198,6 +198,7 @@ class AuthStore:
             role=parsed,
             name=name,
             created_by=actor.id,
+            must_change_password=True,
             allow_short_password=True,
         )
         emailed = send_account_ready_email(

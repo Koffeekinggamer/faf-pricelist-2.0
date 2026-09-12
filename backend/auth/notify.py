@@ -55,7 +55,7 @@ def account_ready_message(
             "Sign in here with this email address:\n"
             f"{link}\n\n"
             f"{password_line}"
-            "You can change the password after you sign in.\n"
+            "On your first sign-in you will be asked to choose a new password.\n"
         )
     return "Your Foothills price book account is ready", body, link
 
