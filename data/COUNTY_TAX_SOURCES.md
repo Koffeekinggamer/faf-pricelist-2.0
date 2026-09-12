@@ -1,7 +1,8 @@
 # County-level combined general merchandise sales tax rates — NC, SC, GA
 
-**As-of / research date:** 2026-09-12  
-**Scope:** Combined state + county (and county transit where levied) **general merchandise** sales/use tax rates for every county in North Carolina, South Carolina, and Georgia.  
+**As-of / research date:** 2026-09-12
+
+**Scope:** Combined state + county (and county transit where levied) **general merchandise** sales/use tax rates for every county in North Carolina, South Carolina, and Georgia.
 **Out of scope (excluded from picker recommendations):** city/municipal overlays, reservation-only rates, taxes collected only by localities (not by the state DOR), prepared-food / meal taxes, motor-fuel / energy / jet-fuel specialty charts, and any rate not published on an official state Revenue/DOR page or form cited below.
 
 **Rule:** Do not guess. If a destination-specific rate is not published as a **county** combined general rate, mark **TBD** and exclude it from county pickers.
