@@ -463,6 +463,7 @@ def _option_dropdown_options(
     vendor_key: str,
     catalog_stamp: str = "",
     item_query: str = "",
+    part_number: str = "",
     collection: str = "",
     species: str = "",
 ) -> list:
@@ -481,6 +482,7 @@ def _option_dropdown_options(
             svc.list_option_keys(
                 vendor=vendor_key,
                 query=item_query,
+                part_number=part_number or None,
                 collection=collection or None,
                 species=None if species in ("", "All") else species,
             )
@@ -1063,6 +1065,7 @@ if nav == "Search":
                 st.rerun()
 
         item_query = q or ""
+        item_part_number = ""
         item_collection = ""
         if vf != "All" and item_query.strip():
             try:
@@ -1095,6 +1098,7 @@ if nav == "Search":
                     "part number, and collection.",
                 )
                 item_query = selected_item[2]
+                item_part_number = selected_item[2]
                 item_collection = selected_item[1]
 
         # Option — under the search box; scoped to the selected item, then kind fit.
@@ -1102,6 +1106,7 @@ if nav == "Search":
             vf if vf else "All",
             _catalog_stamp(),
             item_query,
+            item_part_number,
             item_collection,
             wf or "",
         )
@@ -1279,6 +1284,7 @@ if nav == "Search":
                 results = svc.search(
                     item_query,
                     vendor=None if vf == "All" else vf,
+                    part_number=item_part_number or None,
                     collection=item_collection or None,
                     finish_state=None if ff == "All" else ff,
                     species=None if wf == "All" else wf,

@@ -605,6 +605,7 @@ class PriceBookRepository:
         *,
         collection: Optional[str] = None,
         vendor: Optional[str] = None,
+        part_number: Optional[str] = None,
         finish_state: Optional[str] = None,
         species: Optional[str] = None,
         option_key: Optional[Union[str, list]] = None,
@@ -693,6 +694,9 @@ class PriceBookRepository:
         if vendor and vendor != "All":
             clauses.append("vendor = ?")
             params.append(vendor)
+        if part_number:
+            clauses.append("part_number = ?")
+            params.append(part_number)
         if finish_state and finish_state.lower() in ("finished", "unfinished", "glazed"):
             clauses.append("finish_state = ?")
             params.append(finish_state.lower())

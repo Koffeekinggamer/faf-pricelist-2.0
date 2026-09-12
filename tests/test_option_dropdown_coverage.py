@@ -94,11 +94,16 @@ def test_service_options_are_scoped_to_the_matching_builder_item(tmp_path):
         **_row("LuxHome", species=None, option_key="Ultra", part="21 HRR"),
         "collection": "Other Collection",
     }
+    prefix_collision = {
+        **_row("LuxHome", species=None, option_key="Bleed", part="21 HRR-ALT"),
+        "collection": "Harmony Collection",
+    }
     svc.repo.insert_rows(
         [
             harmony,
             serene,
             lookalike,
+            prefix_collision,
             {
                 **_row(
                     "LuxHome",
@@ -140,10 +145,18 @@ def test_service_options_are_scoped_to_the_matching_builder_item(tmp_path):
         "LuxHome",
         query="21 HRR",
         collection="Harmony Collection",
+        part_number="21 HRR",
     ) == [
         "Motorized Mechanism",
         "Standard",
     ]
+    exact = svc.search(
+        "21 HRR",
+        vendor="LuxHome",
+        collection="Harmony Collection",
+        part_number="21 HRR",
+    )
+    assert set(exact["part_number"]) == {"21 HRR"}
 
 
 def test_primary_search_never_returns_addons_or_lists_plain_items_as_options(tmp_path):
