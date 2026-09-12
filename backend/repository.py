@@ -1240,17 +1240,7 @@ class PriceBookRepository:
                     addon.base_price,
                     addon.adjusted_price,
                     addon.addon_pct,
-                    addon.option_key,
-                    EXISTS (
-                        SELECT 1
-                        FROM pricebook item
-                        WHERE item.vendor = addon.vendor
-                          AND trim(COALESCE(item.part_number, '')) =
-                              trim(COALESCE(addon.part_number, ''))
-                          AND trim(COALESCE(item.collection, '')) =
-                              trim(COALESCE(addon.collection, ''))
-                          AND lower(COALESCE(item.line_kind, 'item')) != 'addon'
-                    ) AS is_item_scoped
+                    addon.option_key
                 FROM pricebook addon
                 WHERE addon.vendor = ? AND addon.option_key = ?
                   AND lower(COALESCE(addon.line_kind, '')) = 'addon'
@@ -1264,18 +1254,11 @@ class PriceBookRepository:
                         """
                         SELECT
                             addon.part_number,
+                            addon.collection,
                             addon.base_price,
                             addon.adjusted_price,
                             addon.addon_pct,
-                            addon.option_key,
-                            EXISTS (
-                                SELECT 1
-                                FROM pricebook item
-                                WHERE item.vendor = addon.vendor
-                                  AND trim(COALESCE(item.part_number, '')) =
-                                      trim(COALESCE(addon.part_number, ''))
-                                  AND lower(COALESCE(item.line_kind, 'item')) != 'addon'
-                            ) AS is_item_scoped
+                            addon.option_key
                         FROM pricebook addon
                         WHERE addon.vendor = ?
                           AND lower(COALESCE(addon.line_kind, '')) = 'addon'
@@ -1288,21 +1271,56 @@ class PriceBookRepository:
                     )
                     == opt
                 ]
+            item_rows = conn.execute(
+                """
+                SELECT DISTINCT part_number, collection
+                FROM pricebook
+                WHERE vendor = ?
+                  AND lower(COALESCE(line_kind, 'item')) != 'addon'
+                  AND trim(COALESCE(part_number, '')) != ''
+                """,
+                (vendor,),
+            ).fetchall()
+        item_collections: dict[str, set[str]] = {}
+        item_parts: dict[str, str] = {}
+        for item in item_rows:
+            part = str(item["part_number"] or "").strip()
+            collection = str(item["collection"] or "").strip()
+            item_parts.setdefault(part.casefold(), part)
+            item_collections.setdefault(part.casefold(), set()).add(collection)
         out: list[dict] = []
         for r in rows:
             pn = (r["part_number"] or "").strip()
+            collection = (r["collection"] or "").strip()
             is_flat = pn == opt or (canonical_option_label(pn) or "") == opt
-            category = pn if is_flat else pn.rsplit(" - ", 1)[0]
+            scope_part = pn
+            scope_collection = collection
+            is_item_scoped = (
+                pn.casefold() in item_collections
+                and collection in item_collections[pn.casefold()]
+            )
+            for separator in (" — ", " - "):
+                suffix = separator + opt
+                if not pn.casefold().endswith(suffix.casefold()):
+                    continue
+                candidate = pn[: -len(suffix)].strip()
+                collections = item_collections.get(candidate.casefold(), set())
+                if len(collections) == 1:
+                    scope_part = item_parts[candidate.casefold()]
+                    scope_collection = next(iter(collections))
+                    is_item_scoped = True
+                break
+            category = scope_part if is_item_scoped else (pn if is_flat else pn.rsplit(" - ", 1)[0])
             out.append(
                 {
                     "category": category,
-                    "part_number": pn,
-                    "collection": (r["collection"] or "").strip() or None,
+                    "part_number": scope_part,
+                    "collection": scope_collection or None,
                     "base_price": r["base_price"],
                     "adjusted_price": r["adjusted_price"],
                     "addon_pct": r["addon_pct"],
                     "is_flat": is_flat,
-                    "is_item_scoped": bool(r["is_item_scoped"]),
+                    "is_item_scoped": is_item_scoped,
                 }
             )
         return out

@@ -228,6 +228,53 @@ def test_fn_chair_cat_filters_before_fabric_upcharge(tmp_path):
     assert result.iloc[0]["adjusted_price"] == 496.0
 
 
+def test_fn_em_dash_addon_only_prices_its_exact_chair(tmp_path):
+    svc = _svc(tmp_path)
+    vendor = "FN Chair"
+    label = "Solid Fabrics / COM"
+    svc.repo.insert_rows(
+        [
+            {
+                **_item(vendor, "Seating", "Abe Side Chair", "Abe Side Chair", 428.0),
+                "option_key": "Cat. 1",
+            },
+            {
+                **_item(vendor, "Seating", "Bar Side Chair", "Bar Side Chair", 460.0),
+                "option_key": "Cat. 1",
+            },
+            {
+                **_addon(vendor, label, 23.0, 68.0),
+                "collection": "Addons",
+                "part_number": f"Abe Side Chair — {label}",
+            },
+        ]
+    )
+
+    abe = svc.search(
+        "Abe Side Chair",
+        vendor=vendor,
+        collection="Seating",
+        part_number="Abe Side Chair",
+        option_key=["Cat. 1", label],
+    )
+    bar = svc.search(
+        "Bar Side Chair",
+        vendor=vendor,
+        collection="Seating",
+        part_number="Bar Side Chair",
+        option_key=["Cat. 1", label],
+    )
+
+    assert float(abe.iloc[0]["adjusted_price"]) == 496.0
+    assert bar.empty
+    assert label not in svc.list_option_keys(
+        vendor,
+        query="Bar Side Chair",
+        collection="Seating",
+        part_number="Bar Side Chair",
+    )
+
+
 def test_per_sku_addon_only_prices_its_catalog_item(tmp_path):
     """LuxHome-style addon columns belong to the SKU printed on that row."""
     svc = _svc(tmp_path)
