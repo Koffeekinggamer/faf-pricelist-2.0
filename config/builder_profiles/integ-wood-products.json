@@ -1,6 +1,20 @@
 {
   "version": 1,
   "vendor": "INTEG Wood Products",
+  "search_item_exclude_prefixes": [
+    {
+      "field": "collection",
+      "prefix": "Options"
+    },
+    {
+      "field": "part_number",
+      "prefix": "Options"
+    },
+    {
+      "field": "collection",
+      "prefix": "Upgrades"
+    }
+  ],
   "parser": {
     "importer": "integ_wood_products",
     "source_file": "INTEG_Wood_Products/Download_2026_Pricelist_8630.xls",

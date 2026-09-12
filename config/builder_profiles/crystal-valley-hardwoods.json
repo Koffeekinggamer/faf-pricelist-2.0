@@ -1,6 +1,12 @@
 {
   "version": 1,
   "vendor": "Crystal Valley Hardwoods",
+  "search_item_exclude_prefixes": [
+    {
+      "field": "part_number",
+      "prefix": "OPTION"
+    }
+  ],
   "parser": {
     "importer": "crystal_valley_hardwoods",
     "source_file": "Download_2026_Pricelist_24589_unzipped/CVH 2026 March Pricelist.xls + Download_2026_Pricelist_24589_unzipped/CVH 2026 March Finished Only Price List.xls",

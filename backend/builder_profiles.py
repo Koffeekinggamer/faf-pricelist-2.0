@@ -54,6 +54,12 @@ DEFAULT_PROFILE: dict[str, Any] = {
     # Alternative option families render as one choice and must never stack.
     # Builders without groups retain the generic stackable checkbox behavior.
     "option_groups": [],
+    # Locked builders may name genuinely catalog-wide flat Options explicitly.
+    # Everything else needs item/category evidence before Search shows it.
+    "global_option_patterns": [],
+    # Legacy rows that a settled catalog mislabeled as sellable items.
+    # The repository applies these generic field/prefix rules during Search.
+    "search_item_exclude_prefixes": [],
     # When set, finished/unfinished is an Options checkbox, not a Finish dropdown.
     # Search defaults to `default`; checking `option_key` switches to `selects`.
     # Catalog-driven: any builder with unfinished sellable rows gets this spec
@@ -130,6 +136,8 @@ def _merge_profile(raw: dict[str, Any], vendor: str) -> dict[str, Any]:
         "drawer_door_exclude_keywords",
         "compound_item_markers",
         "option_groups",
+        "global_option_patterns",
+        "search_item_exclude_prefixes",
         "category_synonym_overrides",
     ):
         if key not in raw or raw[key] is None:
@@ -185,6 +193,10 @@ def load_builder_profile(
         out["drawer_door_exclude_keywords"] = list(DEFAULT_PROFILE["drawer_door_exclude_keywords"])
         out["compound_item_markers"] = list(DEFAULT_PROFILE["compound_item_markers"])
         out["option_groups"] = list(DEFAULT_PROFILE["option_groups"])
+        out["global_option_patterns"] = list(DEFAULT_PROFILE["global_option_patterns"])
+        out["search_item_exclude_prefixes"] = list(
+            DEFAULT_PROFILE["search_item_exclude_prefixes"]
+        )
         out["parse_hints"] = dict(DEFAULT_PROFILE["parse_hints"])
         out["parser"] = {}
         out["finish_as_option"] = DEFAULT_PROFILE["finish_as_option"]

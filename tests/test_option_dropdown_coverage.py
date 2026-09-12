@@ -78,6 +78,381 @@ def test_addon_charge_appears_in_option_dropdown(tmp_path):
     assert "Rustic +15%" in opts
 
 
+def test_service_options_are_scoped_to_the_matching_builder_item(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    svc = PriceBookService(db)
+    harmony = {
+        **_row("LuxHome", species=None, option_key="Standard", part="21 HRR"),
+        "collection": "Harmony Collection",
+    }
+    serene = {
+        **_row("LuxHome", species=None, option_key="Premium", part="10 SC-FA"),
+        "collection": "Serene Collection",
+    }
+    lookalike = {
+        **_row("LuxHome", species=None, option_key="Ultra", part="21 HRR"),
+        "collection": "Other Collection",
+    }
+    prefix_collision = {
+        **_row("LuxHome", species=None, option_key="Bleed", part="21 HRR-ALT"),
+        "collection": "Harmony Collection",
+    }
+    svc.repo.insert_rows(
+        [
+            harmony,
+            serene,
+            lookalike,
+            prefix_collision,
+            {
+                **_row(
+                    "LuxHome",
+                    species=None,
+                    option_key="Motorized Mechanism",
+                    part="21 HRR",
+                    line_kind="addon",
+                    base_price=80,
+                ),
+                "collection": "Harmony Collection",
+            },
+            {
+                **_row(
+                    "LuxHome",
+                    species=None,
+                    option_key="Battery Pack",
+                    part="10 SC-FA",
+                    line_kind="addon",
+                    base_price=100,
+                ),
+                "collection": "Serene Collection",
+            },
+            {
+                **_row(
+                    "LuxHome",
+                    species=None,
+                    option_key="Battery Pack",
+                    part="21 HRR",
+                    line_kind="addon",
+                    base_price=100,
+                ),
+                "collection": "Other Collection",
+            },
+            _row("Other Builder", option_key="Other Option", part="21 HRR"),
+        ]
+    )
+
+    assert svc.list_option_keys(
+        "LuxHome",
+        query="21 HRR",
+        collection="Harmony Collection",
+        part_number="21 HRR",
+    ) == [
+        "Motorized Mechanism",
+        "Standard",
+    ]
+    exact = svc.search(
+        "21 HRR",
+        vendor="LuxHome",
+        collection="Harmony Collection",
+        part_number="21 HRR",
+    )
+    assert set(exact["part_number"]) == {"21 HRR"}
+
+
+def test_primary_search_never_returns_addons_or_lists_plain_items_as_options(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    svc = PriceBookService(db)
+    svc.repo.insert_rows(
+        [
+            _row("Builder", part="CHAIR-1"),
+            _row("Builder", part="Battery Pack"),
+            _row(
+                "Builder",
+                species=None,
+                option_key="Motorized Mechanism",
+                part="CHAIR-1",
+                line_kind="addon",
+                base_price=80,
+            ),
+        ]
+    )
+
+    assert set(svc.search("", vendor="Builder")["part_number"]) == {
+        "CHAIR-1",
+        "Battery Pack",
+    }
+    assert svc.search("Motorized Mechanism", vendor="Builder").empty
+    assert "Battery Pack" not in svc.list_option_keys("Builder")
+
+
+def test_primary_search_hides_known_legacy_option_titles_mislabeled_as_items(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    svc = PriceBookService(db)
+    svc.repo.insert_rows(
+        [
+            _row("Crystal Valley Hardwoods", part="CV-100"),
+            _row("Crystal Valley Hardwoods", part="OPTION P-1"),
+            _row("Crystal Valley Hardwoods", part="option: Storage Bed"),
+            _row("INTEG Wood Products", part="I-100"),
+            _row("INTEG Wood Products", part="Options"),
+            {
+                **_row("INTEG Wood Products", part="Soft Close Slides"),
+                "collection": "Options",
+            },
+            {
+                **_row("INTEG Wood Products", part="Custom Hardware"),
+                "collection": "Upgrades / Options",
+            },
+            {
+                **_row("Genuine Oak", part="GO-100"),
+                "description": "Corner Curio OPTIONS: Extra Glass Shelves Add $30",
+            },
+            _row("Genuine Oak", part="OPTIONS: Hardware"),
+            _row("Elite Designs", part="ED-100"),
+            _row("Elite Designs", part="$36904 Standard hardware"),
+            {
+                **_row("Nisley Cabinet LLC", part="NS100"),
+                "description": "Nightstand OPTIONS: Cedar Drawer Bottoms Add $80",
+            },
+            _row("Nisley Cabinet LLC", part="OPTIONS: Soft Close Slides"),
+            _row("Nisley Cabinet LLC", part="OPTION P-1"),
+            _row("Nisley Cabinet LLC", part="Add $25 for leaf storage"),
+            {
+                **_row("Five Star Tables", part="T-100"),
+                "description": "Mission Stool Fabric Seats Add $20; Leather $40",
+            },
+            _row("Five Star Tables", part="add $25 for leaf storage"),
+        ]
+    )
+
+    assert set(svc.search("", vendor="Crystal Valley Hardwoods")["part_number"]) == {"CV-100"}
+    assert set(svc.search("", vendor="INTEG Wood Products")["part_number"]) == {"I-100"}
+    assert set(svc.search("", vendor="Genuine Oak")["part_number"]) == {"GO-100"}
+    assert set(svc.search("", vendor="Elite Designs")["part_number"]) == {"ED-100"}
+    assert set(svc.search("", vendor="Nisley Cabinet LLC")["part_number"]) == {"NS100"}
+    assert set(svc.search("", vendor="Five Star Tables")["part_number"]) == {"T-100"}
+    assert [
+        item.part_number
+        for item in svc.list_search_item_identities("", vendor="INTEG Wood Products")
+    ] == ["I-100"]
+    assert [
+        item.part_number
+        for item in svc.list_search_item_identities("", vendor="Elite Designs")
+    ] == ["ED-100"]
+    assert [
+        item.part_number
+        for item in svc.list_search_item_identities("", vendor="Nisley Cabinet LLC")
+    ] == ["NS100"]
+
+
+def test_crystal_valley_end_table_does_not_get_vendor_wide_options(tmp_path):
+    svc = PriceBookService(tmp_path / "t.db")
+    svc.init()
+    vendor = "Crystal Valley Hardwoods"
+    svc.repo.insert_rows(
+        [
+            _row(vendor, part="AN1624E"),
+            {
+                **_row(vendor, part="BED-1"),
+                "finish_state": "unfinished",
+            },
+            *[
+                _row(
+                    vendor,
+                    species=None,
+                    option_key=label,
+                    part=label,
+                    line_kind="addon",
+                )
+                for label in (
+                    "Springhill and McCoy",
+                    "Tz movement from Hermle of Germany",
+                    "Also available without through tenons",
+                    "Storage Bed option",
+                )
+            ],
+        ]
+    )
+
+    assert svc.list_option_keys(
+        vendor,
+        query="AN1624E",
+        collection="Casegoods",
+        part_number="AN1624E",
+    ) == []
+
+
+def test_genuine_oak_curio_keeps_only_options_printed_on_that_item(tmp_path):
+    svc = PriceBookService(tmp_path / "t.db")
+    svc.init()
+    vendor = "Genuine Oak"
+    item = _row(vendor, part="G06-46")
+    item["description"] = "Bunker Hill Corner Curio OPTIONS: Extra Glass Shelves Add $30"
+    svc.repo.insert_rows(
+        [
+            item,
+            *[
+                _row(
+                    vendor,
+                    species=None,
+                    option_key=label,
+                    part=label,
+                    line_kind="addon",
+                )
+                for label in (
+                    "Extra Glass Shelves Add $30",
+                    "2 Drawer Storage",
+                    "Paint / Glaze",
+                    "Shiplap Back",
+                    "Reverse Layout",
+                )
+            ],
+        ]
+    )
+
+    assert svc.list_option_keys(
+        vendor,
+        query="G06-46",
+        collection="Casegoods",
+        part_number="G06-46",
+    ) == ["Extra Glass Shelves Add $30"]
+
+
+def test_five_star_stool_keeps_only_seat_options_printed_in_title(tmp_path):
+    svc = PriceBookService(tmp_path / "t.db")
+    svc.init()
+    vendor = "Five Star Tables"
+    item = _row(vendor, part="145S")
+    item["description"] = "Plain Mission Stool — Fabric Seats Add $20; Leather $40"
+    svc.repo.insert_rows(
+        [
+            item,
+            *[
+                _row(
+                    vendor,
+                    species=None,
+                    option_key=label,
+                    part=label,
+                    line_kind="addon",
+                )
+                for label in (
+                    "Fabric Seat",
+                    "Leather Seat",
+                    "Butterfly Leaves",
+                    "Horseshoe Base",
+                    "Pub Height",
+                    "Custom Height",
+                )
+            ],
+        ]
+    )
+
+    assert svc.list_option_keys(
+        vendor,
+        query="145S",
+        collection="Casegoods",
+        part_number="145S",
+    ) == ["Fabric Seat", "Leather Seat"]
+
+
+def test_five_star_non_seat_goods_reject_bare_leather_or_fabric_price(tmp_path):
+    """Bare Leather $40 / Fabric $20 evidence requires seating-goods context."""
+    svc = PriceBookService(tmp_path / "t.db")
+    svc.init()
+    vendor = "Five Star Tables"
+    table = _row(vendor, part="T-200")
+    table["description"] = "Mission Dining Table — Leather $40; Fabric $20 available"
+    svc.repo.insert_rows(
+        [
+            table,
+            *[
+                _row(
+                    vendor,
+                    species=None,
+                    option_key=label,
+                    part=label,
+                    line_kind="addon",
+                )
+                for label in ("Fabric Seat", "Leather Seat", "Butterfly Leaves")
+            ],
+        ]
+    )
+
+    assert svc.list_option_keys(
+        vendor,
+        query="T-200",
+        collection="Casegoods",
+        part_number="T-200",
+    ) == []
+
+
+def test_artisan_bar_stool_keeps_profile_declared_seat_options(tmp_path):
+    svc = PriceBookService(tmp_path / "t.db")
+    svc.init()
+    vendor = "Artisan Chairs"
+    item = _row(vendor, part='24" Stationary Bar Stool')
+    item["description"] = '24" Stationary Bar Stool'
+    svc.repo.insert_rows(
+        [
+            item,
+            *[
+                _row(
+                    vendor,
+                    species=None,
+                    option_key=label,
+                    part=label,
+                    line_kind="addon",
+                )
+                for label in (
+                    "Fabric Seat",
+                    "Leather Seat",
+                    "Butterfly Leaves",
+                )
+            ],
+        ]
+    )
+
+    assert svc.list_option_keys(
+        vendor,
+        query='24" Stationary Bar Stool',
+        collection="Casegoods",
+        part_number='24" Stationary Bar Stool',
+    ) == ["Fabric Seat", "Leather Seat"]
+
+
+def test_artisan_side_table_does_not_get_global_seat_options(tmp_path):
+    svc = PriceBookService(tmp_path / "t.db")
+    svc.init()
+    vendor = "Artisan Chairs"
+    svc.repo.insert_rows(
+        [
+            _row(vendor, part="Mission Side Table"),
+            *[
+                _row(
+                    vendor,
+                    species=None,
+                    option_key=label,
+                    part=label,
+                    line_kind="addon",
+                )
+                for label in ("Fabric Seat", "Leather Seat")
+            ],
+        ]
+    )
+
+    assert (
+        svc.list_option_keys(
+            vendor,
+            query="Mission Side Table",
+            collection="Casegoods",
+            part_number="Mission Side Table",
+        )
+        == []
+    )
+
+
 def test_service_add_addon_charge_lists_in_options(tmp_path):
     db = tmp_path / "t.db"
     init_db(db)
@@ -91,7 +466,7 @@ def test_service_add_addon_charge_lists_in_options(tmp_path):
     assert "Nailhead trim" in svc.list_option_keys("Addon Co")
 
 
-def test_search_hides_addons_unless_option_filtered(tmp_path):
+def test_repository_search_never_returns_addons_as_primary_items(tmp_path):
     db = tmp_path / "t.db"
     init_db(db)
     repo = PriceBookRepository(db)
@@ -118,9 +493,7 @@ def test_search_hides_addons_unless_option_filtered(tmp_path):
         option_key="Solid Fabrics / COM",
         finish_state="finished",
     )
-    assert len(addons) == 1
-    assert float(addons.iloc[0]["base_price"]) == 23
-    assert addons.iloc[0]["line_kind"] == "addon"
+    assert addons.empty
 
 
 def test_fn_chair_still_lists_cats(tmp_path):

@@ -459,20 +459,35 @@ def _catalog_stamp() -> str:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _option_dropdown_options(vendor_key: str, catalog_stamp: str = "") -> list:
+def _option_dropdown_options(
+    vendor_key: str,
+    catalog_stamp: str = "",
+    item_query: str = "",
+    part_number: str = "",
+    collection: str = "",
+    species: str = "",
+) -> list:
     """
-    Live Options for the selected builder only — not a static list.
+    Live Options for the selected builder and matching items — not a static list.
 
     Builder = All → empty (no cross-vendor option soup).
-    Specific builder → whatever that builder's catalog currently has
-    (addon charges + that builder's option_key / option-like species).
+    Specific builder + query → only options applicable to those Search rows.
     ``catalog_stamp`` refreshes the list after Drop / re-import.
     """
-    if not vendor_key or vendor_key == "All":
+    if not vendor_key or vendor_key == "All" or not part_number:
         return []
     svc = _svc()
     try:
-        return list(svc.list_option_keys(vendor=vendor_key) or [])
+        return list(
+            svc.list_option_keys(
+                vendor=vendor_key,
+                query=item_query,
+                part_number=part_number or None,
+                collection=collection or None,
+                species=None if species in ("", "All") else species,
+            )
+            or []
+        )
     except Exception:
         return []
 
@@ -490,6 +505,18 @@ def _option_qty_key(vendor_key: str, option_label: str) -> str:
 def _option_size_key(vendor_key: str, option_label: str) -> str:
     """Session key for Platform bed-size prompt."""
     return _option_checkbox_key(vendor_key, option_label) + "_size"
+
+
+def _format_selected_option_labels(
+    selected: list[str],
+    option_qty: dict[str, int],
+) -> list[str]:
+    """Labels for the Options panel Selected line — never touch Search ``q``."""
+    bits: list[str] = []
+    for option in selected:
+        qty = int(option_qty.get(option, 1) or 1)
+        bits.append(f"{option} ×{qty}" if qty > 1 else option)
+    return bits
 
 
 def _enforce_single_select_options(
@@ -1020,12 +1047,61 @@ if nav == "Search":
                 st.session_state["_clear_search"] = True
                 st.rerun()
 
-        # Option — under the search box; filtered to the piece being looked up.
-        opt_list = _option_dropdown_options(vf if vf else "All", _catalog_stamp())
+        item_query = q or ""
+        item_part_number = ""
+        item_collection = ""
+        if vf != "All" and item_query.strip():
+            try:
+                item_identities = svc.list_search_item_identities(
+                    item_query,
+                    vendor=vf,
+                    species=None if wf == "All" else wf,
+                    limit=DEFAULT_SEARCH_LIMIT,
+                )
+            except Exception:
+                item_identities = []
+            if item_identities:
+                if st.session_state.get("search_item_identity") not in item_identities:
+                    st.session_state["search_item_identity"] = item_identities[0]
+
+                def _item_label(identity) -> str:
+                    detail = (
+                        identity.description
+                        if identity.description and identity.description != identity.part_number
+                        else ""
+                    )
+                    label = (
+                        f"{identity.part_number} — {detail}" if detail else identity.part_number
+                    )
+                    return (
+                        f"{label} · {identity.collection}" if identity.collection else label
+                    )
+
+                selected_item = st.selectbox(
+                    "Item",
+                    item_identities,
+                    key="search_item_identity",
+                    format_func=_item_label,
+                    help="Options and results are scoped to this exact builder, "
+                    "part number, and collection.",
+                )
+                item_query = selected_item.part_number
+                item_part_number = selected_item.part_number
+                item_collection = selected_item.collection
+
+        # Option — under the search box; scoped to the selected item, then kind fit.
+        opt_list = _option_dropdown_options(
+            vf if vf else "All",
+            _catalog_stamp(),
+            item_query,
+            item_part_number,
+            item_collection,
+            wf or "",
+        )
         if vf not in (None, "All") and opt_list:
             opt_list = svc.options_for_search(
                 vf,
-                q,
+                item_query,
                 opt_list,
                 species=None if not wf or wf == "All" else wf,
             )
@@ -1181,11 +1257,10 @@ if nav == "Search":
                 )
         elif vf == "All":
             pass  # no option chrome until a builder is chosen
+        elif not item_part_number:
+            st.caption("Search and select an item to see only that item's options.")
         elif vf != "All" and not opt_list:
-            if (q or "").strip():
-                st.caption("No options for this piece — try a different search or Builder.")
-            else:
-                st.caption("No options parsed for this builder.")
+            st.caption("No options parsed for this item.")
 
         # Don't dump the whole book when search is empty — unless a builder is chosen
         if not (q or "").strip() and vf == "All":
@@ -1194,9 +1269,10 @@ if nav == "Search":
         else:
             try:
                 results = svc.search(
-                    q,
+                    item_query,
                     vendor=None if vf == "All" else vf,
-                    collection=None,  # Collection filter hidden on floor UI
+                    part_number=item_part_number or None,
+                    collection=item_collection or None,
                     finish_state=None if ff == "All" else ff,
                     species=None if wf == "All" else wf,
                     option_key=of_list or None,

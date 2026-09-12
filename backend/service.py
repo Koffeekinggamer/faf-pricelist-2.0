@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence, Union
 
@@ -50,6 +51,16 @@ from backend.option_fit import (
 from backend.quotes import QuoteRepository
 from backend.repository import PriceBookRepository
 from backend.users import UserRepository
+
+
+@dataclass(frozen=True)
+class SearchItemIdentity:
+    """Exact item key presented by Search before Options are loaded."""
+
+    vendor: str
+    collection: str
+    part_number: str
+    description: str
 
 
 def _wholesale_fingerprint(rows: list[dict]) -> str:
@@ -162,6 +173,7 @@ class PriceBookService:
         *,
         collection: Optional[str] = None,
         vendor: Optional[str] = None,
+        part_number: Optional[str] = None,
         finish_state: Optional[str] = None,
         species: Optional[str] = None,
         option_key: Optional[Union[str, Sequence[str]]] = None,
@@ -179,6 +191,7 @@ class PriceBookService:
                 query,
                 vendor=vendor,
                 collection=collection,
+                part_number=part_number,
                 finish_state=finish_state,
                 species=species,
                 option_keys=opts,
@@ -198,12 +211,50 @@ class PriceBookService:
                 query,
                 collection=collection,
                 vendor=vendor,
+                part_number=part_number,
                 finish_state=finish_state,
                 species=species,
                 option_key=repo_opt,
+                exclude_item_prefixes=profile.get("search_item_exclude_prefixes"),
                 limit=limit,
             )
         )
+
+    def list_search_item_identities(
+        self,
+        query: str,
+        *,
+        vendor: str,
+        species: Optional[str] = None,
+        limit: int = DEFAULT_SEARCH_LIMIT,
+    ) -> list[SearchItemIdentity]:
+        """Ranked, distinct items for the Search Item selector."""
+        rows = self.search(
+            query,
+            vendor=vendor,
+            finish_state=None,
+            species=species,
+            limit=limit,
+        )
+        found: dict[tuple[str, str, str], SearchItemIdentity] = {}
+        for row in rows.to_dict("records"):
+            key = (
+                str(row.get("vendor") or "").strip(),
+                str(row.get("collection") or "").strip(),
+                str(row.get("part_number") or "").strip(),
+            )
+            if not key[2]:
+                continue
+            found.setdefault(
+                key,
+                SearchItemIdentity(
+                    vendor=key[0],
+                    collection=key[1],
+                    part_number=key[2],
+                    description=str(row.get("description") or key[2]).strip(),
+                ),
+            )
+        return list(found.values())
 
     def vendors_with_catalog_images(self) -> set[str]:
         """Builders that have catalog photos, so the UI can keep the column."""
@@ -615,6 +666,47 @@ class PriceBookService:
         keys = profile.get("item_upcharge_option_keywords") or []
         return any(k in o for k in keys)
 
+    @staticmethod
+    def _locked_flat_option_has_item_evidence(
+        items: pd.DataFrame,
+        option_key: str,
+        profile: dict,
+    ) -> bool:
+        """Whether a locked builder proves a flat Option belongs to these items."""
+        label = re.sub(r"\s+", " ", str(option_key or "").strip()).casefold()
+        if not label:
+            return False
+        text = (
+            items.get("description", pd.Series("", index=items.index)).fillna("").astype(str)
+            + " | "
+            + items.get("notes", pd.Series("", index=items.index)).fillna("").astype(str)
+        ).map(lambda value: re.sub(r"\s+", " ", value).casefold())
+        seating_goods = r"\b(?:stools?|chairs?|seats?|benches?)\b"
+        for pattern in profile.get("global_option_patterns") or []:
+            try:
+                if not re.search(str(pattern), option_key, re.IGNORECASE):
+                    continue
+                if re.search(r"\bseats?\b", label):
+                    return bool(text.str.contains(seating_goods, regex=True).any())
+                return True
+            except re.error:
+                continue
+        if text.str.contains(re.escape(label), regex=True).any():
+            return True
+        seat_core = re.sub(r"\s+seats?$", "", label).strip()
+        if seat_core == label or not seat_core:
+            return False
+        # "Fabric Seats Add $20" is enough on its own; bare "Leather $40" only
+        # counts when the same item text is seating goods (stool / chair / …).
+        seat_word = rf"\b{re.escape(seat_core)}\b\s+seats?\s*(?:add\s*)?\$\s*\d"
+        if text.str.contains(seat_word, regex=True).any():
+            return True
+        bare_price = rf"\b{re.escape(seat_core)}\b\s*(?:add\s*)?\$\s*\d"
+        return bool(
+            text.str.contains(bare_price, regex=True).any()
+            and text.str.contains(seating_goods, regex=True).any()
+        )
+
     def _match_addon_category(
         self,
         item_text: str,
@@ -695,6 +787,7 @@ class PriceBookService:
         is_drawer_door = self._is_item_upcharge_option(option_key, profile)
         drawer_keywords = profile.get("drawer_door_item_keywords") or []
         drawer_exclude = profile.get("drawer_door_exclude_keywords") or []
+        parser_locked = bool((profile.get("parser") or {}).get("locked"))
 
         text = (
             df.get("description").fillna("").astype(str)
@@ -708,12 +801,56 @@ class PriceBookService:
         applied = pd.Series(False, index=df.index)
         notes = df.get("notes").fillna("").astype(str)
 
+        item_scoped = [a for a in addons if a.get("is_item_scoped")]
+        if item_scoped:
+            # Exact SKU charges first (LuxHome columns, FN "Abe — fabric").
+            # Empty collection means part-only scope (ambiguous multi-collection
+            # suffix rows). Remaining category/flat rows still apply below to
+            # rows that did not receive an exact hit — never double-charge.
+            by_item: dict[tuple[str, str], dict] = {}
+            by_part_only: dict[str, dict] = {}
+            for a in item_scoped:
+                part = str(a.get("part_number") or "").strip().casefold()
+                if not part:
+                    continue
+                coll = str(a.get("collection") or "").strip().casefold()
+                if coll:
+                    by_item[(part, coll)] = a
+                else:
+                    by_part_only[part] = a
+            for idx in df.index:
+                part = str(df.at[idx, "part_number"] or "").strip().casefold()
+                coll = str(df.at[idx, "collection"] or "").strip().casefold()
+                addon = by_item.get((part, coll)) or by_part_only.get(part)
+                if addon is None:
+                    continue
+                r = df.loc[idx]
+                b, a, pct_tag = self._addon_dollar_or_pct(
+                    addon,
+                    item_base=r.get("base_price"),
+                    item_retail=r.get("adjusted_price"),
+                    option_key=option_key,
+                )
+                if a is not None:
+                    df.at[idx, "adjusted_price"] = float(r.get("adjusted_price") or 0.0) + float(a)
+                if b is not None:
+                    df.at[idx, "base_price"] = float(r.get("base_price") or 0.0) + float(b)
+                amount = f" ({pct_tag})" if pct_tag else (f" (+${float(a):,.0f})" if a is not None else "")
+                tag = f"+ {option_key}{amount}"
+                n = notes.at[idx] if idx in notes.index else ""
+                df.at[idx, "notes"] = f"{n} · {tag}".strip(" ·") if n else tag
+                applied.at[idx] = True
+            flat = [a for a in addons if a.get("is_flat") and not a.get("is_item_scoped")]
+            cats = [a for a in addons if not a.get("is_flat") and not a.get("is_item_scoped")]
+            if not flat and not cats:
+                return df, applied
+
         if is_drawer_door and flat:
             eligible = text.apply(
                 lambda s: (
                     any(k in s for k in drawer_keywords) and not any(x in s for x in drawer_exclude)
                 )
-            )
+            ) & ~applied
             if not eligible.any():
                 return df, applied
             for idx in df.index[eligible]:
@@ -747,10 +884,21 @@ class PriceBookService:
                 applied.at[idx] = True
             return df, applied
 
+        if parser_locked and flat:
+            pending = df.loc[~applied]
+            flat = (
+                flat
+                if self._locked_flat_option_has_item_evidence(pending, option_key, profile)
+                else []
+            )
+            if not flat and not cats:
+                return df, applied
+
         # Finish / per-category (or non-drawer flat): every physical WOOD item.
         # Qty does not apply to finish options — only extras.
         has_wood = df.get("species").fillna("").astype(str).str.strip() != ""
-        if not has_wood.any():
+        pending_wood = has_wood & ~applied
+        if not pending_wood.any():
             return df, applied
 
         rc = sorted(
@@ -772,7 +920,7 @@ class PriceBookService:
                     med_addon = a
                     break
 
-        for idx in df.index[has_wood]:
+        for idx in df.index[pending_wood]:
             r = df.loc[idx]
             itext = f"{r.get('description') or ''} {r.get('collection') or ''} {r.get('part_number') or ''}"
             if cats:
@@ -792,7 +940,7 @@ class PriceBookService:
                 )
                 label = None if m.get("is_flat") else m.get("category")
                 approx = not confident
-            elif med_addon is not None:
+            elif med_addon is not None and not parser_locked:
                 b, a, pct_tag = self._addon_dollar_or_pct(
                     med_addon,
                     item_base=ob,
@@ -801,6 +949,8 @@ class PriceBookService:
                 )
                 label, approx = None, True
             else:
+                if parser_locked:
+                    continue
                 b, a, label, approx = med_base, med_retail, None, True
             if qty > 1:
                 if a is not None:
@@ -839,6 +989,7 @@ class PriceBookService:
         *,
         vendor: str,
         collection: Optional[str],
+        part_number: Optional[str],
         finish_state: Optional[str],
         species: Optional[str],
         option_keys: Sequence[str],
@@ -876,9 +1027,11 @@ class PriceBookService:
             query,
             collection=collection,
             vendor=vendor,
+            part_number=part_number,
             finish_state=finish_state,
             species=species,
             option_key=item_options or None,
+            exclude_item_prefixes=profile.get("search_item_exclude_prefixes"),
             limit=max(int(limit) * 6, 400),
         )
         if df.empty:
@@ -926,14 +1079,71 @@ class PriceBookService:
         self.ensure_ready()
         return self.repo.list_species(vendor=vendor)
 
-    def list_option_keys(self, vendor: Optional[str] = None) -> list[str]:
-        """Live Option list for one builder from that builder's catalog (not a static menu)."""
+    def list_option_keys(
+        self,
+        vendor: Optional[str] = None,
+        *,
+        query: str = "",
+        collection: Optional[str] = None,
+        part_number: Optional[str] = None,
+        species: Optional[str] = None,
+    ) -> list[str]:
+        """Live Options for one builder, optionally narrowed to matching items.
+
+        With a product query, item-native variants come only from those rows
+        and addon charges must actually apply to at least one matching item.
+        This keeps per-SKU option columns from becoming builder-wide choices.
+        """
         self.ensure_ready()
         keys = self.repo.list_option_keys(vendor=vendor)
-        label = finish_option_label(self._search_profile(vendor))
+        profile = self._search_profile(vendor)
+        label = finish_option_label(profile)
         if label and label not in keys:
             keys = [label, *keys]
-        return order_search_options(keys)
+        if not query.strip() or not vendor or vendor == "All":
+            return order_search_options(keys)
+
+        items = self.repo.search(
+            query,
+            vendor=vendor,
+            collection=collection,
+            part_number=part_number,
+            species=species,
+            finish_state=None,
+            exclude_item_prefixes=profile.get("search_item_exclude_prefixes"),
+            limit=max(DEFAULT_SEARCH_LIMIT * 6, 400),
+        )
+        if items.empty:
+            return []
+
+        native = {
+            str(value).strip()
+            for column in ("option_key", "species")
+            if column in items.columns
+            for value in items[column].dropna()
+            if str(value).strip()
+        }
+        applicable: list[str] = []
+        for key in keys:
+            if key == label:
+                selects = str((profile.get("finish_as_option") or {}).get("selects") or "")
+                states = set(items.get("finish_state", pd.Series(dtype=str)).dropna().astype(str))
+                if not selects or selects in states:
+                    applicable.append(key)
+                continue
+            addons = self.repo.get_addon_rows(vendor, key)
+            if addons:
+                _priced, mask = self._apply_one_option_upcharge(
+                    items,
+                    option_key=key,
+                    addons=addons,
+                    profile=profile,
+                )
+                if mask.any():
+                    applicable.append(key)
+            elif key in native:
+                applicable.append(key)
+        return order_search_options(applicable)
 
     def options_for_search(
         self,
@@ -945,7 +1155,11 @@ class PriceBookService:
     ) -> list[str]:
         """Builder Options that fit the piece named in Search (all builders)."""
         self.ensure_ready()
-        keys = list(options) if options is not None else self.list_option_keys(vendor)
+        keys = (
+            list(options)
+            if options is not None
+            else self.list_option_keys(vendor, query=query, species=species)
+        )
         blob = str(query or "").strip()
         if not blob:
             return order_search_options(filter_options_for_kinds(keys, set(), text=""))
