@@ -6,6 +6,7 @@ import io
 from pathlib import Path
 
 import openpyxl
+import pytest
 
 from backend.builder_parsers import guess_named_parser
 from backend.builder_reader_registry import DEFAULT_READER_REGISTRY
@@ -195,7 +196,7 @@ def test_criswell_option_gate_counts_source_lines_not_emitted_rows(monkeypatch):
 
 def test_live_cwf_wholesale_parses_bloomfield_and_options():
     if not WHOLESALE.is_file():
-        return
+        pytest.skip(f"{WHOLESALE.name} not on this machine")
     preview = ImportService().preview_excel(
         WHOLESALE.read_bytes(),
         filename=WHOLESALE.name,

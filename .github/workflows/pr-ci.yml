@@ -1,0 +1,47 @@
+# PR / integration-branch CI. No Fly, no catalog DB, no secrets.
+# Fly deploy stays on push to main only (fly-deploy.yml). Do not add deploy-on-PR.
+
+name: PR CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - cursor/hide-finish-keep-options-ee2a
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruff-pytest:
+    name: Ruff + pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Create venv and install deps
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt
+          # Pin the local gate tools so CI does not float past this tree.
+          .venv/bin/pip install ruff==0.16.5 pytest==9.1.1
+
+      - name: Ruff
+        # Same wrapper as local / lint-staged. Full-tree check; known debt is
+        # listed in pyproject.toml per-file-ignores so new files stay gated.
+        run: ./scripts/run_ruff.sh check .
+
+      - name: Pytest
+        run: .venv/bin/python -m pytest -q

@@ -1,8 +1,16 @@
+# SUPERSEDED — not a backlog ticket
+
+> **Do not implement or re-grill from this note or from GitHub #20–#31.** Smart re-import is locked in [`docs/adr/0010-smart-reimport-skip-unchanged.md`](../adr/0010-smart-reimport-skip-unchanged.md). Thin-catalog keep/replace/ignore is locked in [`docs/adr/0007-thin-catalogs-triage.md`](../adr/0007-thin-catalogs-triage.md). Issue index: [`README.md`](./README.md).
+>
+> Identity: [`AGENTS.md`](../../AGENTS.md) · [`docs/PRICEBOOK_AGENT_AUDIT.md`](../PRICEBOOK_AGENT_AUDIT.md) · [`docs/CURSOR_AGENT_KICKOFF.md`](../CURSOR_AGENT_KICKOFF.md).
+>
+> On change the Load path is **`replace_vendor`**, not price-only upsert. “Upsert fingerprint” below means writing vendor-table columns after a successful replace — not catalog import mode.
+
 ## Research: Where to store last-import fingerprint per builder
 
-**Verdict:** Store the last successful import fingerprint (plus `source_filename` and `imported_at`) as **new columns on the `vendors` table**, written through `PriceBookService` / `repository` on successful `replace_vendor`. Do **not** put this in `integrations`, Viztech state JSON, or recompute by scanning all pricebook rows on every Drop.
+**Verdict (accepted in ADR-0010):** Store the last successful import fingerprint (plus `source_filename` and `imported_at`) as **new columns on the `vendors` table**, written through `PriceBookService` / `repository` on successful `replace_vendor`. Do **not** put this in `integrations`, Viztech state JSON, or recompute by scanning all pricebook rows on every Drop.
 
-Part of [Smart re-import: skip unchanged builder books](https://github.com/Koffeekinggamer/faf-pricelist-2.0/issues/20).
+Archived from [Smart re-import: skip unchanged builder books](https://github.com/Koffeekinggamer/faf-pricelist-2.0/issues/20) — **superseded, not a backlog item.**
 
 ---
 

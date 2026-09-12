@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from backend.fn_chair_import import (
     import_fn_chair_workbook,
@@ -108,7 +109,7 @@ def test_uploaded_fn_workbook_if_present():
     uploads = Path("/home/ubuntu/.cursor/projects/workspace/uploads")
     matches = list(uploads.glob("FNC_2026_Pricelist_Level_One_Blue*.xlsm"))
     if not matches:
-        return
+        pytest.skip("FN Level One Blue workbook not in uploads")
     data = matches[0].read_bytes()
     assert looks_like_fn_level_one(matches[0].name, ["PL Print", "PCL Color List"])
     result = import_fn_chair_workbook(data, vendor="FN Chair", filename=matches[0].name)

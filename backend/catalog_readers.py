@@ -165,6 +165,8 @@ CATALOG_SPECS: tuple[CatalogSpec, ...] = (
         "Troyer Ridge Furniture",
         reader="backend.troyer_ridge_import:import_troyer_ridge_workbook",
     ),
+    # Template only — not a selling factory. Clone via scripts/add_builder.py.
+    CatalogSpec("stub_workshop", "Stub Workshop"),
 )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from backend.ashery_oak_import import (
     import_ashery_oak_workbook,
@@ -132,7 +133,7 @@ def test_bookcase_doors_parse_from_visible_options_tab():
 
 def test_uploaded_ao_links_woods_to_items():
     if not UPLOAD.is_file():
-        return
+        pytest.skip(f"{UPLOAD.name} not on this machine")
     data = UPLOAD.read_bytes()
     result = import_workbook(data, vendor="Ashery Oak", filename=UPLOAD.name)
     assert result.detected_importer == "ashery_oak"
@@ -173,7 +174,7 @@ def test_uploaded_ao_links_woods_to_items():
 
 def test_ao_dropdowns_after_insert(tmp_path):
     if not UPLOAD.is_file():
-        return
+        pytest.skip(f"{UPLOAD.name} not on this machine")
     data = UPLOAD.read_bytes()
     result = import_ashery_oak_workbook(data, vendor="Ashery Oak", filename=UPLOAD.name)
     db = tmp_path / "ao.db"
@@ -196,7 +197,7 @@ def test_ao_dropdowns_after_insert(tmp_path):
 
 def test_ao_views_every_tab():
     if not UPLOAD.is_file():
-        return
+        pytest.skip(f"{UPLOAD.name} not on this machine")
     data = UPLOAD.read_bytes()
     views = read_all_sheets(data)
     names = {v.name for v in views}
@@ -218,7 +219,7 @@ def test_ao_views_every_tab():
 
 def test_drop_session_uses_ashery_oak_parser(tmp_path):
     if not UPLOAD.is_file():
-        return
+        pytest.skip(f"{UPLOAD.name} not on this machine")
     data = UPLOAD.read_bytes()
     svc = PriceBookService(db_path=tmp_path / "t.db")
     svc.init()

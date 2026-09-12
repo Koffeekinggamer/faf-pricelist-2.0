@@ -1,4 +1,16 @@
-# Prompts for Grok — Price Book System
+# DEPRECATED — not an identity source
+
+> **Do not use this file as identity or as the everyday import script.** Older copies said **Mode: upsert**, which conflicts with the Load path (`replace_vendor`, ADR-0001). Everyday `upsert` / `append` is forbidden.
+>
+> Read instead:
+>
+> - [`AGENTS.md`](./AGENTS.md) — identity, Load path, non-negotiables
+> - [`docs/PRICEBOOK_AGENT_AUDIT.md`](./docs/PRICEBOOK_AGENT_AUDIT.md) — completeness, forbidden moves
+> - [`docs/CURSOR_AGENT_KICKOFF.md`](./docs/CURSOR_AGENT_KICKOFF.md) — paste-ready Holt / add-builder / review prompts
+>
+> Prompts below are rewritten so a copy-paste cannot select upsert. First jobs still live in the kickoff, not here.
+
+# Prompts for Holt — FAF Price Book
 
 Copy any block below into chat. Fill in the `[brackets]` when you see them.
 
@@ -14,6 +26,7 @@ FAF Pricebook is at ~/FAF-pricelist-2.0.
 Here's what I did and any error text:
 [paste error or screenshot description]
 Fix it and tell me the exact commands to run.
+Do not pull Fly or deploy without Judson.
 ```
 
 ### Import a builder file
@@ -21,11 +34,12 @@ Fix it and tell me the exact commands to run.
 ```
 Import this builder price list into the master price book:
 Path: [full path to .xlsx or .pdf]
-Vendor name: [e.g. Genuine Oak]
-Use workbook markup if present, else multiplier [2.7].
-Mode: upsert.
-Only import sheet(s): [Master / all product sheets / leave blank for auto].
+Vendor name: [canonical display name — never a Download_* stem]
+Use the saved vendor multiplier if present, else [2.7] (Genuine Oak 1.7).
+Mode: replace_vendor.
+Visible sheets only. Never unhide a sheet or row.
 Report row counts and spot-check 3 sample SKUs.
+Prove Options from the book and Search (empty Options = capture miss).
 ```
 
 ### Batch import a folder
@@ -33,10 +47,10 @@ Report row counts and spot-check 3 sample SKUs.
 ```
 Import all Excel price lists from:
 [folder path]
-Skip Markup/Cover/Index sheets.
-Vendor name = filename stem (or better if cover has a name).
-Mode: upsert.
-Print a table: file → rows inserted/updated → errors.
+View Cover/Markup/Options/Percentage/visible backups; skip only true duplicates.
+Vendor name = canonical display name (confirm; never filename stem / Download_*).
+Mode: replace_vendor (one builder = one vendor; never everyday upsert/append).
+Print a table: file → rows replaced → errors.
 ```
 
 ### Search like the floor would
@@ -56,10 +70,11 @@ Show top 15 with base, mult, retail. If nothing hits, suggest better search term
 
 ```
 Continue FAF Pricebook at ~/FAF-pricelist-2.0.
-Next feature: [duplicate cleanup UI / quote builder / batch folder import / OCR / …]
+Read AGENTS.md → CONTEXT.md → HANDOFF.md → STANDARDS.md → docs/PRICEBOOK_AGENT_AUDIT.md → docs/CURSOR_AGENT_KICKOFF.md.
+Do the next unchecked first job in the kickoff. Do not start from CONTINUE.md or this file.
 Use the existing backend.PriceBookService — don't put logic only in Streamlit.
-Keep long-form master storage. Match LAYOUT_SYSTEM.md.
-When done: smoke-test and give me run commands.
+Keep long-form master storage. One builder = one vendor. Mode: replace_vendor.
+When done: smoke-test and give me run commands. No Fly / no DB commit.
 ```
 
 ### Quote builder
@@ -72,6 +87,7 @@ Add a Quote Builder to the price book app:
 - Totals
 - Export quote PDF + Excel
 Backend methods on PriceBookService; thin Streamlit tab.
+Do not re-enable OrderTrac UI unless Judson asks.
 ```
 
 ### Per-vendor multipliers UI
@@ -80,8 +96,8 @@ Backend methods on PriceBookService; thin Streamlit tab.
 Improve vendor multipliers in ~/FAF-pricelist-2.0:
 - List all vendors with saved mult and row counts
 - Edit mult and recompute that vendor only
-- Default 2.7 if unset
-- Import should prefer saved vendor mult over sidebar unless I check "use workbook markup"
+- Default 2.7 if unset; Genuine Oak 1.7
+- Import should prefer saved vendor mult over workbook markup unless I check "use workbook markup"
 ```
 
 ### Fix bad import for one builder
@@ -90,8 +106,9 @@ Improve vendor multipliers in ~/FAF-pricelist-2.0:
 This builder file imports wrong:
 Path: [path]
 Problem: [wrong species pairing / missing SKUs / doubled rows / prices off / …]
-Inspect the real columns/layout, fix wide_import or PDF parser as needed,
+Inspect the real visible columns/layout, fix the named reader (not a generic Load under a specific lock),
 re-test on that file only, show before/after sample rows.
+Mode on re-import: replace_vendor.
 ```
 
 ---
@@ -104,7 +121,7 @@ re-test on that file only, show before/after sample rows.
 Scan master_pricebook.db for duplicate identity groups
 (vendor + part + species + finish + collection).
 Show the worst 20. Offer a safe cleanup: keep newest imported_at, delete older dups.
-Don't delete without summarizing what would go.
+Read the full row before removing. Don't delete without summarizing what would go.
 ```
 
 ### Compare two price list versions
@@ -115,6 +132,7 @@ Old: [path]
 New: [path]
 Vendor: [name]
 Report: new SKUs, dropped SKUs, price changes > [5]%.
+On Load of the new book: replace_vendor (not upsert).
 ```
 
 ---
@@ -124,7 +142,9 @@ Report: new SKUs, dropped SKUs, price changes > [5]%.
 ### Keep building (short)
 
 ```
-Keep building the next part of the price book. You pick the highest-value next step from LAYOUT_SYSTEM.md / PROMPTS.md and ship it. Don't ask unless blocked.
+Keep building the next unchecked first job from docs/CURSOR_AGENT_KICKOFF.md.
+Read AGENTS.md and docs/PRICEBOOK_AGENT_AUDIT.md first.
+Don't ask unless blocked. No Fly / no DB commit / no other price-book app.
 ```
 
 ### Plan only (no code yet)
@@ -142,8 +162,9 @@ Wait for my OK.
 ```
 Verify the last changes on ~/FAF-pricelist-2.0:
 - run backend CLI stats/search
-- import one real Excel with upsert twice (must not double rows)
+- import one real Excel with replace_vendor twice (must not double rows)
 - note any failures and fix them
+Do not use upsert / append.
 ```
 
 ### Explain like I'm on the floor
@@ -157,18 +178,20 @@ in plain language for a furniture store owner — short steps, no jargon.
 
 ## Project context (paste once if starting a new chat)
 
+Prefer the kickoff prompt in [`docs/CURSOR_AGENT_KICKOFF.md`](./docs/CURSOR_AGENT_KICKOFF.md). If you still need a short paste:
+
 ```
-I'm building Sir's Private Multiplier Engine — a Streamlit + SQLite price book for Amish furniture builders.
+You are Holt on faf-pricelist-2.0 only — Streamlit + SQLite floor price book for Amish furniture builders.
 
 Repo: ~/FAF-pricelist-2.0
 - UI: pricebook_app.py (thin)
 - Backend: backend.PriceBookService (all real logic)
-- Parsers: wide_import.py (Excel matrices), pdf_import.py
+- Parsers: named readers + wide_import.py (Excel matrices), pdf_import.py
 - DB: master_pricebook.db — long-form rows (SKU × species × finish)
-- Layout rules: LAYOUT_SYSTEM.md (builders ship WIDE; we store LONG)
-- Typical mult: 2.7 retail, sometimes 1.7 wholesale from markup sheets
-- Commit default: upsert (don't double rows)
+- Typical mult: 2.7 retail; Genuine Oak 1.7
+- Re-import default: replace_vendor (ADR-0001). Everyday upsert / append is forbidden.
 
+Read AGENTS.md → CONTEXT.md → HANDOFF.md → STANDARDS.md → docs/PRICEBOOK_AGENT_AUDIT.md → docs/CURSOR_AGENT_KICKOFF.md.
 Continue from current code. Prefer backend changes over stuffing the UI.
 ```
 
@@ -178,6 +201,6 @@ Continue from current code. Prefer backend changes over stuffing the UI.
 
 1. **Paste the path** to the file, not just “the Nisley PDF.”
 2. **Paste errors** in full.
-3. Say **upsert** vs **replace** if you care about re-imports.
+3. Re-import is **replace_vendor**. Do not ask for upsert / append.
 4. Say **plan only** if you don’t want code yet.
-5. Say **keep going** if you want me to pick the next step without asking.
+5. Say **keep going** if you want the next unchecked kickoff job without asking.
