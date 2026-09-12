@@ -7,3 +7,5 @@ For each thin builder, **Judson only** chooses **keep** (accept thin), **replace
 Out of scope for this effort: leftover phones, FN Chair PL Print re-drop, Fly DB freshness, Search/pin polish, agent-skills docs.
 
 **Status:** accepted
+
+Wayfinder issues **#12–#19** are superseded by this ADR. Do not re-open them as a backlog — see [`docs/wayfinder/README.md`](../wayfinder/README.md).

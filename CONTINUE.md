@@ -1,14 +1,33 @@
+# DEPRECATED — not an identity source
+
+> **Do not use this file.** The 2026-07-18 snapshot below is historical. It conflicts with the live book: wrong remote (`pricebook-system`), stale counts (**155 vendors / ~476k rows**), and outdated next-work (Windy Acres as generic fall-through).
+>
+> Read instead:
+>
+> - [`AGENTS.md`](./AGENTS.md) — identity, Load path, non-negotiables
+> - [`docs/PRICEBOOK_AGENT_AUDIT.md`](./docs/PRICEBOOK_AGENT_AUDIT.md) — completeness, forbidden moves
+> - [`docs/CURSOR_AGENT_KICKOFF.md`](./docs/CURSOR_AGENT_KICKOFF.md) — ordered first jobs
+> - [`HANDOFF.md`](./HANDOFF.md) — dated catalog facts
+>
+> Re-import is `replace_vendor` (ADR-0001). Everyday `upsert` / `append` is forbidden. Holt owns Fly app `faf-pricebook` only — never `pricebook-system`.
+
+---
+
+## Archived snapshot (2026-07-18) — historical only
+
+The block below is kept so history is not lost. **Do not treat any count, remote, or next-work item as current.**
+
 # FAF Pricebook — LIVE
 
 **Updated:** 2026-07-18  
 **Folder:** `~/FAF-pricelist-2.0`  
-**GitHub:** https://github.com/Koffeekinggamer/pricebook-system (`origin`)  
-**Status:** LIVE · Viztech-backed catalog · boolean search · monthly sync  
-**Book size:** **~476,824 rows · 155 vendors · 3,104 collections**
+**GitHub (STALE):** https://github.com/Koffeekinggamer/pricebook-system (`origin`) — canonical remote is `Koffeekinggamer/faf-pricelist-2.0`  
+**Status:** snapshot only — not live identity  
+**Book size (STALE):** ~476,824 rows · 155 vendors · 3,104 collections — do not cite
 
-> **Full agent handoff:** [HANDOFF.md](./HANDOFF.md) — read that first when starting a new session.
+> **Full agent handoff:** [HANDOFF.md](./HANDOFF.md) — dated facts win over this archive.
 
-## Run
+## Run (still valid commands; prefer `./run.sh`)
 
 ```bash
 cd ~/FAF-pricelist-2.0
@@ -39,7 +58,7 @@ Public tunnel (ephemeral): `~/Documents/FAF-pricebook-backups/CURRENT_PUBLIC_URL
 .venv/bin/python scripts/viztech_sync.py
 ```
 
-## Decisions locked in
+## Decisions locked in (still true; see CONTEXT.md / ADRs)
 
 - One builder = one vendor (`replace_vendor` default)
 - Mult: default **2.7**; Genuine Oak **1.7**
@@ -49,19 +68,21 @@ Public tunnel (ephemeral): `~/Documents/FAF-pricebook-backups/CURRENT_PUBLIC_URL
 - Search: boolean; Collection column first; sidebar collapsed by default
 - Vendors: Phone + Multiplier editable; Items/Collections locked
 
-## Next work (priority)
+## Next work (priority) — SUPERSEDED
 
-1. **Do not build yet — per-user auth / invite / billing (resale prep).** Each person: own login + password; pins per user (not shared). Invite link → enter email → temp password emailed → first login forces a new main password. Admin (Judson login only): user list with passwords, per-user logs for bugs, usage % per user, billing tab stub. Plan later for a full subscription sellable app. Keep current shared login until then.
-2. **Drop parser coverage:** the built-in Drop parser must know how to run each builder (named parser locked and loadable for all 44; no generic fall-through like Windy Acres).
-2. Fix ~26 Viztech files that import as 0 rows (formula sheets)
-3. Commit/push product code (no DB/secrets) if user wants
-4. Fill builder phones / better scrape
-5. Confirm hosted deploy strategy (local DB is source of truth)
+Do not pick these up from this archive. First jobs: [`docs/CURSOR_AGENT_KICKOFF.md`](./docs/CURSOR_AGENT_KICKOFF.md). Windy Acres is locked `windy_acres`, not generic fall-through.
+
+1. **Do not build yet — per-user auth / invite / billing (resale prep).** Still Judson-gated (audit §6 / kickoff).
+2. **Drop parser coverage** — superseded by named-parser lock + audit completeness tiers.
+3. Fix ~26 Viztech files that import as 0 rows (formula sheets) — class of failure; Load gate catches `zero_rows`.
+4. Commit/push product code (no DB/secrets) if user wants
+5. Fill builder phones / better scrape
+6. Confirm hosted deploy strategy — live path is Fly `faf-pricebook`, not Streamlit Cloud.
 
 ## Next prompt (copy-paste)
 
 ```
-Continue FAF Price Book at ~/FAF-pricelist-2.0.
-Read HANDOFF.md first.
-Next: [failed Viztech parsers / git commit / phones / deploy / user request]
+You are Holt on faf-pricelist-2.0 only.
+Read AGENTS.md → CONTEXT.md → HANDOFF.md → STANDARDS.md → docs/adr → docs/PRICEBOOK_AGENT_AUDIT.md → docs/CURSOR_AGENT_KICKOFF.md.
+Do the next unchecked first job. Do not use CONTINUE.md as identity.
 ```

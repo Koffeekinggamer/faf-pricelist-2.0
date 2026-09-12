@@ -141,7 +141,7 @@ Verified from `fly.toml`, `Dockerfile`, `DEPLOY.md`, workflows:
 - `auto_stop_machines = 'off'` — Streamlit websocket dies if Fly soft-stops the machine.
 - Code auto-deploy: push to **`main` only**, no test job, needs `FLY_API_TOKEN`.
 - Holt rule: do not `fly deploy` or merge the current working branch without Judson.
-- `DEPLOY.md` still mentions GitHub `Koffeekinggamer/pricebook-system` and Streamlit Cloud. Canonical remote in `HANDOFF.md` / `AGENTS.md` is `Koffeekinggamer/faf-pricelist-2.0`. Trust the latter.
+- `DEPLOY.md` is tombstoned: canonical remote `Koffeekinggamer/faf-pricelist-2.0`, live app Fly `faf-pricebook`. Streamlit Cloud / `pricebook-system` remain only as marked-historical text. Trust `HANDOFF.md` / `AGENTS.md`.
 
 ---
 
@@ -273,14 +273,16 @@ Four places can name a factory: `VENDOR_CANON`, profile `filename_hints`, `CATAL
 
 ### 3.9 Stale operator docs (agent trap)
 
-| File | Drift |
-| ---- | ----- |
-| `CONTINUE.md` | Dated 2026-07-18; ~476k rows / **155 vendors**; GitHub `pricebook-system`; “Windy Acres generic fall-through” (now locked `windy_acres`) |
-| `DEPLOY.md` | Mixes `pricebook-system` + Streamlit Cloud with the real Fly app |
-| `PROMPTS.md` | Import prompts say **Mode: upsert** — forbidden as the everyday default (ADR-0001 / CLI default `replace_vendor`) |
-| `STANDARDS.md` | `finish_state` is `finished` \| `unfinished` only |
-| `backend/standardize.py` | Still maps **glazed** as a finish_state |
-| GitHub issues #12–#31 | Wayfinder tickets for thin catalogs + smart re-import; ADRs 0007 + 0010 already **accepted**. An agent that “picks up issue 20” will re-litigate shipped work |
+**Tombstoned (kickoff job 7):** `CONTINUE.md`, `PROMPTS.md`, and `DEPLOY.md` carry DEPRECATED banners and cannot be read as identity. Wayfinder issues #12–#31 are indexed as superseded in `docs/wayfinder/README.md`. GitHub label/close of those issues is still Judson-gated.
+
+| File | Drift (why they were unsafe) | Status |
+| ---- | ---------------------------- | ------ |
+| `CONTINUE.md` | Dated 2026-07-18; ~476k rows / **155 vendors**; GitHub `pricebook-system`; “Windy Acres generic fall-through” (now locked `windy_acres`) | DEPRECATED banner + archive |
+| `DEPLOY.md` | Mixed `pricebook-system` + Streamlit Cloud with the real Fly app | Banner; remote rewritten to `faf-pricelist-2.0` |
+| `PROMPTS.md` | Import prompts said **Mode: upsert** — forbidden as the everyday default (ADR-0001 / CLI default `replace_vendor`) | Banner; prompts rewritten to `replace_vendor` |
+| `STANDARDS.md` | `finish_state` is `finished` \| `unfinished` only | Unchanged here (not job 7) |
+| `backend/standardize.py` | Still maps **glazed** as a finish_state | Unchanged here (not job 7) |
+| GitHub issues #12–#31 | Wayfinder tickets for thin catalogs + smart re-import; ADRs 0007 + 0010 already **accepted**. An agent that “picks up issue 20” will re-litigate shipped work | In-repo index; GitHub still open |
 
 ### 3.10 Fragile Excel assumptions (standing, still true)
 
@@ -558,7 +560,7 @@ Do **not** let the agent loop “update” by pulling Fly or re-dropping settled
 
 7. **Options proof per builder.** Extend the option-group contract idea: every profile records `expected_option_kinds` (size %, finish, Unfinished, fabric, …). Gate already counts priced option lines; persist the expected kinds so next year’s miss fails a test, not the floor.
 
-8. **Doc hygiene pass (docs-only).** Rewrite or tombstone `CONTINUE.md` / `PROMPTS.md` upsert / `DEPLOY.md` remote. Close or label GitHub #12–#31 as superseded by ADR-0007/0010. An agent that reads those files today will do the wrong import mode.
+8. **Doc hygiene pass (docs-only).** **Landed in-repo (kickoff job 7):** `CONTINUE.md` / `PROMPTS.md` / `DEPLOY.md` tombstoned; wayfinder #12–#31 indexed. GitHub label/close of those issues is still Judson.
 
 9. **LuxHome / Millers / Rainbow decision.** Profile + Drop, or explicit IGNORE/out-of-book. Dead aliases in `VENDOR_CANON` without a catalog confuse identity.
 
@@ -592,7 +594,7 @@ Do not claim the loop is safe until most of these exist. **Must** vs **should**:
 
 - [ ] PR CI: Ruff + pytest, no secrets, no DB.
 - [ ] Fixture bytes for at least the five SETTLED builders + one wide_species token builder + one Options-tab builder.
-- [ ] This audit (or a trimmed Holt rule) linked from `AGENTS.md` so agents do not prefer `CONTINUE.md` / `PROMPTS.md`.
+- [x] This audit (or a trimmed Holt rule) linked from `AGENTS.md` so agents do not prefer `CONTINUE.md` / `PROMPTS.md`.
 - [ ] Explicit POS / Fly / DB-push denylist in the agent prompt (already in Holt; keep it).
 - [ ] Identity collision test before adding factory #49+.
 - [ ] Judson-confirmed canonical names for any new Travis file (agent must not guess from `Download_*`).
@@ -601,7 +603,7 @@ Do not claim the loop is safe until most of these exist. **Must** vs **should**:
 
 - [x] `SETTLED` covers all Tier B builders that have fixture bytes (Five Star still blocked: token + post-pass, no shape test).
 - [x] `add_builder` stub script / ticket template.
-- [ ] Tombstone stale docs and wayfinder issues.
+- [x] Tombstone stale docs and wayfinder issues (in-repo). GitHub #12–#31 label/close still Judson.
 - [ ] LuxHome / Millers / Rainbow disposition.
 - [ ] `backend/pricing.py` documented as the POS import surface.
 - [ ] Volume/size budget note (3 GB / 2 GB) before 100 full books + images.
@@ -620,7 +622,7 @@ Do not claim the loop is safe until most of these exist. **Must** vs **should**:
 | All 48 “named parsers” are shape-specific | **False.** ~25 are token wrappers on the generic unpivot. |
 | CI runs the test suite | **False.** Only Fly deploy on `main` + manual DB pull. |
 | Sample workbooks are in the repo | **False.** Zero. |
-| CONTINUE.md / PROMPTS.md are safe for agents | **False.** Stale counts, wrong remote, upsert. |
+| CONTINUE.md / PROMPTS.md are safe for agents | **False** as identity (banners + rewrite). Do not lift the tombstone. |
 | LuxHome is one of the 48 | **False.** Reader + tests, no profile. |
 | POS already shares this catalog | **Unverified / out of repo.** Pricing math is here; no POS code. Keep them separate. |
 | Thin catalogs are bugs | **False** for listed KEEP names; confirm on live DB. |
