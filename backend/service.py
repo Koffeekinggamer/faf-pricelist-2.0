@@ -972,6 +972,7 @@ class PriceBookService:
         vendor: Optional[str] = None,
         *,
         query: str = "",
+        collection: Optional[str] = None,
         species: Optional[str] = None,
     ) -> list[str]:
         """Live Options for one builder, optionally narrowed to matching items.
@@ -992,6 +993,7 @@ class PriceBookService:
         items = self.repo.search(
             query,
             vendor=vendor,
+            collection=collection,
             species=species,
             finish_state=None,
             limit=max(DEFAULT_SEARCH_LIMIT * 6, 400),

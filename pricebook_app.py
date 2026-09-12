@@ -463,6 +463,7 @@ def _option_dropdown_options(
     vendor_key: str,
     catalog_stamp: str = "",
     item_query: str = "",
+    collection: str = "",
     species: str = "",
 ) -> list:
     """
@@ -480,6 +481,7 @@ def _option_dropdown_options(
             svc.list_option_keys(
                 vendor=vendor_key,
                 query=item_query,
+                collection=collection or None,
                 species=None if species in ("", "All") else species,
             )
             or []
@@ -513,6 +515,23 @@ def _format_selected_option_labels(
         qty = int(option_qty.get(option, 1) or 1)
         bits.append(f"{option} ×{qty}" if qty > 1 else option)
     return bits
+
+
+def _search_item_identities(rows: pd.DataFrame) -> list[tuple[str, str, str, str]]:
+    """Distinct Search item identities, preserving the ranked row order."""
+    if rows is None or rows.empty:
+        return []
+    found: dict[tuple[str, str, str], str] = {}
+    for row in rows.to_dict("records"):
+        key = (
+            str(row.get("vendor") or "").strip(),
+            str(row.get("collection") or "").strip(),
+            str(row.get("part_number") or "").strip(),
+        )
+        if not key[2]:
+            continue
+        found.setdefault(key, str(row.get("description") or key[2]).strip())
+    return [(*key, description) for key, description in found.items()]
 
 
 def _enforce_single_select_options(
@@ -1043,17 +1062,53 @@ if nav == "Search":
                 st.session_state["_clear_search"] = True
                 st.rerun()
 
-        # Option — under the search box; scoped to matching items, then kind fit.
+        item_query = q or ""
+        item_collection = ""
+        if vf != "All" and item_query.strip():
+            try:
+                base_items = svc.search(
+                    item_query,
+                    vendor=vf,
+                    finish_state=None,
+                    species=None if wf == "All" else wf,
+                    limit=DEFAULT_SEARCH_LIMIT,
+                )
+            except Exception:
+                base_items = pd.DataFrame()
+            item_identities = _search_item_identities(base_items)
+            if item_identities:
+                if st.session_state.get("search_item_identity") not in item_identities:
+                    st.session_state["search_item_identity"] = item_identities[0]
+
+                def _item_label(identity: tuple[str, str, str, str]) -> str:
+                    _vendor, collection, part, description = identity
+                    detail = description if description and description != part else ""
+                    label = f"{part} — {detail}" if detail else part
+                    return f"{label} · {collection}" if collection else label
+
+                selected_item = st.selectbox(
+                    "Item",
+                    item_identities,
+                    key="search_item_identity",
+                    format_func=_item_label,
+                    help="Options and results are scoped to this exact builder, "
+                    "part number, and collection.",
+                )
+                item_query = selected_item[2]
+                item_collection = selected_item[1]
+
+        # Option — under the search box; scoped to the selected item, then kind fit.
         opt_list = _option_dropdown_options(
             vf if vf else "All",
             _catalog_stamp(),
-            q or "",
+            item_query,
+            item_collection,
             wf or "",
         )
         if vf not in (None, "All") and opt_list:
             opt_list = svc.options_for_search(
                 vf,
-                q,
+                item_query,
                 opt_list,
                 species=None if not wf or wf == "All" else wf,
             )
@@ -1222,9 +1277,9 @@ if nav == "Search":
         else:
             try:
                 results = svc.search(
-                    q,
+                    item_query,
                     vendor=None if vf == "All" else vf,
-                    collection=None,  # Collection filter hidden on floor UI
+                    collection=item_collection or None,
                     finish_state=None if ff == "All" else ff,
                     species=None if wf == "All" else wf,
                     option_key=of_list or None,

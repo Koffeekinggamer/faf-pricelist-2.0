@@ -90,10 +90,15 @@ def test_service_options_are_scoped_to_the_matching_builder_item(tmp_path):
         **_row("LuxHome", species=None, option_key="Premium", part="10 SC-FA"),
         "collection": "Serene Collection",
     }
+    lookalike = {
+        **_row("LuxHome", species=None, option_key="Ultra", part="21 HRR"),
+        "collection": "Other Collection",
+    }
     svc.repo.insert_rows(
         [
             harmony,
             serene,
+            lookalike,
             {
                 **_row(
                     "LuxHome",
@@ -116,11 +121,26 @@ def test_service_options_are_scoped_to_the_matching_builder_item(tmp_path):
                 ),
                 "collection": "Serene Collection",
             },
+            {
+                **_row(
+                    "LuxHome",
+                    species=None,
+                    option_key="Battery Pack",
+                    part="21 HRR",
+                    line_kind="addon",
+                    base_price=100,
+                ),
+                "collection": "Other Collection",
+            },
             _row("Other Builder", option_key="Other Option", part="21 HRR"),
         ]
     )
 
-    assert svc.list_option_keys("LuxHome", query="21 HRR") == [
+    assert svc.list_option_keys(
+        "LuxHome",
+        query="21 HRR",
+        collection="Harmony Collection",
+    ) == [
         "Motorized Mechanism",
         "Standard",
     ]
@@ -151,6 +171,32 @@ def test_primary_search_never_returns_addons_or_lists_plain_items_as_options(tmp
     }
     assert svc.search("Motorized Mechanism", vendor="Builder").empty
     assert "Battery Pack" not in svc.list_option_keys("Builder")
+
+
+def test_primary_search_hides_known_legacy_option_titles_mislabeled_as_items(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    repo = PriceBookRepository(db)
+    repo.insert_rows(
+        [
+            _row("Crystal Valley Hardwoods", part="CV-100"),
+            _row("Crystal Valley Hardwoods", part="OPTION P-1"),
+            _row("INTEG Wood Products", part="I-100"),
+            {
+                **_row("INTEG Wood Products", part="Soft Close Slides"),
+                "collection": "Options",
+            },
+            _row("Genuine Oak", part="GO-100"),
+            _row("Genuine Oak", part="OPTIONS: Hardware"),
+            _row("Five Star Tables", part="T-100"),
+            _row("Five Star Tables", part="add $25 for leaf storage"),
+        ]
+    )
+
+    assert set(repo.search("", vendor="Crystal Valley Hardwoods")["part_number"]) == {"CV-100"}
+    assert set(repo.search("", vendor="INTEG Wood Products")["part_number"]) == {"I-100"}
+    assert set(repo.search("", vendor="Genuine Oak")["part_number"]) == {"GO-100"}
+    assert set(repo.search("", vendor="Five Star Tables")["part_number"]) == {"T-100"}
 
 
 def test_service_add_addon_charge_lists_in_options(tmp_path):
