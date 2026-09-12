@@ -30,6 +30,7 @@ from backend.builder_profiles import (
     load_builder_profile,
     override_applies,
     resolve_option_groups,
+    single_select_group,
 )
 from backend.config import (
     DATA_DIR,
@@ -618,6 +619,51 @@ class PriceBookService:
         keys = profile.get("item_upcharge_option_keywords") or []
         return any(k in o for k in keys)
 
+    @staticmethod
+    def _locked_flat_option_has_item_evidence(
+        items: pd.DataFrame,
+        option_key: str,
+        profile: dict,
+    ) -> bool:
+        """Whether a locked builder proves a flat Option belongs to these items."""
+        if single_select_group(profile, option_key) is not None:
+            return True
+        for pattern in profile.get("global_option_patterns") or []:
+            try:
+                if re.search(str(pattern), option_key, re.IGNORECASE):
+                    return True
+            except re.error:
+                continue
+        label = re.sub(r"\s+", " ", str(option_key or "").strip()).casefold()
+        if not label:
+            return False
+        text = (
+            items.get("description", pd.Series("", index=items.index)).fillna("").astype(str)
+            + " | "
+            + items.get("notes", pd.Series("", index=items.index)).fillna("").astype(str)
+        ).map(lambda value: re.sub(r"\s+", " ", value).casefold())
+        if text.str.contains(re.escape(label), regex=True).any():
+            return True
+
+        # Printed titles often shorten the stored label ("Leather Seat") to
+        # "Leather $40". A priced OPTIONS/ADD phrase plus a distinctive shared
+        # word is still item-level evidence.
+        stop = {"add", "added", "available", "option", "options", "seat", "seats"}
+
+        def evidence_terms(value: str) -> set[str]:
+            words = re.findall(r"[a-z]{4,}", value.casefold())
+            return {word[:-1] if word.endswith("s") else word for word in words if word not in stop}
+
+        label_terms = evidence_terms(label)
+        if not label_terms:
+            return False
+        for value in text:
+            if not re.search(r"(?i)\boptions?\s*:|\badd\s*\$|\$\s*\d", value):
+                continue
+            if label_terms & evidence_terms(value):
+                return True
+        return False
+
     def _match_addon_category(
         self,
         item_text: str,
@@ -788,6 +834,15 @@ class PriceBookService:
                 df.at[idx, "notes"] = f"{n} · {tag}".strip(" ·") if n else tag
                 applied.at[idx] = True
             return df, applied
+
+        if parser_locked and flat:
+            flat = (
+                flat
+                if self._locked_flat_option_has_item_evidence(df, option_key, profile)
+                else []
+            )
+            if not flat and not cats:
+                return df, applied
 
         # Finish / per-category (or non-drawer flat): every physical WOOD item.
         # Qty does not apply to finish options — only extras.

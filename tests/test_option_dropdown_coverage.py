@@ -212,6 +212,150 @@ def test_primary_search_hides_known_legacy_option_titles_mislabeled_as_items(tmp
     assert set(repo.search("", vendor="Five Star Tables")["part_number"]) == {"T-100"}
 
 
+def test_crystal_valley_end_table_does_not_get_vendor_wide_options(tmp_path):
+    svc = PriceBookService(tmp_path / "t.db")
+    svc.init()
+    vendor = "Crystal Valley Hardwoods"
+    svc.repo.insert_rows(
+        [
+            _row(vendor, part="AN1624E"),
+            {
+                **_row(vendor, part="BED-1"),
+                "finish_state": "unfinished",
+            },
+            *[
+                _row(
+                    vendor,
+                    species=None,
+                    option_key=label,
+                    part=label,
+                    line_kind="addon",
+                )
+                for label in (
+                    "Springhill and McCoy",
+                    "Tz movement from Hermle of Germany",
+                    "Also available without through tenons",
+                    "Storage Bed option",
+                )
+            ],
+        ]
+    )
+
+    assert svc.list_option_keys(
+        vendor,
+        query="AN1624E",
+        collection="Casegoods",
+        part_number="AN1624E",
+    ) == []
+
+
+def test_genuine_oak_curio_keeps_only_options_printed_on_that_item(tmp_path):
+    svc = PriceBookService(tmp_path / "t.db")
+    svc.init()
+    vendor = "Genuine Oak"
+    item = _row(vendor, part="G06-46")
+    item["description"] = "Bunker Hill Corner Curio OPTIONS: Extra Glass Shelves Add $30"
+    svc.repo.insert_rows(
+        [
+            item,
+            *[
+                _row(
+                    vendor,
+                    species=None,
+                    option_key=label,
+                    part=label,
+                    line_kind="addon",
+                )
+                for label in (
+                    "Extra Glass Shelves Add $30",
+                    "2 Drawer Storage",
+                    "Paint / Glaze",
+                    "Shiplap Back",
+                    "Reverse Layout",
+                )
+            ],
+        ]
+    )
+
+    assert svc.list_option_keys(
+        vendor,
+        query="G06-46",
+        collection="Casegoods",
+        part_number="G06-46",
+    ) == ["Extra Glass Shelves Add $30"]
+
+
+def test_five_star_stool_keeps_only_seat_options_printed_in_title(tmp_path):
+    svc = PriceBookService(tmp_path / "t.db")
+    svc.init()
+    vendor = "Five Star Tables"
+    item = _row(vendor, part="145S")
+    item["description"] = "Plain Mission Stool — Fabric Seats Add $20; Leather $40"
+    svc.repo.insert_rows(
+        [
+            item,
+            *[
+                _row(
+                    vendor,
+                    species=None,
+                    option_key=label,
+                    part=label,
+                    line_kind="addon",
+                )
+                for label in (
+                    "Fabric Seat",
+                    "Leather Seat",
+                    "Butterfly Leaves",
+                    "Horseshoe Base",
+                    "Pub Height",
+                    "Custom Height",
+                )
+            ],
+        ]
+    )
+
+    assert svc.list_option_keys(
+        vendor,
+        query="145S",
+        collection="Casegoods",
+        part_number="145S",
+    ) == ["Fabric Seat", "Leather Seat"]
+
+
+def test_artisan_bar_stool_keeps_profile_declared_seat_options(tmp_path):
+    svc = PriceBookService(tmp_path / "t.db")
+    svc.init()
+    vendor = "Artisan Chairs"
+    item = _row(vendor, part='24" Stationary Bar Stool')
+    item["description"] = '24" Stationary Bar Stool'
+    svc.repo.insert_rows(
+        [
+            item,
+            *[
+                _row(
+                    vendor,
+                    species=None,
+                    option_key=label,
+                    part=label,
+                    line_kind="addon",
+                )
+                for label in (
+                    "Fabric Seat",
+                    "Leather Seat",
+                    "Butterfly Leaves",
+                )
+            ],
+        ]
+    )
+
+    assert svc.list_option_keys(
+        vendor,
+        query='24" Stationary Bar Stool',
+        collection="Casegoods",
+        part_number='24" Stationary Bar Stool',
+    ) == ["Fabric Seat", "Leather Seat"]
+
+
 def test_service_add_addon_charge_lists_in_options(tmp_path):
     db = tmp_path / "t.db"
     init_db(db)

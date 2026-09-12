@@ -474,7 +474,7 @@ def _option_dropdown_options(
     Specific builder + query → only options applicable to those Search rows.
     ``catalog_stamp`` refreshes the list after Drop / re-import.
     """
-    if not vendor_key or vendor_key == "All":
+    if not vendor_key or vendor_key == "All" or not part_number:
         return []
     svc = _svc()
     try:
@@ -1269,11 +1269,10 @@ if nav == "Search":
                 )
         elif vf == "All":
             pass  # no option chrome until a builder is chosen
+        elif not item_part_number:
+            st.caption("Search and select an item to see only that item's options.")
         elif vf != "All" and not opt_list:
-            if (q or "").strip():
-                st.caption("No options for this piece — try a different search or Builder.")
-            else:
-                st.caption("No options parsed for this builder.")
+            st.caption("No options parsed for this item.")
 
         # Don't dump the whole book when search is empty — unless a builder is chosen
         if not (q or "").strip() and vf == "All":

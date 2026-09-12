@@ -1,6 +1,9 @@
 {
   "version": 1,
   "vendor": "J. Troyer & Company",
+  "global_option_patterns": [
+    "^Per Knob$"
+  ],
   "parser": {
     "importer": "j_troyer_and_company",
     "source_file": "J._Troyer_amp_Company/Download_2026_J._Troyer_Co._Pricelist_65372.xlsx + J._Troyer_amp_Company/Download_2026_Bedroom_Pricelist_986904.xlsx + J._Troyer_amp_Company/Download_2026_Dining_Pricelist_758210.xlsx",
