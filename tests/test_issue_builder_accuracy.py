@@ -8,13 +8,14 @@ from pathlib import Path
 import pandas as pd
 from openpyxl import Workbook
 
+from backend.amish_aspen_import import import_amish_aspen_workbook
 from backend.book_options import extract_book_options
 from backend.catalog_readers import apply_five_star_oak_tables
 from backend.hogback_import import GROUP_1 as HOG_1
 from backend.hogback_import import GROUP_2 as HOG_2
 from backend.hogback_import import import_hogback_workbook
 from backend.superior_import import import_superior_workbook
-from wide_import import import_amish_aspen_workbook, import_workbook
+from wide_import import import_workbook
 
 ASPEN = Path(
     "/Users/lordjudsonmiller/Documents/viztech-downloads/all-20260717/"
