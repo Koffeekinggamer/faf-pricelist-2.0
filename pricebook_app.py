@@ -763,22 +763,11 @@ def _bump_quote_county_widget(quote_id: int) -> str:
 
 
 def _reset_quote_sidebar_widget_state(quote_id: int) -> None:
-    prefixes = (
-        f"cart_name_{quote_id}",
-        f"cart_client_{quote_id}",
-        f"cart_county_{quote_id}",
-        f"cart_exempt_{quote_id}",
-        f"cart_qty_{quote_id}_",
-        f"cart_notes_{quote_id}_",
-    )
+    from backend.quote_cart_widgets import clear_quote_cart_line_widgets
+
     # Rotate county widget first so a stale browser value cannot rehydrate.
     _bump_quote_county_widget(quote_id)
-    for key in list(st.session_state):
-        if key.startswith(prefixes):
-            # Keep the nonce + the fresh (empty) county key slot unused.
-            if key == f"cart_county_nonce_{quote_id}":
-                continue
-            st.session_state.pop(key, None)
+    clear_quote_cart_line_widgets(st.session_state, quote_id)
 
 
 def _render_quote_cart_sidebar() -> None:
@@ -1510,6 +1499,12 @@ if nav == "Search":
                                 st.session_state["quote_stain_default"] = stain_sel
                             quote_name = (svc.get_quote(qid) or {}).get("quote_name")
                             st.success(f"Added FAF #{rid} to **{quote_name or 'quote'}**.")
+                            # Stale cart_qty_* would write back over a merged DB qty.
+                            from backend.quote_cart_widgets import (
+                                mark_quote_cart_widgets_dirty,
+                            )
+
+                            mark_quote_cart_widgets_dirty(st.session_state)
                             st.rerun()
                         except Exception as exc:
                             st.error(f"Could not add line: {exc}")
