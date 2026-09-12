@@ -687,7 +687,15 @@ class PriceBookService:
             + " | "
             + items.get("notes", pd.Series("", index=items.index)).fillna("").astype(str)
         ).map(lambda value: re.sub(r"\s+", " ", value).casefold())
-        return bool(text.str.contains(re.escape(label), regex=True).any())
+        if text.str.contains(re.escape(label), regex=True).any():
+            return True
+        seat_core = re.sub(r"\s+seats?$", "", label).strip()
+        if seat_core == label or not seat_core:
+            return False
+        priced_seat = (
+            rf"\b{re.escape(seat_core)}\b(?:\s+seats?)?\s*(?:add\s*)?\$\s*\d"
+        )
+        return bool(text.str.contains(priced_seat, regex=True).any())
 
     def _match_addon_category(
         self,

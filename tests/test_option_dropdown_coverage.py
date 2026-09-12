@@ -303,8 +303,8 @@ def test_five_star_stool_keeps_only_seat_options_printed_in_title(tmp_path):
                     line_kind="addon",
                 )
                 for label in (
-                    "Fabric Seats Add $20",
-                    "Leather $40",
+                    "Fabric Seat",
+                    "Leather Seat",
                     "Butterfly Leaves",
                     "Horseshoe Base",
                     "Pub Height",
@@ -319,7 +319,7 @@ def test_five_star_stool_keeps_only_seat_options_printed_in_title(tmp_path):
         query="145S",
         collection="Casegoods",
         part_number="145S",
-    ) == ["Fabric Seats Add $20", "Leather $40"]
+    ) == ["Fabric Seat", "Leather Seat"]
 
 
 def test_artisan_bar_stool_keeps_profile_declared_seat_options(tmp_path):
