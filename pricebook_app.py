@@ -21,31 +21,6 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-# #region agent log
-try:
-    _boot = {
-        "hypothesisId": "STALE",
-        "location": "pricebook_app.py:module_boot",
-        "message": "streamlit script loaded",
-        "data": {
-            "pid": os.getpid(),
-            "pricebook_mtime": os.path.getmtime(__file__),
-            "quotes_mtime": os.path.getmtime(
-                str(Path(__file__).resolve().parent / "backend" / "quotes.py")
-            ),
-            "has_quote_cart_widgets": (
-                Path(__file__).resolve().parent / "backend" / "quote_cart_widgets.py"
-            ).is_file(),
-            "county_key_helper": "quote_county_widget_key",
-            "runId": "post-fix",
-        },
-        "timestamp": int(datetime.now().timestamp() * 1000),
-    }
-    open("/opt/cursor/logs/debug.log", "a").write(json.dumps(_boot) + "\n")
-except Exception:
-    pass
-# #endregion
-
 from backend import PriceBookService
 from backend.auth import login_user
 from backend.builder_profiles import (
@@ -796,109 +771,20 @@ def _reset_quote_sidebar_widget_state(quote_id: int) -> None:
         f"cart_qty_{quote_id}_",
         f"cart_notes_{quote_id}_",
     )
-    # #region agent log
-    try:
-        county_key = _quote_county_widget_key(quote_id)
-        before_keys = [k for k in st.session_state.keys() if str(k).startswith(prefixes)]
-        before_county = st.session_state.get(county_key)
-        before_county_repr = (
-            None
-            if before_county is None
-            else (
-                before_county.display_label
-                if isinstance(before_county, CountyTaxRate)
-                else str(type(before_county).__name__)
-            )
-        )
-    except Exception:
-        before_keys, before_county_repr, county_key = [], None, f"cart_county_{quote_id}"
-    # #endregion
     # Rotate county widget first so a stale browser value cannot rehydrate.
-    new_county_key = _bump_quote_county_widget(quote_id)
+    _bump_quote_county_widget(quote_id)
     for key in list(st.session_state):
         if key.startswith(prefixes):
             # Keep the nonce + the fresh (empty) county key slot unused.
             if key == f"cart_county_nonce_{quote_id}":
                 continue
             st.session_state.pop(key, None)
-    # #region agent log
-    try:
-        import time as _time
-
-        after_keys = [k for k in st.session_state.keys() if str(k).startswith(prefixes)]
-        open("/opt/cursor/logs/debug.log", "a").write(
-            json.dumps(
-                {
-                    "hypothesisId": "E,H",
-                    "location": "pricebook_app.py:_reset_quote_sidebar_widget_state",
-                    "message": "sidebar widget state reset",
-                    "data": {
-                        "quote_id": quote_id,
-                        "county_key": county_key,
-                        "new_county_key": new_county_key,
-                        "before_keys": before_keys,
-                        "before_county": before_county_repr,
-                        "after_keys": after_keys,
-                        "county_present_after": new_county_key in st.session_state,
-                        "runId": "post-fix",
-                    },
-                    "timestamp": int(_time.time() * 1000),
-                }
-            )
-            + "\n"
-        )
-    except Exception:
-        pass
-    # #endregion
 
 
 def _render_quote_cart_sidebar() -> None:
     """Persistent Streamlit cart backed by the existing quote tables."""
     qid = _ensure_active_quote()
     _refresh = st.session_state.pop("_quote_cart_refresh", False)
-    # #region agent log
-    try:
-        import time as _time
-
-        open("/opt/cursor/logs/debug.log", "a").write(
-            json.dumps(
-                {
-                    "hypothesisId": "E,F",
-                    "location": "pricebook_app.py:_render_quote_cart_sidebar:entry",
-                    "message": "cart sidebar render entry",
-                    "data": {
-                        "qid": qid,
-                        "refresh": bool(_refresh),
-                        "county_in_state": f"cart_county_{qid}" in st.session_state,
-                        "county_state": (
-                            st.session_state.get(f"cart_county_{qid}").display_label
-                            if isinstance(
-                                st.session_state.get(f"cart_county_{qid}"), CountyTaxRate
-                            )
-                            else (
-                                None
-                                if st.session_state.get(f"cart_county_{qid}") is None
-                                and f"cart_county_{qid}" in st.session_state
-                                else (
-                                    "ABSENT"
-                                    if f"cart_county_{qid}" not in st.session_state
-                                    else str(
-                                        type(
-                                            st.session_state.get(f"cart_county_{qid}")
-                                        ).__name__
-                                    )
-                                )
-                            )
-                        ),
-                    },
-                    "timestamp": int(_time.time() * 1000),
-                }
-            )
-            + "\n"
-        )
-    except Exception:
-        pass
-    # #endregion
     if _refresh:
         _reset_quote_sidebar_widget_state(qid)
     quote = svc.get_quote(qid) or {}
@@ -1008,57 +894,6 @@ def _render_quote_cart_sidebar() -> None:
             key=_quote_county_widget_key(qid),
             help="Type a county or state name to filter. Rates are destination-based.",
         )
-        # #region agent log
-        try:
-            import time as _time
-
-            _county_key = _quote_county_widget_key(qid)
-            _ss_county = st.session_state.get(_county_key)
-            open("/opt/cursor/logs/debug.log", "a").write(
-                json.dumps(
-                    {
-                        "hypothesisId": "F,G",
-                        "location": "pricebook_app.py:county_selectbox:after",
-                        "message": "selectbox vs quote tax after render",
-                        "data": {
-                            "qid": qid,
-                            "refresh_was": bool(_refresh),
-                            "selected_index": selected_index,
-                            "quote_tax_state": quote.get("tax_state"),
-                            "quote_tax_county": quote.get("tax_county"),
-                            "quote_tax_pct": quote.get("tax_pct"),
-                            "selected_is_none": selected_tax is None,
-                            "selected_label": (
-                                None
-                                if selected_tax is None
-                                else (
-                                    selected_tax.display_label
-                                    if isinstance(selected_tax, CountyTaxRate)
-                                    else type(selected_tax).__name__
-                                )
-                            ),
-                            "session_county_label": (
-                                None
-                                if _ss_county is None
-                                else (
-                                    _ss_county.display_label
-                                    if isinstance(_ss_county, CountyTaxRate)
-                                    else type(_ss_county).__name__
-                                )
-                            ),
-                            "session_has_county_key": _county_key
-                            in st.session_state,
-                            "county_widget_key": _county_key,
-                            "runId": "post-fix",
-                        },
-                        "timestamp": int(_time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-        except Exception:
-            pass
-        # #endregion
         tax_exempt = st.checkbox(
             "Tax exempt",
             value=bool(quote.get("tax_exempt")),
@@ -1073,38 +908,6 @@ def _render_quote_cart_sidebar() -> None:
             or quote.get("tax_county") != selected_county
             or bool(quote.get("tax_exempt")) != tax_exempt
         ):
-            # #region agent log
-            try:
-                import time as _time
-
-                open("/opt/cursor/logs/debug.log", "a").write(
-                    json.dumps(
-                        {
-                            "hypothesisId": "G",
-                            "location": "pricebook_app.py:tax_sync_write",
-                            "message": "UI writing tax fields from selectbox",
-                            "data": {
-                                "qid": qid,
-                                "from_quote": {
-                                    "state": quote.get("tax_state"),
-                                    "county": quote.get("tax_county"),
-                                    "pct": quote.get("tax_pct"),
-                                },
-                                "to_selected": {
-                                    "state": selected_state,
-                                    "county": selected_county,
-                                    "pct": selected_rate,
-                                    "exempt": tax_exempt,
-                                },
-                            },
-                            "timestamp": int(_time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-            except Exception:
-                pass
-            # #endregion
             svc.update_quote(
                 qid,
                 tax_pct=selected_rate,
@@ -1136,74 +939,7 @@ def _render_quote_cart_sidebar() -> None:
                 key=f"cart_clear_yes_{qid}",
                 use_container_width=True,
             ):
-                # #region agent log
-                try:
-                    import time as _time
-
-                    _before = svc.get_quote(qid) or {}
-                    _county_before = st.session_state.get(_quote_county_widget_key(qid))
-                    open("/opt/cursor/logs/debug.log", "a").write(
-                        json.dumps(
-                            {
-                                "hypothesisId": "E,F,G",
-                                "location": "pricebook_app.py:confirm_clear:before",
-                                "message": "confirm clear clicked",
-                                "data": {
-                                    "qid": qid,
-                                    "quote_tax_county": _before.get("tax_county"),
-                                    "quote_tax_state": _before.get("tax_state"),
-                                    "session_county": (
-                                        None
-                                        if _county_before is None
-                                        else (
-                                            _county_before.display_label
-                                            if isinstance(_county_before, CountyTaxRate)
-                                            else type(_county_before).__name__
-                                        )
-                                    ),
-                                },
-                                "timestamp": int(_time.time() * 1000),
-                            }
-                        )
-                        + "\n"
-                    )
-                except Exception:
-                    pass
-                # #endregion
                 svc.clear_quote(qid, confirmed=True)
-                # #region agent log
-                try:
-                    import time as _time
-
-                    _after = svc.get_quote(qid) or {}
-                    open("/opt/cursor/logs/debug.log", "a").write(
-                        json.dumps(
-                            {
-                                "hypothesisId": "E,G",
-                                "location": "pricebook_app.py:confirm_clear:after",
-                                "message": "DB after clear_quote; setting refresh",
-                                "data": {
-                                    "qid": qid,
-                                    "quote_tax_county": _after.get("tax_county"),
-                                    "quote_tax_state": _after.get("tax_state"),
-                                    "quote_tax_pct": _after.get("tax_pct"),
-                                    "refresh_flag_set": "_quote_cart_refresh",
-                                    "county_key_still_in_session": any(
-                                        str(k) == f"cart_county_{qid}"
-                                        or str(k).startswith(f"cart_county_{qid}_")
-                                        for k in st.session_state
-                                        if k != f"cart_county_nonce_{qid}"
-                                    ),
-                                    "runId": "post-fix",
-                                },
-                                "timestamp": int(_time.time() * 1000),
-                            }
-                        )
-                        + "\n"
-                    )
-                except Exception:
-                    pass
-                # #endregion
                 st.session_state.pop(f"cart_clear_pending_{qid}", None)
                 _bump_quote_county_widget(qid)
                 st.session_state["_quote_cart_refresh"] = True
