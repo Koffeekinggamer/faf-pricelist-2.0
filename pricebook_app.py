@@ -21,6 +21,31 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+# #region agent log
+try:
+    _boot = {
+        "hypothesisId": "STALE",
+        "location": "pricebook_app.py:module_boot",
+        "message": "streamlit script loaded",
+        "data": {
+            "pid": os.getpid(),
+            "pricebook_mtime": os.path.getmtime(__file__),
+            "quotes_mtime": os.path.getmtime(
+                str(Path(__file__).resolve().parent / "backend" / "quotes.py")
+            ),
+            "has_quote_cart_widgets": (
+                Path(__file__).resolve().parent / "backend" / "quote_cart_widgets.py"
+            ).is_file(),
+            "county_key_helper": "quote_county_widget_key",
+            "runId": "post-fix",
+        },
+        "timestamp": int(datetime.now().timestamp() * 1000),
+    }
+    open("/opt/cursor/logs/debug.log", "a").write(json.dumps(_boot) + "\n")
+except Exception:
+    pass
+# #endregion
+
 from backend import PriceBookService
 from backend.auth import login_user
 from backend.builder_profiles import (

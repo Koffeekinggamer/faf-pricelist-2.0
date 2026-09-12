@@ -33,15 +33,28 @@ def _line_total(qty: float, unit_retail: float, line_discount_pct: float = 0) ->
     return round(qty * unit * (1.0 - disc), 2)
 
 
+def _finite_price(value: Any) -> Optional[float]:
+    """Coerce a price field; treat None/NaN/non-numeric as missing."""
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number:  # NaN
+        return None
+    return number
+
+
 def _unit_retail_from_row(row: Optional[dict]) -> Optional[float]:
     """Retail from adjusted_price, else wholesale × multiplier (even-dollar)."""
     if not row:
         return None
-    unit_retail = row.get("adjusted_price")
-    if unit_retail is None and row.get("base_price") is not None:
+    unit_retail = _finite_price(row.get("adjusted_price"))
+    if unit_retail is None and _finite_price(row.get("base_price")) is not None:
         from backend.pricing import retail_from_wholesale
 
-        mult = row.get("multiplier") or 2.7
+        mult = _finite_price(row.get("multiplier")) or 2.7
         unit_retail = retail_from_wholesale(row.get("base_price"), mult)
     return unit_retail
 
