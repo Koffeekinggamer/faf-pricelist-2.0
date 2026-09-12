@@ -9,8 +9,8 @@
       "fivestartables"
     ],
     "layouts": [
-      "multi_name_price",
-      "wide_species"
+      "five_star_oak_sizes",
+      "five_star_tables"
     ],
     "locked": true
   }

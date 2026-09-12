@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "vendor": "Millers Woodshop",
+  "parser": {
+    "importer": "millers_woodshop",
+    "source_file": "MWS 2023 Wholesale Price List.xlsx",
+    "filename_hints": [
+      "millers woodshop",
+      "millerswoodshop",
+      "mws"
+    ],
+    "layouts": [
+      "millers_woodshop"
+    ],
+    "locked": true
+  },
+  "note": "Out-of-book factory with a real reader. Not in the 48-builder SSD catalog. Ready for the next selling Drop."
+}

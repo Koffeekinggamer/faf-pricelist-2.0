@@ -102,7 +102,7 @@ Excel/PDF bytes
 Two reader families:
 
 - **Shape-specific** — dedicated `import_*_workbook` + `looks_like_*`. Real layout knowledge (FN Level-One PL Print, J&M wood-percent expand, Criswell multi-book, etc.).
-- **Catalog-token** — `CatalogSpec` matches factory name in filename / sheet / xlsx XML, then `import_catalog_workbook` calls `import_workbook(..., force_layout_guess=True)` and tags the result with that factory’s parser id. Optional post-passes (Five Star oak tables, Millcraft piece-name collections, INTEG/Hermies product context). The “named parser” here is a **stable id around the guesser**, not a perfected layout reader.
+- **Catalog-token** — `CatalogSpec` matches factory name in filename / sheet / xlsx XML, then `import_catalog_workbook` calls `import_workbook(..., force_layout_guess=True)` and tags the result with that factory’s parser id. Optional post-passes (Millcraft piece-name collections, INTEG/Hermies product context). Five Star Tables is no longer a post-pass — it has `backend.five_star_import`. The remaining “named parsers” here are **stable ids around the guesser**, not perfected layout readers.
 
 Generic ids: `generic`, `pdf`. Specific ids must never be downgraded to those on Load.
 
@@ -148,7 +148,7 @@ Verified from `fly.toml`, `Dockerfile`, `DEPLOY.md`, workflows:
 ## 2. Builder inventory
 
 **Hypothesis (HANDOFF 2026-09-10):** 194,898 rows · **48 builders** · 2,262 collections on the SSD book.  
-**Verified in git:** 49 selling profile JSON files (plus stub-workshop template), all `parser.locked: true`, all importers present in the registry. 49 specific reader ids including **LuxHome** (`backend.luxhome_import`). 36 `CATALOG_SPECS`. 15 `backend/*_import.py` modules.
+**Verified in git:** 50 selling profile JSON files (plus stub-workshop template), all `parser.locked: true`, all importers present in the registry. Specific reader ids include **LuxHome** (`backend.luxhome_import`) and **Millers Woodshop** (`backend.millers_import`, out-of-book). Five Star Tables is SETTLED via `backend.five_star_import`.
 
 No sample factory workbook is in the repo, so “has a book” means “profile `source_file` points at a Mac/Viztech path,” not “CI can parse it.”
 
@@ -166,7 +166,7 @@ No sample factory workbook is in the repo, so “has a book” means “profile 
 
 ### 2.2 Tier A — perfected lock (SETTLED contract)
 
-These were the first factories the repo **promised** would keep their own reader on next year’s file. Kickoff job 5 also SETTLED every fixture-backed Tier B shape reader (see §2.3). Five Star Tables stays out.
+These were the first factories the repo **promised** would keep their own reader on next year’s file. Kickoff job 5 also SETTLED every fixture-backed Tier B shape reader (see §2.3). Five Star Tables now has a dedicated Oak-size reader and is SETTLED.
 
 | Builder | Importer | Reader | Rich profile | Dedicated tests | SETTLED |
 | ------- | -------- | ------ | ------------ | --------------- | ------- |
@@ -178,7 +178,7 @@ These were the first factories the repo **promised** would keep their own reader
 
 ### 2.3 Tier B — shape-specific or dedicated module
 
-Named reader is real code. Kickoff job 5 (2026-09-11) promoted every Tier B factory that has fixture bytes + a shape test into `tests/test_builder_parser_contract.py` `SETTLED`. Five Star Tables stays blocked (token + oak-tables post-pass, no dedicated shape reader). Stub Workshop stays out. Several readers still live in `wide_import.py` (job 6 splits them).
+Named reader is real code. Kickoff job 5 (2026-09-11) promoted every Tier B factory that has fixture bytes + a shape test into `tests/test_builder_parser_contract.py` `SETTLED`. Five Star Tables now ships `backend.five_star_import` (Oak-priced size SKUs + wood % as Wood). Stub Workshop stays out.
 
 | Builder | Importer | Reader home | Dedicated tests |
 | ------- | -------- | ----------- | --------------- |
@@ -199,7 +199,7 @@ Named reader is real code. Kickoff job 5 (2026-09-11) promoted every Tier B fact
 | Townline Furniture | `townline_furniture` | `townline_import` | `test_townline_furniture` |
 | Troyer Ridge Furniture | `troyer_ridge_furniture` | `troyer_ridge_import` | none |
 | Windy Acres Furniture | `windy_acres` | `wide_import` | `test_windy_acres_import` |
-| Five Star Tables | `five_star_tables` | token + `apply_five_star_oak_tables` | `test_issue_builder_accuracy` |
+| Five Star Tables | `five_star_tables` | `five_star_import` | `test_five_star_import` |
 
 ### 2.4 Tier C — catalog-token lock (generic unpivot underneath)
 
@@ -214,9 +214,9 @@ Hermies / INTEG / Millcraft have small post-passes in `catalog_readers.py`. None
 | Name | Evidence | Status |
 | ---- | -------- | ------ |
 | **LuxHome** | Registry `luxhome` → `backend.luxhome_import` + locked `config/builder_profiles/luxhome.json` + `test_luxhome_seating` | Specific importer lock. Not in SETTLED yet (no fixture-backed contract row). |
-| **Millers Woodshop** | `VENDOR_CANON`, `looks_like_millers`, `enhance_millers_long_df` | No profile, no registry id. STANDARDS still uses it as the identity example. |
-| **Rainbow Bedding** | `VENDOR_CANON` + filename hint `jan 2026 wholesale` | No profile / reader. |
-| **Charleston Forge**, **Beaverdam**, **GVWI** | `VENDOR_CANON` only | Aliases / old vendors. Do not invent catalogs for them. |
+| **Millers Woodshop** | `backend.millers_import` + CatalogSpec `millers_woodshop` + locked `config/builder_profiles/millers-woodshop.json` | Real reader. Out-of-book (not in the 48). Not SETTLED. STANDARDS identity example. |
+| **Rainbow Bedding** | `VENDOR_CANON` + filename hint `jan 2026 wholesale` | **Out-of-book.** No reader / profile. See [`docs/OUT_OF_BOOK_VENDORS.md`](OUT_OF_BOOK_VENDORS.md). |
+| **Charleston Forge**, **Beaverdam**, **GVWI** | `VENDOR_CANON` only | Aliases / old vendors. Do not invent catalogs. See [`docs/OUT_OF_BOOK_VENDORS.md`](OUT_OF_BOOK_VENDORS.md). |
 
 ### 2.6 Deliberate skips
 
@@ -562,7 +562,7 @@ Do **not** let the agent loop “update” by pulling Fly or re-dropping settled
 
 8. **Doc hygiene pass (docs-only).** **Landed in-repo (kickoff job 7):** `CONTINUE.md` / `PROMPTS.md` / `DEPLOY.md` tombstoned; wayfinder #12–#31 indexed. GitHub label/close of those issues is still Judson.
 
-9. **Millers / Rainbow decision.** LuxHome is locked (`luxhome` → `backend.luxhome_import`). Millers / Rainbow still need profile + Drop or explicit IGNORE. Dead aliases in `VENDOR_CANON` without a catalog confuse identity.
+9. **Millers / Rainbow decision.** LuxHome is locked (`luxhome`). Millers is locked (`millers_woodshop`) but out-of-book / not SETTLED. Rainbow, Charleston Forge, Beaverdam, and GVWI are explicit out-of-book aliases — [`docs/OUT_OF_BOOK_VENDORS.md`](OUT_OF_BOOK_VENDORS.md). Do not invent catalogs. Do not silently delete `VENDOR_CANON`.
 
 10. **Pricing package boundary for POS.** Extract or freeze `backend/pricing.py` + row identity fields as the only contract POS may import. No Streamlit, no SQLite, no Drop. Do this *before* anyone copies even-dollar logic into `faf-pos-system`.
 
@@ -601,10 +601,10 @@ Do not claim the loop is safe until most of these exist. **Must** vs **should**:
 
 ### Should (speed)
 
-- [x] `SETTLED` covers all Tier B builders that have fixture bytes (Five Star still blocked: token + post-pass, no shape test).
+- [x] `SETTLED` covers all Tier B builders that have fixture bytes, including Five Star Tables (`backend.five_star_import`).
 - [x] `add_builder` stub script / ticket template.
 - [x] Tombstone stale docs and wayfinder issues (in-repo). GitHub #12–#31 label/close still Judson.
-- [x] LuxHome disposition: locked `luxhome` profile + `backend.luxhome_import`. Millers / Rainbow still open.
+- [x] LuxHome disposition: locked `luxhome` profile + `backend.luxhome_import`. Millers locked out-of-book; Rainbow / Charleston / Beaverdam / GVWI documented.
 - [ ] `backend/pricing.py` documented as the POS import surface.
 - [ ] Volume/size budget note (3 GB / 2 GB) before 100 full books + images.
 

@@ -11,8 +11,9 @@ Named factory readers live in ``backend/<id>_import.py`` and register once
 in ``DEFAULT_READER_REGISTRY``. This module keeps the generic unpivot, shared
 cell helpers (``_norm``, ``_to_float``, ``_clean_long_rows``), and
 compatibility aliases for those extracted readers. LuxHome's leftover copy
-here is not the dedicated module (``backend/luxhome_import.py``); Millers is
-a generic post-process, not a named reader.
+here is not the dedicated module (``backend/luxhome_import.py``). Millers
+enhancement still runs on a generic fallthrough so an MWS filename is not
+lost if the named reader is skipped.
 """
 
 from __future__ import annotations
@@ -1425,6 +1426,12 @@ def __getattr__(name: str):
         "import_hillside_chair_workbook": ("backend.hillside_chair_import", "import_hillside_chair_workbook"),
         "looks_like_maple_lane": ("backend.maple_lane_import", "looks_like_maple_lane"),
         "import_maple_lane_workbook": ("backend.maple_lane_import", "import_maple_lane_workbook"),
+        "looks_like_millers": ("backend.millers_import", "looks_like_millers"),
+        "enhance_millers_long_df": ("backend.millers_import", "enhance_millers_long_df"),
+        "import_millers_workbook": ("backend.millers_import", "import_millers_workbook"),
+        "looks_like_five_star": ("backend.five_star_import", "looks_like_five_star"),
+        "apply_five_star_oak_tables": ("backend.five_star_import", "apply_five_star_oak_tables"),
+        "import_five_star_workbook": ("backend.five_star_import", "import_five_star_workbook"),
     }
     target = mapping.get(name)
     if target is None:
@@ -1652,43 +1659,6 @@ def import_luxhome_workbook(
         sheet_names=names,
         notes=f"{filename + ': ' if filename else ''}LuxHome fabric-grade · {len(out)} rows",
     )
-
-
-# ---------------------------------------------------------------------------
-# Millers Woodshop — section titles + SKU-only rows → better descriptions
-# ---------------------------------------------------------------------------
-
-
-def looks_like_millers(filename: str = "") -> bool:
-    fn = (filename or "").lower().replace("_", " ")
-    return "miller" in fn or re.search(r"\bmws\b", fn) is not None
-
-
-def enhance_millers_long_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Fill descriptions from collection/section when builder only ships SKUs."""
-    if df is None or df.empty:
-        return df
-    out = df.copy()
-    for i, row in out.iterrows():
-        part = _norm(row.get("part_number"))
-        desc = _norm(row.get("description"))
-        coll = _norm(row.get("collection"))
-        if not part:
-            continue
-        # description missing or same as part
-        if not desc or desc == part:
-            if re.match(r"^\d+(\.\d+)?\s*x\s*\d+", part, re.I):
-                # bookcase-style dimension SKU
-                label = coll or "Bookcase"
-                # strip Mult- prefix noise
-                label = re.sub(r"(?i)^mult-?", "", label).strip() or "Bookcase"
-                out.at[i, "description"] = f"{label} {part}"
-            elif coll:
-                coll_clean = re.sub(r"(?i)^mult-?", "", coll).strip()
-                out.at[i, "description"] = f"{coll_clean} {part}".strip()
-            else:
-                out.at[i, "description"] = part
-    return out
 
 
 def import_workbook(
@@ -2015,6 +1985,8 @@ def import_workbook(
         )
 
     # Millers ships SKU-only rows — synthesize floor-friendly descriptions
+    from backend.millers_import import enhance_millers_long_df, looks_like_millers
+
     if looks_like_millers(filename) and not out.empty:
         out = enhance_millers_long_df(out)
 

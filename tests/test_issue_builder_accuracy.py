@@ -10,7 +10,7 @@ from openpyxl import Workbook
 
 from backend.amish_aspen_import import import_amish_aspen_workbook
 from backend.book_options import extract_book_options
-from backend.catalog_readers import apply_five_star_oak_tables
+from backend.five_star_import import apply_five_star_oak_tables
 from backend.hogback_import import GROUP_1 as HOG_1
 from backend.hogback_import import GROUP_2 as HOG_2
 from backend.hogback_import import import_hogback_workbook

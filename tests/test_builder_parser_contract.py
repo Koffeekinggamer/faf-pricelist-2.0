@@ -35,6 +35,7 @@ from backend.builder_reader_registry import DEFAULT_READER_REGISTRY
 from backend.builder_profiles import PROFILES_DIR, clear_profile_cache
 from backend.catalog_readers import spec_for_vendor
 from backend.christina import observe_drop
+from backend.five_star_import import looks_like_five_star
 from backend.fn_chair_import import looks_like_fn_level_one
 from backend.hillside_chair_import import looks_like_hillside_chair
 from backend.hw_chair_import import looks_like_hw_chair_markup
@@ -148,6 +149,14 @@ SETTLED = [
         ["Cover", "Bedroom", "Options"],
         _catalog_detector("Fredericksburg Furniture"),
         DOWNLOADS / "Download_2026_Pricelist_127330.xls",
+    ),
+    (
+        "Five Star Tables",
+        "five_star_tables",
+        "Five Star Tables 2028 Pricelist.xlsx",
+        ["Cover", "Tables", "Options"],
+        looks_like_five_star,
+        DOWNLOADS / "Download_2026_Dining_Furniture_Pricelist_296087.xlsx",
     ),
     (
         "Frog Pond Furniture",

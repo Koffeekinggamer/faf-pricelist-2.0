@@ -77,12 +77,13 @@ STUB_FIXTURE = (
 )
 
 # Audit §2.3 — shape-specific / dedicated module. Promote to SETTLED only
-# when fixture bytes + a shape test exist. Five Star is token+post-pass.
+# when fixture bytes + a shape test exist.
 TIER_B_SHAPE = (
     ("AJ's Furniture", "ajs_furniture"),
     ("Amish Aspen", "amish_aspen"),
     ("Brookside Home Furnishings", "brookside_home_furnishings"),
     ("Fredericksburg Furniture", "fredericksburg_furniture"),
+    ("Five Star Tables", "five_star_tables"),
     ("Frog Pond Furniture", "frog_pond_furniture"),
     ("Hillside Chair", "hillside_chair"),
     ("Hogback Design And Finishing", "hogback_design_and_finishing"),
@@ -98,12 +99,8 @@ TIER_B_SHAPE = (
     ("Windy Acres Furniture", "windy_acres"),
 )
 
-TIER_B_BLOCKED = {
-    "Five Star Tables": (
-        "token wrapper + apply_five_star_oak_tables post-pass; "
-        "no dedicated shape reader or workbook shape test"
-    ),
-}
+# No Tier B factory remains blocked. Token-only locks stay in Tier C.
+TIER_B_BLOCKED: dict[str, str] = {}
 
 # Shared Options-tab keys for Tier B books that do not print their own adders.
 TIER_B_OPTIONS = ("Two-tone", "Lock")
@@ -147,6 +144,13 @@ SETTLED_FIXTURES.extend(
             "fredericksburg_furniture",
             "Fredericksburg Furniture 2028 Pricelist.xlsx",
             "fredericksburg-furniture",
+            TIER_B_OPTIONS,
+        ),
+        _tier_b_fixture(
+            "Five Star Tables",
+            "five_star_tables",
+            "Five Star Tables 2028 Pricelist.xlsx",
+            "five-star-tables",
             TIER_B_OPTIONS,
         ),
         _tier_b_fixture(

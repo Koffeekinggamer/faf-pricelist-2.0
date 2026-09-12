@@ -153,6 +153,32 @@ def build_brookside(path: Path) -> None:
     )
 
 
+def build_five_star(path: Path) -> None:
+    """Oak-priced dining sizes plus wood % and real Options. Visible tabs only."""
+    _save(
+        path,
+        {
+            "Cover": [["Five Star Tables — synthetic CI fixture"]],
+            "Tables": [
+                ["Dining Tables"],
+                ["42x66", 900],
+                ["48x72", 1100],
+                ["Side Chair", 200],
+            ],
+            "Options": [
+                ["Options"],
+                ["Regular prices listed are in Oak"],
+                ["For Walnut, ADD 80%"],
+                ["For Cherry / Maple / Elm, ADD 35%"],
+                ["Two Toning", "", "ADD 20%"],
+                ["Lock: $25"],
+                ["Terms"],
+                ["Net 30"],
+            ],
+        },
+    )
+
+
 def build_fredericksburg(path: Path) -> None:
     _save(
         path,
@@ -614,6 +640,7 @@ TIER_B_BUILDERS: dict[str, Callable[[Path], None]] = {
     "Amish Aspen": build_amish_aspen,
     "Brookside Home Furnishings": build_brookside,
     "Fredericksburg Furniture": build_fredericksburg,
+    "Five Star Tables": build_five_star,
     "Frog Pond Furniture": build_frog_pond,
     "Hillside Chair": build_hillside,
     "Hogback Design And Finishing": build_hogback,
