@@ -12,7 +12,11 @@ from backend.add_builder import plan_builder
 from backend.builder_parsers import GENERIC_PARSER_IDS, identify_reader, preferred_parser_for
 from backend.builder_profiles import PROFILES_DIR, vendor_slug
 from backend.builder_reader_registry import DEFAULT_READER_REGISTRY
-from backend.millers_import import enhance_millers_long_df, import_millers_workbook, looks_like_millers
+from backend.millers_import import (
+    enhance_millers_long_df,
+    import_millers_workbook,
+    looks_like_millers,
+)
 from backend.standardize import resolve_builder_vendor
 from tests.test_builder_parser_contract import SETTLED
 from wide_import import import_workbook
