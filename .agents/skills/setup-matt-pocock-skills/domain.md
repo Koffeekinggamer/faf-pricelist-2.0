@@ -10,9 +10,9 @@ How Matt Pocock engineering skills should consume this repo’s domain documenta
 2. **`CONTEXT.md`** — FAF ubiquitous language (builder, retail, replace vendor, …)
 3. **`HANDOFF.md`** — current ops state, known issues, do/don’t
 4. **`STANDARDS.md`** — master row shape (vendor / collection / species / finish / prices)
-5. **`docs/PRICEBOOK_AGENT_AUDIT.md`** — completeness tiers, forbidden moves, file map (prefer over `CONTINUE.md` / `PROMPTS.md`)
+5. **`docs/PRICEBOOK_AGENT_AUDIT.md`** — completeness tiers, forbidden moves, file map (prefer over `CONTINUE.md` / `PROMPTS.md` / `DEPLOY.md`, which are tombstoned)
 
-Then **`docs/adr/`** as needed for locked decisions that touch the change. Kickoff jobs: **`docs/CURSOR_AGENT_KICKOFF.md`**. Read **`FLOOR_CHEAT_SHEET.md`** when the change affects floor Search behavior.
+Then **`docs/adr/`** as needed for locked decisions that touch the change. Kickoff jobs: **`docs/CURSOR_AGENT_KICKOFF.md`**. Wayfinder issues **#12–#31** are superseded (`docs/wayfinder/README.md`) — not a backlog. Read **`FLOOR_CHEAT_SHEET.md`** when the change affects floor Search behavior.
 
 If a file is missing mid-task, proceed — but **do not invent synonyms** that contradict `CONTEXT.md` / `STANDARDS.md`. Prefer `/domain-modeling` or `/grill-with-docs` to add terms or ADRs.
 

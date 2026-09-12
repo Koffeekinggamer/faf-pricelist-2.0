@@ -29,10 +29,10 @@ Do not start a later job until the earlier one is merged or Judson explicitly sk
 | 1 | **PR CI** | Every PR runs Ruff + pytest with no secrets and no `*.db`. Fly deploy stays off feature branches. | Landed: `.github/workflows/pr-ci.yml`. Do not add deploy-on-PR. |
 | 2 | **Fixtures** | CI can parse bytes for the five SETTLED builders + one `wide_species` token builder + one Options-tab builder. | Synthetic openpyxl or stripped visible tabs. Kill Downloads-only tests as the **sole** proof. Live Mac paths may remain as extra. |
 | 3 | **Identity tests** | No two detectors claim the same next-year filename. A `Download_*` stem never wins as the vendor. | Required before factory #49+. Covers `VENDOR_CANON`, profile hints, `CATALOG_SPECS` tokens, registry order. |
-| 4 | **`add_builder` stub** | One command or ticket template writes slug, vendor string, ReaderEntry/CatalogSpec stub, profile stub, synthetic test, and a SETTLED row placeholder. | Tracer only — does not invent a real factory. |
+| 4 | **`add_builder` stub** | One command or ticket template writes slug, vendor string, ReaderEntry/CatalogSpec stub, profile stub, synthetic test, and a SETTLED row placeholder. | Landed: `scripts/add_builder.py` + Stub Workshop template (`docs/ADD_BUILDER.md`). Tracer only — not a selling factory. |
 | 5 | **Expand SETTLED** | `test_builder_parser_contract.SETTLED` covers all Tier B (shape-specific) builders that have fixture bytes. | Promote a token lock only when a shape test exists. Then pick off Tier C by layout family, not hero parsers. |
 | 6 | **Split `wide_import`** | Patio Kraft, LAMB, Windy Acres, Amish Aspen, Hillside, Maple Lane, Hope Wood, and Artisan live in `backend/<id>_import.py` (or a documented shared helper), registered once. | Deepen Drop (ADR-0011). No behavior change. No app-file edits. |
-| 7 | **Tombstone stale docs** | `CONTINUE.md`, `PROMPTS.md` upsert, and `DEPLOY.md` remote cannot be read as identity. Issues #12–#31 labeled superseded (ADR-0007 / ADR-0010). | Docs-only. Prefer rewrite-or-banner over silent delete. |
+| 7 | **Tombstone stale docs** | `CONTINUE.md`, `PROMPTS.md` upsert, and `DEPLOY.md` remote cannot be read as identity. Issues #12–#31 labeled superseded (ADR-0007 / ADR-0010). | **Landed (in-repo):** DEPRECATED banners + `docs/wayfinder/README.md`. GitHub label/close of #12–#31 is still Judson (`gh` write gated). |
 
 After each job: review on Standards + Spec, then stop. Catalog **update** (local Drop of a new selling builder) is not part of jobs 1–7.
 

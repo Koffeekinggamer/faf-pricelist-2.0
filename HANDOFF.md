@@ -97,7 +97,8 @@ Streamlit + SQLite **floor price book** for Amish furniture builders. One app, m
 
 Thin KEEP (do not treat as broken): Amish Aspen, Maple Lane, Signature Designs, Ebony Woodworking. Patio Kraft KEEP (poly outdoor).
 
-Docs: `AGENTS.md` → `CONTEXT.md` → this file → `STANDARDS.md` · `docs/adr/`
+Docs: `AGENTS.md` → `CONTEXT.md` → this file → `STANDARDS.md` · `docs/adr/` · `docs/PRICEBOOK_AGENT_AUDIT.md`  
+`CONTINUE.md` / `PROMPTS.md` / `DEPLOY.md` are tombstoned — not identity. Wayfinder #12–#31: `docs/wayfinder/README.md`.
 
 ---
 

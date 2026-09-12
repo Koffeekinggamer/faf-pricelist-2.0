@@ -11,10 +11,18 @@ contain the word "Collection".
 """
 
 import io
+import json
 
 import pandas as pd
+import pytest
 
+from backend.add_builder import AddBuilderError, plan_builder
+from backend.builder_identity import WATCHED_SHORT_TOKENS, is_short_token, matching_readers
+from backend.builder_parsers import GENERIC_PARSER_IDS, identify_reader, preferred_parser_for
+from backend.builder_profiles import PROFILES_DIR, vendor_slug
+from backend.builder_reader_registry import DEFAULT_READER_REGISTRY
 from backend.luxhome_import import import_luxhome_workbook, looks_like_luxhome
+from wide_import import import_workbook
 
 
 def _book(rows: list[list], sheet: str = "Wholesale MARKUP") -> bytes:
@@ -60,15 +68,87 @@ def _harmony_book() -> bytes:
     )
 
 
+LUXHOME_NEXT_FILE = "Download_2026_LuxHome_Pricelist_648810.xls"
+LUXHOME_SHEETS = ["Wholesale MARKUP"]
+
+
 def test_detects_the_luxhome_book_by_name():
     assert looks_like_luxhome(
-        filename="Download_2026_LuxHome_Pricelist_648810.xls",
-        sheet_names=["Wholesale MARKUP"],
+        filename=LUXHOME_NEXT_FILE,
+        sheet_names=LUXHOME_SHEETS,
     )
     assert not looks_like_luxhome(
         filename="Download_2026_Pricelist_Finished_301390.xls",
         sheet_names=["Finished Wholesale MARKUP"],
     )
+
+
+def test_registry_points_detector_and_reader_at_luxhome_import():
+    entry = DEFAULT_READER_REGISTRY.get("luxhome")
+    assert entry is not None
+    assert entry.vendor == "LuxHome"
+    assert entry.specific is True
+    assert entry.detector == "backend.luxhome_import:looks_like_luxhome"
+    assert entry.reader == "backend.luxhome_import:import_luxhome_workbook"
+    assert entry.detector.startswith("backend.luxhome_import:")
+    assert entry.reader.startswith("backend.luxhome_import:")
+    assert not entry.detector.startswith("wide_import:")
+    assert not entry.reader.startswith("wide_import:")
+
+
+def test_locked_profile_names_luxhome_importer():
+    path = PROFILES_DIR / f"{vendor_slug('LuxHome')}.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    parser = raw.get("parser") or {}
+    locked = str(parser.get("importer") or "")
+    assert raw.get("vendor") == "LuxHome"
+    assert locked == "luxhome"
+    assert locked not in GENERIC_PARSER_IDS
+    assert parser.get("locked") is True
+    hints = [str(hint).strip().lower() for hint in (parser.get("filename_hints") or [])]
+    assert "luxhome" in hints
+    assert not any(is_short_token(hint) for hint in hints)
+    assert not any(hint in WATCHED_SHORT_TOKENS for hint in hints)
+    assert preferred_parser_for("LuxHome") == "luxhome"
+
+
+def test_add_builder_reuses_luxhome_and_refuses_generic():
+    plan = plan_builder("LuxHome", kind="shape", source_file=LUXHOME_NEXT_FILE)
+    assert plan.vendor == "LuxHome"
+    assert plan.parser_id == "luxhome"
+    assert plan.parser_id not in GENERIC_PARSER_IDS
+    assert plan.kind == "shape"
+    assert plan.reader_entry is not None
+    assert plan.reader_entry.detector.startswith("backend.luxhome_import:")
+    assert plan.reader_entry.reader.startswith("backend.luxhome_import:")
+    with pytest.raises(AddBuilderError, match="luxhome"):
+        plan_builder("LuxHome", parser_id="generic")
+
+
+def test_identify_reader_locks_luxhome_on_the_book_name():
+    hits = matching_readers(LUXHOME_NEXT_FILE, sheet_names=LUXHOME_SHEETS)
+    assert {hit.parser_id for hit in hits} == {"luxhome"}
+    vendor, parser_id, source = identify_reader(
+        LUXHOME_NEXT_FILE, sheet_names=LUXHOME_SHEETS
+    )
+    assert vendor == "LuxHome"
+    assert parser_id == "luxhome"
+    assert source == "saved"
+
+
+def test_import_workbook_uses_luxhome_import_and_proves_options():
+    result = import_workbook(
+        _harmony_book(),
+        vendor="LuxHome",
+        filename=LUXHOME_NEXT_FILE,
+    )
+    assert result.detected_importer == "luxhome"
+    addons = result.long_df[result.long_df["line_kind"] == "addon"]
+    assert not addons.empty, "empty Options is a capture miss"
+    assert dict(zip(addons["option_key"], addons["base_price"])) == {
+        "Motorized Mechanism": 80.0,
+        "Rechargable Battery Pack": 100.0,
+    }
 
 
 def test_fabric_grade_is_the_option_and_the_wood_column_stays_empty():
