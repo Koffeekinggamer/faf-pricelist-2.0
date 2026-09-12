@@ -35,6 +35,7 @@ from backend.config import (
     DEFAULT_SEARCH_LIMIT,
     THIN_CATALOG_MAX_ROWS,
 )
+from backend.county_sales_tax import CountyTaxRate, county_tax_options
 from backend.drop_parse_session import (
     DropLoadBinding,
     DropSessionGone,
@@ -76,7 +77,7 @@ st.set_page_config(
     page_title="FAF Price Book",
     page_icon=str(_FAVICON) if _FAVICON.is_file() else "🪵",
     layout="wide",
-    initial_sidebar_state="collapsed",  # floor default: full-width search; open « for sign-out/stats
+    initial_sidebar_state="expanded",  # persistent Quote Cart; Streamlit stacks on narrow screens
 )
 
 # Brand mark in the sidebar (horse & buggy wordmark)
@@ -726,6 +727,223 @@ def _quote_sidebar_badge() -> None:
         pass
 
 
+def _quote_option_summary(raw) -> str:
+    try:
+        options = json.loads(str(raw or "{}"))
+    except (TypeError, ValueError):
+        return ""
+    if not isinstance(options, dict):
+        return ""
+    selected = options.get("selections", options)
+    if not isinstance(selected, dict):
+        selected = {}
+    bits = [
+        f"{name} ×{int(qty)}" if float(qty or 1) > 1 else str(name)
+        for name, qty in selected.items()
+        if name and name != "stain"
+    ]
+    stain = options.get("stain")
+    if stain:
+        bits.append(f"Stain: {stain}")
+    return " · ".join(bits)
+
+
+def _reset_quote_sidebar_widget_state(quote_id: int) -> None:
+    prefixes = (
+        f"cart_name_{quote_id}",
+        f"cart_client_{quote_id}",
+        f"cart_county_{quote_id}",
+        f"cart_exempt_{quote_id}",
+        f"cart_qty_{quote_id}_",
+        f"cart_notes_{quote_id}_",
+    )
+    for key in list(st.session_state):
+        if key.startswith(prefixes):
+            st.session_state.pop(key, None)
+
+
+def _render_quote_cart_sidebar() -> None:
+    """Persistent Streamlit cart backed by the existing quote tables."""
+    qid = _ensure_active_quote()
+    if st.session_state.pop("_quote_cart_refresh", False):
+        _reset_quote_sidebar_widget_state(qid)
+    quote = svc.get_quote(qid) or {}
+    lines = svc.quote_lines(qid)
+    totals = svc.quote_totals(qid)
+
+    with st.sidebar.expander("Quote Cart", expanded=True):
+        name = st.text_input(
+            "Quote name",
+            value=quote.get("quote_name") or f"Quote {datetime.now():%Y-%m-%d}",
+            key=f"cart_name_{qid}",
+        )
+        client = st.text_input(
+            "Client name (optional)",
+            value=quote.get("customer_name") or "",
+            key=f"cart_client_{qid}",
+        )
+        if name != (quote.get("quote_name") or "") or client != (
+            quote.get("customer_name") or ""
+        ):
+            svc.update_quote(
+                qid,
+                quote_name=name.strip() or f"Quote {datetime.now():%Y-%m-%d}",
+                customer_name=client.strip(),
+            )
+
+        st.caption(
+            f"**{totals.get('line_count', 0)}** lines · "
+            f"**{totals.get('item_count', 0)}** items"
+        )
+
+        if lines is None or lines.empty:
+            st.info("Select a catalog row in Search, then Add to quote.")
+        else:
+            for _, line in lines.iterrows():
+                line_id = int(line["id"])
+                part = str(line.get("part_number") or "")
+                desc = str(line.get("description") or "")
+                with st.container(border=True):
+                    st.markdown(f"**{part or desc}**")
+                    if part and desc:
+                        st.caption(desc)
+                    config_bits = [
+                        str(line.get("species") or ""),
+                        str(line.get("finish_state") or ""),
+                        str(line.get("dimensions") or ""),
+                        _quote_option_summary(line.get("options_json")),
+                    ]
+                    st.caption(" · ".join(bit for bit in config_bits if bit))
+                    qty = st.number_input(
+                        "Qty",
+                        min_value=1,
+                        value=max(1, int(float(line.get("qty") or 1))),
+                        step=1,
+                        key=f"cart_qty_{qid}_{line_id}",
+                    )
+                    notes = st.text_input(
+                        "Notes",
+                        value=str(line.get("notes") or ""),
+                        key=f"cart_notes_{qid}_{line_id}",
+                        placeholder="Optional line note",
+                    )
+                    if float(qty) != float(line.get("qty") or 1) or notes != str(
+                        line.get("notes") or ""
+                    ):
+                        svc.update_quote_line(line_id, qty=float(qty), notes=notes)
+                        st.rerun()
+                    st.caption(
+                        f"${float(line.get('unit_retail') or 0):,.2f} each · "
+                        f"**${float(line.get('line_total') or 0):,.2f}**"
+                    )
+                    reset_col, remove_col = st.columns(2)
+                    if reset_col.button(
+                        "Reset options",
+                        key=f"cart_reset_{qid}_{line_id}",
+                        use_container_width=True,
+                    ):
+                        svc.reset_quote_line_options(line_id)
+                        st.session_state["_quote_cart_refresh"] = True
+                        st.rerun()
+                    if remove_col.button(
+                        "Remove",
+                        key=f"cart_remove_{qid}_{line_id}",
+                        use_container_width=True,
+                    ):
+                        svc.delete_quote_line(line_id)
+                        st.rerun()
+
+        st.markdown("##### Delivery tax")
+        tax_options = list(county_tax_options())
+        selected_key = (
+            f"{quote.get('tax_state')}:{quote.get('tax_county')}"
+            if quote.get("tax_state") and quote.get("tax_county")
+            else ""
+        )
+        selected_index = next(
+            (i for i, row in enumerate(tax_options, start=1) if row.key == selected_key),
+            0,
+        )
+        selected_tax = st.selectbox(
+            "County",
+            options=[None, *tax_options],
+            index=selected_index,
+            format_func=lambda row: (
+                "Select delivery county" if row is None else row.display_label
+            ),
+            key=f"cart_county_{qid}",
+            help="Type a county or state name to filter. Rates are destination-based.",
+        )
+        tax_exempt = st.checkbox(
+            "Tax exempt",
+            value=bool(quote.get("tax_exempt")),
+            key=f"cart_exempt_{qid}",
+        )
+        selected_rate = selected_tax.rate_pct if isinstance(selected_tax, CountyTaxRate) else 0.0
+        selected_state = selected_tax.state if isinstance(selected_tax, CountyTaxRate) else None
+        selected_county = selected_tax.county if isinstance(selected_tax, CountyTaxRate) else None
+        if (
+            float(quote.get("tax_pct") or 0) != float(selected_rate)
+            or quote.get("tax_state") != selected_state
+            or quote.get("tax_county") != selected_county
+            or bool(quote.get("tax_exempt")) != tax_exempt
+        ):
+            svc.update_quote(
+                qid,
+                tax_pct=selected_rate,
+                tax_state=selected_state,
+                tax_county=selected_county,
+                tax_exempt=tax_exempt,
+            )
+            totals = svc.quote_totals(qid)
+        if tax_exempt:
+            st.caption("Exempt · selected destination retained")
+        elif selected_tax is None:
+            st.caption("Select delivery county · tax $0.00")
+
+        st.markdown(f"Merchandise subtotal: **${totals.get('subtotal', 0):,.2f}**")
+        tax_label = "Exempt" if tax_exempt else (
+            f"{selected_rate:g}%" if selected_tax is not None else "not selected"
+        )
+        st.markdown(
+            f"Tax ({tax_label}): **${totals.get('tax_amount', 0):,.2f}**"
+        )
+        st.markdown(f"### Client total: ${totals.get('grand_total', 0):,.2f}")
+
+        if st.session_state.get(f"cart_clear_pending_{qid}"):
+            st.warning("Clear every line and the delivery tax selection?")
+            yes, no = st.columns(2)
+            if yes.button(
+                "Confirm clear",
+                type="primary",
+                key=f"cart_clear_yes_{qid}",
+                use_container_width=True,
+            ):
+                svc.clear_quote(qid, confirmed=True)
+                st.session_state.pop(f"cart_clear_pending_{qid}", None)
+                st.session_state["_quote_cart_refresh"] = True
+                st.rerun()
+            if no.button(
+                "Keep quote",
+                key=f"cart_clear_no_{qid}",
+                use_container_width=True,
+            ):
+                st.session_state.pop(f"cart_clear_pending_{qid}", None)
+                st.rerun()
+        elif st.button(
+            "Clear quote",
+            key=f"cart_clear_{qid}",
+            disabled=(
+                bool(lines is None or lines.empty)
+                and selected_tax is None
+                and not tax_exempt
+            ),
+            use_container_width=True,
+        ):
+            st.session_state[f"cart_clear_pending_{qid}"] = True
+            st.rerun()
+
+
 st.sidebar.title("FAF Price Book")
 who = st.session_state.get("auth_display") or st.session_state.get("auth_user") or "user"
 role = st.session_state.get("auth_role") or "sales"
@@ -746,6 +964,7 @@ if st.sidebar.button("Sign out"):
 stats = svc.stats()
 st.sidebar.metric("Master rows", f"{stats['rows']:,}")
 st.sidebar.caption(f"{stats['vendors']} vendors")
+_render_quote_cart_sidebar()
 if SHOW_ORDERTRAC_QUOTE:
     _quote_sidebar_badge()
 # Viztech sync status lives under Admin only (hidden from floor sidebar)
@@ -1189,89 +1408,90 @@ if nav == "Search":
                 row_height=64,
             )
 
-            if SHOW_ORDERTRAC_QUOTE:
-                if "id" in results.columns and not results.empty:
-                    st.markdown("##### Add to OrderTrac quote (from FAF price)")
-                    st.caption(
-                        "Selections come from **this FAF price book** (retail = wholesale × mult). "
-                        "Build the cart here, then open **OrderTrac quote** tab → "
-                        "**Create OrderTrac quote**."
+            if "id" in results.columns and not results.empty:
+                st.markdown("##### Add configured row to quote")
+                st.caption(
+                    "The retail, wood, finish, size, and checked Options are snapshotted now. "
+                    "The Quote Cart stays in the sidebar while you keep searching."
+                )
+                labels = []
+                row_by_label = {}
+                for row_index, (_, result_row) in enumerate(results.head(80).iterrows()):
+                    rid = int(result_row["id"])
+                    part = str(result_row.get("part_number") or "")[:28]
+                    desc = str(result_row.get("description") or "")[:36]
+                    retail = float(result_row.get("adjusted_price") or 0)
+                    label = f"#{rid} · {part} · ${retail:,.0f} · {desc}"
+                    if label in row_by_label:
+                        label = f"{label} · row {row_index + 1}"
+                    labels.append(label)
+                    row_by_label[label] = dict(result_row)
+                aq1, aq2, aq3, aq4 = st.columns([3.0, 0.7, 1.4, 1.1])
+                with aq1:
+                    pick = st.selectbox(
+                        "Catalog row",
+                        labels,
+                        key="add_quote_pick",
+                        label_visibility="collapsed",
                     )
-                    labels = []
-                    id_by_label = {}
-                    for _, r in results.head(80).iterrows():
-                        rid = int(r["id"])
-                        part = str(r.get("part_number") or "")[:28]
-                        desc = str(r.get("description") or "")[:36]
-                        retail = float(r.get("adjusted_price") or 0)
-                        lab = f"#{rid} · {part} · ${retail:,.0f} · {desc}"
-                        labels.append(lab)
-                        id_by_label[lab] = rid
-                    aq1, aq2, aq3, aq4 = st.columns([3.2, 0.8, 1.4, 1.2])
-                    with aq1:
-                        pick = st.selectbox(
-                            "FAF catalog line",
-                            labels,
-                            key="add_quote_pick",
-                            label_visibility="collapsed",
-                        )
-                    with aq2:
-                        add_qty = st.number_input(
-                            "Qty", min_value=0.5, value=1.0, step=1.0, key="add_quote_qty"
-                        )
-                    with aq3:
-                        # Prefer quote defaults, then free type
-                        _def_stain = st.session_state.get(
-                            "quote_stain_default", "Michael's Cherry (OCS-113)"
-                        )
-                        add_stain = st.text_input(
-                            "Stain",
-                            value=_def_stain,
-                            key="add_quote_stain",
-                            placeholder="Stain name / OCS…",
-                        )
-                    with aq4:
-                        st.write("")
-                        st.write("")
-                        if st.button(
-                            "Add from FAF → quote",
-                            type="primary",
-                            key="btn_add_to_quote",
-                            use_container_width=True,
-                        ):
-                            try:
-                                qid = _ensure_active_quote()
-                                rid = id_by_label[pick]
-                                # Prefer Search wood filter; else quote default wood
-                                wood_sel = (None if wf == "All" else wf) or st.session_state.get(
-                                    "quote_wood_default"
-                                )
-                                finish_sel = (None if ff == "All" else ff) or st.session_state.get(
-                                    "quote_finish_default", "finished"
-                                )
-                                stain_sel = (add_stain or "").strip() or st.session_state.get(
-                                    "quote_stain_default", ""
-                                )
-                                svc.add_quote_line_from_id(
-                                    qid,
-                                    rid,
-                                    qty=float(add_qty),
-                                    species_override=wood_sel,
-                                    finish_override=finish_sel,
-                                    stain=stain_sel,
-                                )
-                                if stain_sel:
-                                    st.session_state["quote_stain_default"] = stain_sel
-                                if wood_sel:
-                                    st.session_state["quote_wood_default"] = wood_sel
-                                qn = (svc.get_quote(qid) or {}).get("quote_number")
-                                st.success(
-                                    f"Added FAF #{rid} → **{qn}** "
-                                    f"({wood_sel or 'wood?'} / {stain_sel or 'stain?'})"
-                                )
-                                st.rerun()
-                            except Exception as exc:
-                                st.error(f"Could not add line: {exc}")
+                with aq2:
+                    add_qty = st.number_input(
+                        "Qty", min_value=1, value=1, step=1, key="add_quote_qty"
+                    )
+                with aq3:
+                    _def_stain = st.session_state.get("quote_stain_default", "")
+                    add_stain = st.text_input(
+                        "Stain (optional)",
+                        value=_def_stain,
+                        key="add_quote_stain",
+                        placeholder="Stain / OCS…",
+                    )
+                    separate_line = st.checkbox(
+                        "Add as separate line",
+                        key="add_quote_separate",
+                    )
+                with aq4:
+                    st.write("")
+                    st.write("")
+                    if st.button(
+                        "Add to quote",
+                        type="primary",
+                        key="btn_add_to_quote",
+                        use_container_width=True,
+                    ):
+                        try:
+                            qid = _ensure_active_quote()
+                            configured = dict(row_by_label[pick])
+                            rid = int(configured["id"])
+                            wood_sel = None if wf == "All" else wf
+                            finish_sel = None if ff == "All" else ff
+                            stain_sel = (add_stain or "").strip()
+                            if wood_sel:
+                                configured["species"] = wood_sel
+                            if finish_sel:
+                                configured["finish_state"] = finish_sel
+                            option_snapshot = {
+                                "selections": {
+                                    option: int(option_qty.get(option, 1))
+                                    for option in of_list
+                                },
+                                "stain": stain_sel,
+                            }
+                            svc.add_quote_cart_line(
+                                qid,
+                                configured,
+                                options=option_snapshot,
+                                qty=float(add_qty),
+                                notes=f"Stain: {stain_sel}" if stain_sel else "",
+                                separate_line=separate_line,
+                            )
+                            if stain_sel:
+                                st.session_state["quote_stain_default"] = stain_sel
+                            quote_name = (svc.get_quote(qid) or {}).get("quote_name")
+                            st.success(f"Added FAF #{rid} to **{quote_name or 'quote'}**.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Could not add line: {exc}")
 
     # ---- Separate pinned-builders column (collapsible) ----
     if pin_col is not None:

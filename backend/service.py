@@ -1756,6 +1756,33 @@ class PriceBookService:
         self.ensure_ready()
         return self.quotes.add_line_from_pricebook(quote_id, pricebook_row, **kwargs)
 
+    def add_quote_cart_line(
+        self,
+        quote_id: int,
+        configured_row: dict,
+        *,
+        default_pricebook_row: Optional[dict] = None,
+        options: Any = None,
+        qty: float = 1.0,
+        notes: str = "",
+        separate_line: bool = False,
+    ) -> int:
+        """Append or merge one configured Search result into a quote draft."""
+        self.ensure_ready()
+        default_row = default_pricebook_row
+        pricebook_id = configured_row.get("id")
+        if default_row is None and pricebook_id is not None:
+            default_row = self.repo.get_row_by_id(int(pricebook_id))
+        return self.quotes.add_line_from_pricebook(
+            quote_id,
+            configured_row,
+            default_pricebook_row=default_row,
+            options=options,
+            merge_existing=not separate_line,
+            qty=max(1.0, float(qty or 1)),
+            notes=notes,
+        )
+
     def add_custom_quote_line(self, quote_id: int, **kwargs) -> int:
         self.ensure_ready()
         return self.quotes.add_custom_line(quote_id, **kwargs)
@@ -1767,6 +1794,14 @@ class PriceBookService:
     def delete_quote_line(self, line_id: int) -> None:
         self.ensure_ready()
         self.quotes.delete_line(line_id)
+
+    def reset_quote_line_options(self, line_id: int) -> bool:
+        self.ensure_ready()
+        return self.quotes.reset_line_options(line_id)
+
+    def clear_quote(self, quote_id: int, *, confirmed: bool = False) -> bool:
+        self.ensure_ready()
+        return self.quotes.clear_quote(quote_id, confirmed=confirmed)
 
     # ------------------------------------------------------------------ users / OrderTrac
     def list_app_users(self, *, active_only: bool = False) -> pd.DataFrame:
