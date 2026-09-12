@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
-from datetime import datetime
+import json
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -20,11 +22,40 @@ def _quote_number() -> str:
     return "Q-" + datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
+def _default_quote_name() -> str:
+    return f"Quote {date.today().isoformat()}"
+
+
 def _line_total(qty: float, unit_retail: float, line_discount_pct: float = 0) -> float:
     qty = float(qty or 0)
     unit = float(unit_retail or 0)
     disc = float(line_discount_pct or 0) / 100.0
     return round(qty * unit * (1.0 - disc), 2)
+
+
+def _options_json(options: Any) -> str:
+    if not options:
+        return "{}"
+    if isinstance(options, str):
+        try:
+            options = json.loads(options)
+        except (TypeError, ValueError):
+            options = {str(options): 1}
+    return json.dumps(options, sort_keys=True, separators=(",", ":"))
+
+
+def _configuration_key(row: dict, options_json: str) -> str:
+    identity = {
+        "pricebook_id": row.get("pricebook_id", row.get("id")),
+        "part_number": row.get("part_number") or "",
+        "species": row.get("species") or "",
+        "dimensions": row.get("dimensions") or "",
+        "finish_state": row.get("finish_state") or "",
+        "unit_retail": round(float(row.get("unit_retail", row.get("adjusted_price")) or 0), 4),
+        "options": json.loads(options_json or "{}"),
+    }
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _pdf_safe(text) -> str:
@@ -69,6 +100,7 @@ class QuoteRepository:
         customer_phone: str = "",
         customer_email: str = "",
         notes: str = "",
+        quote_name: str = "",
         discount_pct: float = 0,
         tax_pct: float = 0,
     ) -> int:
@@ -78,12 +110,13 @@ class QuoteRepository:
             cur = conn.execute(
                 """
                 INSERT INTO quotes (
-                    quote_number, customer_name, customer_phone, customer_email,
+                    quote_number, quote_name, customer_name, customer_phone, customer_email,
                     status, notes, discount_pct, tax_pct, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
                 """,
                 (
                     qn,
+                    quote_name.strip() or _default_quote_name(),
                     customer_name or None,
                     customer_phone or None,
                     customer_email or None,
@@ -99,6 +132,7 @@ class QuoteRepository:
 
     def update_quote(self, quote_id: int, **fields) -> None:
         allowed = {
+            "quote_name",
             "customer_name",
             "customer_phone",
             "customer_email",
@@ -106,6 +140,9 @@ class QuoteRepository:
             "notes",
             "discount_pct",
             "tax_pct",
+            "tax_state",
+            "tax_county",
+            "tax_exempt",
             "ordertrac_guid",
             "ordertrac_so_id",
             "ordertrac_url",
@@ -181,10 +218,14 @@ class QuoteRepository:
         quote_id: int,
         pricebook_row: dict,
         *,
+        default_pricebook_row: Optional[dict] = None,
+        options: Any = None,
+        merge_existing: bool = False,
         qty: float = 1.0,
         line_discount_pct: float = 0.0,
         notes: str = "",
     ) -> int:
+        qty = max(1.0, float(qty or 1))
         unit_base = pricebook_row.get("base_price")
         unit_retail = pricebook_row.get("adjusted_price")
         if unit_retail is None and unit_base is not None:
@@ -193,7 +234,54 @@ class QuoteRepository:
             mult = pricebook_row.get("multiplier") or 2.7
             unit_retail = retail_from_wholesale(unit_base, mult)
 
+        default_row = dict(default_pricebook_row or pricebook_row)
+        default_unit_base = default_row.get("base_price")
+        default_unit_retail = default_row.get("adjusted_price")
+        selected_options = options
+        if selected_options is None and pricebook_row.get("option_key"):
+            selected_options = {str(pricebook_row["option_key"]): 1}
+        default_options = (
+            {str(default_row["option_key"]): 1} if default_row.get("option_key") else {}
+        )
+        selected_options_json = _options_json(selected_options)
+        default_options_json = _options_json(default_options)
+        configured = {
+            **pricebook_row,
+            "pricebook_id": pricebook_row.get("id"),
+            "unit_retail": unit_retail,
+        }
+        config_key = _configuration_key(configured, selected_options_json)
+
         with self._conn() as conn:
+            if merge_existing:
+                existing = conn.execute(
+                    """
+                    SELECT id, qty, unit_retail, line_discount_pct
+                    FROM quote_lines
+                    WHERE quote_id = ? AND configuration_key = ?
+                    ORDER BY id
+                    LIMIT 1
+                    """,
+                    (quote_id, config_key),
+                ).fetchone()
+                if existing:
+                    merged_qty = max(1.0, float(existing["qty"] or 0) + qty)
+                    merged_total = _line_total(
+                        merged_qty,
+                        existing["unit_retail"] or 0,
+                        existing["line_discount_pct"] or 0,
+                    )
+                    conn.execute(
+                        "UPDATE quote_lines SET qty = ?, line_total = ? WHERE id = ?",
+                        (merged_qty, merged_total, existing["id"]),
+                    )
+                    conn.execute(
+                        "UPDATE quotes SET updated_at = ? WHERE id = ?",
+                        (_now(), quote_id),
+                    )
+                    conn.commit()
+                    return int(existing["id"])
+
             max_no = conn.execute(
                 "SELECT COALESCE(MAX(line_no), 0) FROM quote_lines WHERE quote_id = ?",
                 (quote_id,),
@@ -205,8 +293,11 @@ class QuoteRepository:
                 INSERT INTO quote_lines (
                     quote_id, line_no, pricebook_id, vendor, collection,
                     part_number, description, species, dimensions, finish_state,
-                    qty, unit_base, unit_retail, line_discount_pct, line_total, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    qty, unit_base, unit_retail, line_discount_pct, line_total, notes,
+                    options_json, default_options_json, configuration_key,
+                    default_unit_base, default_unit_retail, default_species,
+                    default_dimensions, default_finish_state
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     quote_id,
@@ -225,6 +316,14 @@ class QuoteRepository:
                     line_discount_pct,
                     total,
                     notes or None,
+                    selected_options_json,
+                    default_options_json,
+                    config_key,
+                    default_unit_base,
+                    default_unit_retail,
+                    default_row.get("species"),
+                    default_row.get("dimensions"),
+                    default_row.get("finish_state"),
                 ),
             )
             conn.execute(
@@ -286,9 +385,11 @@ class QuoteRepository:
             "notes",
             "part_number",
             "species",
+            "dimensions",
             "finish_state",
             "vendor",
             "collection",
+            "options_json",
         }
         # load current for recalc
         with self._conn() as conn:
@@ -300,19 +401,23 @@ class QuoteRepository:
             data = dict(row)
             for k, v in fields.items():
                 if k in allowed:
-                    data[k] = v
+                    data[k] = _options_json(v) if k == "options_json" else v
             data["line_total"] = _line_total(
                 data.get("qty") or 0,
                 data.get("unit_retail") or 0,
                 data.get("line_discount_pct") or 0,
+            )
+            data["configuration_key"] = _configuration_key(
+                data, data.get("options_json") or "{}"
             )
             conn.execute(
                 """
                 UPDATE quote_lines SET
                     qty = ?, unit_retail = ?, unit_base = ?,
                     line_discount_pct = ?, description = ?, notes = ?,
-                    part_number = ?, species = ?, finish_state = ?,
-                    vendor = ?, collection = ?, line_total = ?
+                    part_number = ?, species = ?, dimensions = ?, finish_state = ?,
+                    vendor = ?, collection = ?, line_total = ?,
+                    options_json = ?, configuration_key = ?
                 WHERE id = ?
                 """,
                 (
@@ -324,10 +429,13 @@ class QuoteRepository:
                     data.get("notes"),
                     data.get("part_number"),
                     data.get("species"),
+                    data.get("dimensions"),
                     data.get("finish_state"),
                     data.get("vendor"),
                     data.get("collection"),
                     data.get("line_total"),
+                    data.get("options_json") or "{}",
+                    data.get("configuration_key"),
                     line_id,
                 ),
             )
@@ -350,12 +458,86 @@ class QuoteRepository:
                 )
             conn.commit()
 
+    def reset_line_options(self, line_id: int) -> bool:
+        """Restore a cart line's original catalog configuration in place."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM quote_lines WHERE id = ?", (line_id,)
+            ).fetchone()
+            if not row:
+                return False
+            data = dict(row)
+            data.update(
+                {
+                    "unit_base": data.get("default_unit_base"),
+                    "unit_retail": data.get("default_unit_retail"),
+                    "species": data.get("default_species"),
+                    "dimensions": data.get("default_dimensions"),
+                    "finish_state": data.get("default_finish_state"),
+                    "options_json": data.get("default_options_json") or "{}",
+                }
+            )
+            data["line_total"] = _line_total(
+                data.get("qty") or 1,
+                data.get("unit_retail") or 0,
+                data.get("line_discount_pct") or 0,
+            )
+            data["configuration_key"] = _configuration_key(
+                data, data["options_json"]
+            )
+            conn.execute(
+                """
+                UPDATE quote_lines SET
+                    unit_base = ?, unit_retail = ?, species = ?, dimensions = ?,
+                    finish_state = ?, options_json = ?, configuration_key = ?,
+                    line_total = ?
+                WHERE id = ?
+                """,
+                (
+                    data.get("unit_base"),
+                    data.get("unit_retail"),
+                    data.get("species"),
+                    data.get("dimensions"),
+                    data.get("finish_state"),
+                    data.get("options_json"),
+                    data.get("configuration_key"),
+                    data.get("line_total"),
+                    line_id,
+                ),
+            )
+            conn.execute(
+                "UPDATE quotes SET updated_at = ? WHERE id = ?",
+                (_now(), data["quote_id"]),
+            )
+            conn.commit()
+            return True
+
+    def clear_quote(self, quote_id: int, *, confirmed: bool = False) -> bool:
+        """Clear cart lines and tax only after an explicit confirmation."""
+        if not confirmed:
+            return False
+        with self._conn() as conn:
+            conn.execute("DELETE FROM quote_lines WHERE quote_id = ?", (quote_id,))
+            conn.execute(
+                """
+                UPDATE quotes
+                SET tax_pct = 0, tax_state = NULL, tax_county = NULL,
+                    tax_exempt = 0, updated_at = ?
+                WHERE id = ?
+                """,
+                (_now(), quote_id),
+            )
+            conn.commit()
+        return True
+
     def totals(self, quote_id: int) -> dict[str, Any]:
         q = self.get_quote(quote_id) or {}
         lines = self.list_lines(quote_id)
         subtotal = float(lines["line_total"].sum()) if not lines.empty else 0.0
         disc_pct = float(q.get("discount_pct") or 0)
-        tax_pct = float(q.get("tax_pct") or 0)
+        stored_tax_pct = float(q.get("tax_pct") or 0)
+        tax_exempt = bool(q.get("tax_exempt"))
+        tax_pct = 0.0 if tax_exempt else stored_tax_pct
         after_disc = round(subtotal * (1.0 - disc_pct / 100.0), 2)
         tax = round(after_disc * (tax_pct / 100.0), 2)
         grand = round(after_disc + tax, 2)
@@ -364,9 +546,17 @@ class QuoteRepository:
             "discount_pct": disc_pct,
             "discount_amount": round(subtotal - after_disc, 2),
             "tax_pct": tax_pct,
+            "stored_tax_pct": stored_tax_pct,
             "tax_amount": tax,
+            "tax_exempt": tax_exempt,
+            "tax_label": "Exempt" if tax_exempt else (f"{tax_pct:g}%" if tax_pct else ""),
             "grand_total": grand,
             "line_count": len(lines),
+            "item_count": (
+                int(lines["qty"].sum())
+                if not lines.empty and float(lines["qty"].sum()).is_integer()
+                else (float(lines["qty"].sum()) if not lines.empty else 0)
+            ),
         }
 
     def export_excel(self, quote_id: int) -> bytes:

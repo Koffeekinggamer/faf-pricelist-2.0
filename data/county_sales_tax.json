@@ -1,0 +1,1531 @@
+{
+  "as_of": "2026-09-01",
+  "scope": "County-level combined state and local general merchandise sales tax; city and special district overlays excluded.",
+  "rates": [
+    {
+      "state": "GA",
+      "county": "Appling",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Atkinson",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Bacon",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Baker",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Baldwin",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Banks",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Barrow",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Bartow",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Ben Hill",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Berrien",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Bibb",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Bleckley",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Brantley",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Brooks",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Bryan",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Bulloch",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Burke",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Butts",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Calhoun",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Camden",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Candler",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Carroll",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Catoosa",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Charlton",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Chatham",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Chattahoochee",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Chattooga",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Cherokee",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Clarke",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Clay",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Clayton",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Clinch",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Cobb",
+      "rate_pct": 6.0
+    },
+    {
+      "state": "GA",
+      "county": "Coffee",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Colquitt",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Columbia",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Cook",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Coweta",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Crawford",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Crisp",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Dade",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Dawson",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Decatur",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "DeKalb",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Dodge",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Dooly",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Dougherty",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Douglas",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Early",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Echols",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Effingham",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Elbert",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Emanuel",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Evans",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Fannin",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Fayette",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Floyd",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Forsyth",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Franklin",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Fulton",
+      "rate_pct": 7.75
+    },
+    {
+      "state": "GA",
+      "county": "Gilmer",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Glascock",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Glynn",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Gordon",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Grady",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Greene",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Gwinnett",
+      "rate_pct": 6.0
+    },
+    {
+      "state": "GA",
+      "county": "Habersham",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Hall",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Hancock",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Haralson",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Harris",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Hart",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Heard",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Henry",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Houston",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Irwin",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Jackson",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Jasper",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Jeff Davis",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Jefferson",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Jenkins",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Johnson",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Jones",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Lamar",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Lanier",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Laurens",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Lee",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Liberty",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Lincoln",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Long",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Lowndes",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Lumpkin",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Macon",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Madison",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Marion",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "McDuffie",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "McIntosh",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Meriwether",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Miller",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Mitchell",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Monroe",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Montgomery",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Morgan",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Murray",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Muscogee",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Newton",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Oconee",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Oglethorpe",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Paulding",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Peach",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Pickens",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Pierce",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Pike",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Polk",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Pulaski",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Putnam",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Quitman",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Rabun",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Randolph",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Richmond",
+      "rate_pct": 8.5
+    },
+    {
+      "state": "GA",
+      "county": "Rockdale",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Schley",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Screven",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Seminole",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Spalding",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Stephens",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Stewart",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Sumter",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Talbot",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Taliaferro",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Tattnall",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Taylor",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Telfair",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Terrell",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Thomas",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Tift",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Toombs",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Towns",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Treutlen",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Troup",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Turner",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Twiggs",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Union",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Upson",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Walker",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Walton",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Ware",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Warren",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Washington",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Wayne",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Webster",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Wheeler",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "White",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Whitfield",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Wilcox",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "GA",
+      "county": "Wilkes",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "GA",
+      "county": "Wilkinson",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "GA",
+      "county": "Worth",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "NC",
+      "county": "Alamance",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Alexander",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Alleghany",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Anson",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Ashe",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Avery",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Beaufort",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Bertie",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Bladen",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Brunswick",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Buncombe",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Burke",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Cabarrus",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Caldwell",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Camden",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Carteret",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Caswell",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Catawba",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Chatham",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Cherokee",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Chowan",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Clay",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Cleveland",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Columbus",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Craven",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Cumberland",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Currituck",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Dare",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Davidson",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Davie",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Duplin",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Durham",
+      "rate_pct": 7.5
+    },
+    {
+      "state": "NC",
+      "county": "Edgecombe",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Forsyth",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Franklin",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Gaston",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Gates",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Graham",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Granville",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Greene",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Guilford",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Halifax",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Harnett",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Haywood",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Henderson",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Hertford",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Hoke",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Hyde",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Iredell",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Jackson",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Johnston",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Jones",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Lee",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Lenoir",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Lincoln",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Macon",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Madison",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Martin",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "McDowell",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Mecklenburg",
+      "rate_pct": 8.25
+    },
+    {
+      "state": "NC",
+      "county": "Mitchell",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Montgomery",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Moore",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Nash",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "New Hanover",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Northampton",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Onslow",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Orange",
+      "rate_pct": 7.5
+    },
+    {
+      "state": "NC",
+      "county": "Pamlico",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Pasquotank",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Pender",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Perquimans",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Person",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Pitt",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Polk",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Randolph",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Richmond",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Robeson",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Rockingham",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Rowan",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Rutherford",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Sampson",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Scotland",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Stanly",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Stokes",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Surry",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Swain",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Transylvania",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Tyrrell",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Union",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Vance",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Wake",
+      "rate_pct": 7.25
+    },
+    {
+      "state": "NC",
+      "county": "Warren",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Washington",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Watauga",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Wayne",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Wilkes",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "NC",
+      "county": "Wilson",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Yadkin",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "NC",
+      "county": "Yancey",
+      "rate_pct": 6.75
+    },
+    {
+      "state": "SC",
+      "county": "Abbeville",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Aiken",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Allendale",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Anderson",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Bamberg",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Barnwell",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Beaufort",
+      "rate_pct": 6.0
+    },
+    {
+      "state": "SC",
+      "county": "Berkeley",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "SC",
+      "county": "Calhoun",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Charleston",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "SC",
+      "county": "Cherokee",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Chester",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Chesterfield",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Clarendon",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Colleton",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Darlington",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Dillon",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Dorchester",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Edgefield",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Fairfield",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Florence",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Georgetown",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Greenville",
+      "rate_pct": 6.0
+    },
+    {
+      "state": "SC",
+      "county": "Greenwood",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Hampton",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Horry",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Jasper",
+      "rate_pct": 9.0
+    },
+    {
+      "state": "SC",
+      "county": "Kershaw",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Lancaster",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Laurens",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Lee",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Lexington",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Marion",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Marlboro",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "McCormick",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Newberry",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Oconee",
+      "rate_pct": 6.0
+    },
+    {
+      "state": "SC",
+      "county": "Orangeburg",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Pickens",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Richland",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Saluda",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Spartanburg",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Sumter",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "Union",
+      "rate_pct": 7.0
+    },
+    {
+      "state": "SC",
+      "county": "Williamsburg",
+      "rate_pct": 8.0
+    },
+    {
+      "state": "SC",
+      "county": "York",
+      "rate_pct": 7.0
+    }
+  ]
+}

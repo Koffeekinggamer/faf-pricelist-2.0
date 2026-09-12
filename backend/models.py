@@ -54,6 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_pricebook_identity
 CREATE TABLE IF NOT EXISTS quotes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     quote_number TEXT,
+    quote_name TEXT,
     customer_name TEXT,
     customer_phone TEXT,
     customer_email TEXT,
@@ -61,6 +62,9 @@ CREATE TABLE IF NOT EXISTS quotes (
     notes TEXT,
     discount_pct REAL DEFAULT 0,
     tax_pct REAL DEFAULT 0,
+    tax_state TEXT,
+    tax_county TEXT,
+    tax_exempt INTEGER DEFAULT 0,
     ordertrac_guid TEXT,
     ordertrac_so_id TEXT,
     ordertrac_url TEXT,
@@ -87,6 +91,14 @@ CREATE TABLE IF NOT EXISTS quote_lines (
     line_discount_pct REAL DEFAULT 0,
     line_total REAL,
     notes TEXT,
+    options_json TEXT DEFAULT '{}',
+    default_options_json TEXT DEFAULT '{}',
+    configuration_key TEXT,
+    default_unit_base REAL,
+    default_unit_retail REAL,
+    default_species TEXT,
+    default_dimensions TEXT,
+    default_finish_state TEXT,
     FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE CASCADE
 );
 
@@ -175,10 +187,25 @@ VENDOR_NEW_COLUMNS = {
 
 # Columns added for OrderTrac quote push link-back
 QUOTE_NEW_COLUMNS = {
+    "quote_name": "TEXT",
+    "tax_state": "TEXT",
+    "tax_county": "TEXT",
+    "tax_exempt": "INTEGER DEFAULT 0",
     "ordertrac_guid": "TEXT",
     "ordertrac_so_id": "TEXT",
     "ordertrac_url": "TEXT",
     "ordertrac_pushed_at": "TEXT",
+}
+
+QUOTE_LINE_NEW_COLUMNS = {
+    "options_json": "TEXT DEFAULT '{}'",
+    "default_options_json": "TEXT DEFAULT '{}'",
+    "configuration_key": "TEXT",
+    "default_unit_base": "REAL",
+    "default_unit_retail": "REAL",
+    "default_species": "TEXT",
+    "default_dimensions": "TEXT",
+    "default_finish_state": "TEXT",
 }
 
 CATALOG_IMAGE_NEW_COLUMNS = {

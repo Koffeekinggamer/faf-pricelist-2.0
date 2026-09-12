@@ -52,8 +52,10 @@ smoke_test_quote.pdf
 
 # 2.0 data dir
 data/*.db
-data/
-!.gitkeep
+data/*
+!data/.gitkeep
+!data/COUNTY_TAX_SOURCES.md
+!data/county_sales_tax.json
 
 # Christina's lesson log (lives next to the DB; not source)
 christina_lessons.jsonl
