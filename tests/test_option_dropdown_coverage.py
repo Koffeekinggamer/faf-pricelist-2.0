@@ -78,6 +78,67 @@ def test_addon_charge_appears_in_option_dropdown(tmp_path):
     assert "Rustic +15%" in opts
 
 
+def test_service_options_are_scoped_to_the_matching_builder_item(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    svc = PriceBookService(db)
+    svc.repo.insert_rows(
+        [
+            _row("LuxHome", species=None, option_key="Standard", part="21 HRR"),
+            _row("LuxHome", species=None, option_key="Premium", part="10 SC-FA"),
+            _row(
+                "LuxHome",
+                species=None,
+                option_key="Motorized Mechanism",
+                part="21 HRR",
+                line_kind="addon",
+                base_price=80,
+            ),
+            _row(
+                "LuxHome",
+                species=None,
+                option_key="Battery Pack",
+                part="10 SC-FA",
+                line_kind="addon",
+                base_price=100,
+            ),
+            _row("Other Builder", option_key="Other Option", part="21 HRR"),
+        ]
+    )
+
+    assert svc.list_option_keys("LuxHome", query="21 HRR") == [
+        "Motorized Mechanism",
+        "Standard",
+    ]
+
+
+def test_primary_search_never_returns_addons_or_lists_plain_items_as_options(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    svc = PriceBookService(db)
+    svc.repo.insert_rows(
+        [
+            _row("Builder", part="CHAIR-1"),
+            _row("Builder", part="Battery Pack"),
+            _row(
+                "Builder",
+                species=None,
+                option_key="Motorized Mechanism",
+                part="CHAIR-1",
+                line_kind="addon",
+                base_price=80,
+            ),
+        ]
+    )
+
+    assert set(svc.search("", vendor="Builder")["part_number"]) == {
+        "CHAIR-1",
+        "Battery Pack",
+    }
+    assert svc.search("Motorized Mechanism", vendor="Builder").empty
+    assert "Battery Pack" not in svc.list_option_keys("Builder")
+
+
 def test_service_add_addon_charge_lists_in_options(tmp_path):
     db = tmp_path / "t.db"
     init_db(db)
@@ -91,7 +152,7 @@ def test_service_add_addon_charge_lists_in_options(tmp_path):
     assert "Nailhead trim" in svc.list_option_keys("Addon Co")
 
 
-def test_search_hides_addons_unless_option_filtered(tmp_path):
+def test_repository_search_never_returns_addons_as_primary_items(tmp_path):
     db = tmp_path / "t.db"
     init_db(db)
     repo = PriceBookRepository(db)
@@ -118,9 +179,7 @@ def test_search_hides_addons_unless_option_filtered(tmp_path):
         option_key="Solid Fabrics / COM",
         finish_state="finished",
     )
-    assert len(addons) == 1
-    assert float(addons.iloc[0]["base_price"]) == 23
-    assert addons.iloc[0]["line_kind"] == "addon"
+    assert addons.empty
 
 
 def test_fn_chair_still_lists_cats(tmp_path):

@@ -459,20 +459,31 @@ def _catalog_stamp() -> str:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _option_dropdown_options(vendor_key: str, catalog_stamp: str = "") -> list:
+def _option_dropdown_options(
+    vendor_key: str,
+    catalog_stamp: str = "",
+    item_query: str = "",
+    species: str = "",
+) -> list:
     """
-    Live Options for the selected builder only — not a static list.
+    Live Options for the selected builder and matching items — not a static list.
 
     Builder = All → empty (no cross-vendor option soup).
-    Specific builder → whatever that builder's catalog currently has
-    (addon charges + that builder's option_key / option-like species).
+    Specific builder + query → only options applicable to those Search rows.
     ``catalog_stamp`` refreshes the list after Drop / re-import.
     """
     if not vendor_key or vendor_key == "All":
         return []
     svc = _svc()
     try:
-        return list(svc.list_option_keys(vendor=vendor_key) or [])
+        return list(
+            svc.list_option_keys(
+                vendor=vendor_key,
+                query=item_query,
+                species=None if species in ("", "All") else species,
+            )
+            or []
+        )
     except Exception:
         return []
 
@@ -1020,8 +1031,13 @@ if nav == "Search":
                 st.session_state["_clear_search"] = True
                 st.rerun()
 
-        # Option — under the search box; filtered to the piece being looked up.
-        opt_list = _option_dropdown_options(vf if vf else "All", _catalog_stamp())
+        # Option — under the search box; scoped to matching items, then kind fit.
+        opt_list = _option_dropdown_options(
+            vf if vf else "All",
+            _catalog_stamp(),
+            q or "",
+            wf or "",
+        )
         if vf not in (None, "All") and opt_list:
             opt_list = svc.options_for_search(
                 vf,

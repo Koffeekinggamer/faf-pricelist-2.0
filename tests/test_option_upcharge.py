@@ -228,6 +228,72 @@ def test_fn_chair_cat_filters_before_fabric_upcharge(tmp_path):
     assert result.iloc[0]["adjusted_price"] == 496.0
 
 
+def test_per_sku_addon_only_prices_its_catalog_item(tmp_path):
+    """LuxHome-style addon columns belong to the SKU printed on that row."""
+    svc = _svc(tmp_path)
+    vendor = "LuxHome"
+    svc.repo.insert_rows(
+        [
+            {
+                **_item(
+                    vendor,
+                    "Harmony Collection",
+                    "21 HRR",
+                    "Harmony Rocker Recliner",
+                    2064.0,
+                ),
+                "species": None,
+                "option_key": "Standard",
+            },
+            {
+                **_item(
+                    vendor,
+                    "Serene Collection",
+                    "10 SC-FA",
+                    "Serene Chair Flat Arm",
+                    1626.0,
+                ),
+                "species": None,
+                "option_key": "Standard",
+            },
+            {
+                **_addon(vendor, "Motorized Mechanism", 80.0, 216.0),
+                "part_number": "21 HRR",
+                "description": "Harmony Rocker Recliner",
+            },
+        ]
+    )
+
+    harmony = svc.search(
+        "21 HRR",
+        vendor=vendor,
+        option_key="Motorized Mechanism",
+    )
+    serene = svc.search(
+        "10 SC-FA",
+        vendor=vendor,
+        option_key="Motorized Mechanism",
+    )
+
+    assert list(harmony["part_number"]) == ["21 HRR"]
+    assert float(harmony.iloc[0]["adjusted_price"]) == 2280.0
+    assert serene.empty
+
+
+def test_locked_builder_never_uses_an_unmatched_category_fallback(tmp_path):
+    svc = _svc(tmp_path)
+    vendor = "J & M Woodworking"
+    svc.repo.insert_rows(
+        [
+            _item(vendor, "Bedroom", "B1", "Charleston Queen Bed", 2000.0),
+            _addon_cat(vendor, "Paint", "9 Drawer Dresser", 150.0, 406.0),
+        ]
+    )
+
+    assert svc.search("B1", vendor=vendor, option_key="Paint").empty
+    assert "Paint" not in svc.list_option_keys(vendor, query="B1")
+
+
 def test_fn_chair_keeps_one_category_when_two_are_passed(tmp_path):
     """Cat. 1/2/3 are alternatives — the newest pick replaces the earlier one."""
     svc = _svc(tmp_path)

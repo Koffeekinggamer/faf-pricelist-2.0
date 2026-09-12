@@ -636,7 +636,8 @@ class PriceBookRepository:
         q = (query or "").strip()
         q_lower = q.lower()
 
-        # ADR-0008: hide addon charges unless Option filter targets them
+        # Addon rows are modifier data, never primary Search results. The
+        # service reads them through get_addon_rows() when pricing an Option.
         opt_filters: list[str] = []
         if isinstance(option_key, (list, tuple)):
             opt_filters = [
@@ -647,21 +648,13 @@ class PriceBookRepository:
         elif option_key and option_key != "All":
             opt_filters = [option_key.strip()]
         has_opt = bool(opt_filters)
-        if not has_opt:
-            clauses.append("lower(COALESCE(line_kind, 'item')) != 'addon'")
+        clauses.append("lower(COALESCE(line_kind, 'item')) != 'addon'")
 
         bare_terms: list[str] = []
         if q:
             bool_sql, bool_params, bare_terms = self._boolean_to_sql(q)
             if bool_sql:
-                if has_opt:
-                    # Add-on rows (Option lookups) are catalog-wide — a product
-                    # text query must not hide the selected add-on charge (ADR-0008).
-                    clauses.append(
-                        "(lower(COALESCE(line_kind, 'item')) = 'addon' OR (" + bool_sql + "))"
-                    )
-                else:
-                    clauses.append(bool_sql)
+                clauses.append(bool_sql)
                 params.extend(bool_params)
             else:
                 # User typed something that parsed to no real terms (e.g. "AND OR NOT")
@@ -701,14 +694,7 @@ class PriceBookRepository:
                     "% / " + esc + " / %",  # "… / Cherry / …"
                     "% / " + esc,  # "… / Cherry"
                 ]
-            if has_opt:
-                # Add-on rows have no wood — a Wood filter must not hide the
-                # selected option's charge (ADR-0008).
-                clauses.append(
-                    "(lower(COALESCE(line_kind, 'item')) = 'addon' OR " + species_cond + ")"
-                )
-            else:
-                clauses.append(species_cond)
+            clauses.append(species_cond)
             params.extend(species_params)
         if has_opt:
             # Match option_key column OR species stored as an option tier
@@ -1223,8 +1209,9 @@ class PriceBookRepository:
     def get_addon_rows(self, vendor: str, option_key: str) -> list[dict]:
         """All addon (upcharge) rows for a builder's Option.
 
-        Each row: category (the part_number minus the " - <option>" suffix, or
-        the whole label when flat), base_price, adjusted_price, addon_pct, is_flat.
+        A row whose part number is also a sellable item part number is scoped
+        to that exact item (LuxHome prints option columns on each SKU row).
+        Otherwise the part number remains a category label or a flat option.
         Finish options (Paint, …) return many per-category rows; flat options
         (Undermount Drawer Slides) return a single is_flat row.
         """
@@ -1234,11 +1221,23 @@ class PriceBookRepository:
         with self._conn() as conn:
             rows = conn.execute(
                 """
-                SELECT part_number, base_price, adjusted_price, addon_pct,
-                       option_key
-                FROM pricebook
-                WHERE vendor = ? AND option_key = ?
-                  AND lower(COALESCE(line_kind, '')) = 'addon'
+                SELECT
+                    addon.part_number,
+                    addon.base_price,
+                    addon.adjusted_price,
+                    addon.addon_pct,
+                    addon.option_key,
+                    EXISTS (
+                        SELECT 1
+                        FROM pricebook item
+                        WHERE item.vendor = addon.vendor
+                          AND trim(COALESCE(item.part_number, '')) =
+                              trim(COALESCE(addon.part_number, ''))
+                          AND lower(COALESCE(item.line_kind, 'item')) != 'addon'
+                    ) AS is_item_scoped
+                FROM pricebook addon
+                WHERE addon.vendor = ? AND addon.option_key = ?
+                  AND lower(COALESCE(addon.line_kind, '')) = 'addon'
                 """,
                 (vendor, opt),
             ).fetchall()
@@ -1247,11 +1246,23 @@ class PriceBookRepository:
                     r
                     for r in conn.execute(
                         """
-                        SELECT part_number, base_price, adjusted_price, addon_pct,
-                               option_key
-                        FROM pricebook
-                        WHERE vendor = ?
-                          AND lower(COALESCE(line_kind, '')) = 'addon'
+                        SELECT
+                            addon.part_number,
+                            addon.base_price,
+                            addon.adjusted_price,
+                            addon.addon_pct,
+                            addon.option_key,
+                            EXISTS (
+                                SELECT 1
+                                FROM pricebook item
+                                WHERE item.vendor = addon.vendor
+                                  AND trim(COALESCE(item.part_number, '')) =
+                                      trim(COALESCE(addon.part_number, ''))
+                                  AND lower(COALESCE(item.line_kind, 'item')) != 'addon'
+                            ) AS is_item_scoped
+                        FROM pricebook addon
+                        WHERE addon.vendor = ?
+                          AND lower(COALESCE(addon.line_kind, '')) = 'addon'
                         """,
                         (vendor,),
                     )
@@ -1269,10 +1280,12 @@ class PriceBookRepository:
             out.append(
                 {
                     "category": category,
+                    "part_number": pn,
                     "base_price": r["base_price"],
                     "adjusted_price": r["adjusted_price"],
                     "addon_pct": r["addon_pct"],
                     "is_flat": is_flat,
+                    "is_item_scoped": bool(r["is_item_scoped"]),
                 }
             )
         return out

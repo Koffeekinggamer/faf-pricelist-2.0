@@ -695,6 +695,7 @@ class PriceBookService:
         is_drawer_door = self._is_item_upcharge_option(option_key, profile)
         drawer_keywords = profile.get("drawer_door_item_keywords") or []
         drawer_exclude = profile.get("drawer_door_exclude_keywords") or []
+        parser_locked = bool((profile.get("parser") or {}).get("locked"))
 
         text = (
             df.get("description").fillna("").astype(str)
@@ -707,6 +708,39 @@ class PriceBookService:
         df = df.copy()
         applied = pd.Series(False, index=df.index)
         notes = df.get("notes").fillna("").astype(str)
+
+        item_scoped = [a for a in addons if a.get("is_item_scoped")]
+        if item_scoped:
+            # Some factory books print add-on columns directly on each SKU
+            # (LuxHome). Those charges are exact-item data, not categories and
+            # never a builder-wide fallback.
+            by_part = {
+                str(a.get("part_number") or "").strip().casefold(): a
+                for a in item_scoped
+                if str(a.get("part_number") or "").strip()
+            }
+            for idx in df.index:
+                part = str(df.at[idx, "part_number"] or "").strip().casefold()
+                addon = by_part.get(part)
+                if addon is None:
+                    continue
+                r = df.loc[idx]
+                b, a, pct_tag = self._addon_dollar_or_pct(
+                    addon,
+                    item_base=r.get("base_price"),
+                    item_retail=r.get("adjusted_price"),
+                    option_key=option_key,
+                )
+                if a is not None:
+                    df.at[idx, "adjusted_price"] = float(r.get("adjusted_price") or 0.0) + float(a)
+                if b is not None:
+                    df.at[idx, "base_price"] = float(r.get("base_price") or 0.0) + float(b)
+                amount = f" ({pct_tag})" if pct_tag else (f" (+${float(a):,.0f})" if a is not None else "")
+                tag = f"+ {option_key}{amount}"
+                n = notes.at[idx] if idx in notes.index else ""
+                df.at[idx, "notes"] = f"{n} · {tag}".strip(" ·") if n else tag
+                applied.at[idx] = True
+            return df, applied
 
         if is_drawer_door and flat:
             eligible = text.apply(
@@ -792,7 +826,7 @@ class PriceBookService:
                 )
                 label = None if m.get("is_flat") else m.get("category")
                 approx = not confident
-            elif med_addon is not None:
+            elif med_addon is not None and not parser_locked:
                 b, a, pct_tag = self._addon_dollar_or_pct(
                     med_addon,
                     item_base=ob,
@@ -801,6 +835,8 @@ class PriceBookService:
                 )
                 label, approx = None, True
             else:
+                if parser_locked:
+                    continue
                 b, a, label, approx = med_base, med_retail, None, True
             if qty > 1:
                 if a is not None:
@@ -926,14 +962,66 @@ class PriceBookService:
         self.ensure_ready()
         return self.repo.list_species(vendor=vendor)
 
-    def list_option_keys(self, vendor: Optional[str] = None) -> list[str]:
-        """Live Option list for one builder from that builder's catalog (not a static menu)."""
+    def list_option_keys(
+        self,
+        vendor: Optional[str] = None,
+        *,
+        query: str = "",
+        species: Optional[str] = None,
+    ) -> list[str]:
+        """Live Options for one builder, optionally narrowed to matching items.
+
+        With a product query, item-native variants come only from those rows
+        and addon charges must actually apply to at least one matching item.
+        This keeps per-SKU option columns from becoming builder-wide choices.
+        """
         self.ensure_ready()
         keys = self.repo.list_option_keys(vendor=vendor)
-        label = finish_option_label(self._search_profile(vendor))
+        profile = self._search_profile(vendor)
+        label = finish_option_label(profile)
         if label and label not in keys:
             keys = [label, *keys]
-        return order_search_options(keys)
+        if not query.strip() or not vendor or vendor == "All":
+            return order_search_options(keys)
+
+        items = self.repo.search(
+            query,
+            vendor=vendor,
+            species=species,
+            finish_state=None,
+            limit=max(DEFAULT_SEARCH_LIMIT * 6, 400),
+        )
+        if items.empty:
+            return []
+
+        native = {
+            str(value).strip()
+            for column in ("option_key", "species")
+            if column in items.columns
+            for value in items[column].dropna()
+            if str(value).strip()
+        }
+        applicable: list[str] = []
+        for key in keys:
+            if key == label:
+                selects = str((profile.get("finish_as_option") or {}).get("selects") or "")
+                states = set(items.get("finish_state", pd.Series(dtype=str)).dropna().astype(str))
+                if not selects or selects in states:
+                    applicable.append(key)
+                continue
+            addons = self.repo.get_addon_rows(vendor, key)
+            if addons:
+                _priced, mask = self._apply_one_option_upcharge(
+                    items,
+                    option_key=key,
+                    addons=addons,
+                    profile=profile,
+                )
+                if mask.any():
+                    applicable.append(key)
+            elif key in native:
+                applicable.append(key)
+        return order_search_options(applicable)
 
     def options_for_search(
         self,
@@ -945,7 +1033,11 @@ class PriceBookService:
     ) -> list[str]:
         """Builder Options that fit the piece named in Search (all builders)."""
         self.ensure_ready()
-        keys = list(options) if options is not None else self.list_option_keys(vendor)
+        keys = (
+            list(options)
+            if options is not None
+            else self.list_option_keys(vendor, query=query, species=species)
+        )
         blob = str(query or "").strip()
         if not blob:
             return order_search_options(filter_options_for_kinds(keys, set(), text=""))
