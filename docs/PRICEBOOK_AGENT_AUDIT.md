@@ -148,7 +148,7 @@ Verified from `fly.toml`, `Dockerfile`, `DEPLOY.md`, workflows:
 ## 2. Builder inventory
 
 **Hypothesis (HANDOFF 2026-09-10):** 194,898 rows · **48 builders** · 2,262 collections on the SSD book.  
-**Verified in git:** 48 profile JSON files, all `parser.locked: true`, all importers present in the registry. 49 specific reader ids (48 profiled + **LuxHome**). 36 `CATALOG_SPECS`. 15 `backend/*_import.py` modules.
+**Verified in git:** 49 selling profile JSON files (plus stub-workshop template), all `parser.locked: true`, all importers present in the registry. 49 specific reader ids including **LuxHome** (`backend.luxhome_import`). 36 `CATALOG_SPECS`. 15 `backend/*_import.py` modules.
 
 No sample factory workbook is in the repo, so “has a book” means “profile `source_file` points at a Mac/Viztech path,” not “CI can parse it.”
 
@@ -213,7 +213,7 @@ Hermies / INTEG / Millcraft have small post-passes in `catalog_readers.py`. None
 
 | Name | Evidence | Status |
 | ---- | -------- | ------ |
-| **LuxHome** | Registry `luxhome` + `wide_import` / `luxhome_import` + `test_luxhome_seating` | **No profile JSON.** Not one of the 48 locks. Treat as a selling builder waiting for Drop + profile, or a leftover from an older book. |
+| **LuxHome** | Registry `luxhome` → `backend.luxhome_import` + locked `config/builder_profiles/luxhome.json` + `test_luxhome_seating` | Specific importer lock. Not in SETTLED yet (no fixture-backed contract row). |
 | **Millers Woodshop** | `VENDOR_CANON`, `looks_like_millers`, `enhance_millers_long_df` | No profile, no registry id. STANDARDS still uses it as the identity example. |
 | **Rainbow Bedding** | `VENDOR_CANON` + filename hint `jan 2026 wholesale` | No profile / reader. |
 | **Charleston Forge**, **Beaverdam**, **GVWI** | `VENDOR_CANON` only | Aliases / old vendors. Do not invent catalogs for them. |
@@ -562,7 +562,7 @@ Do **not** let the agent loop “update” by pulling Fly or re-dropping settled
 
 8. **Doc hygiene pass (docs-only).** **Landed in-repo (kickoff job 7):** `CONTINUE.md` / `PROMPTS.md` / `DEPLOY.md` tombstoned; wayfinder #12–#31 indexed. GitHub label/close of those issues is still Judson.
 
-9. **LuxHome / Millers / Rainbow decision.** Profile + Drop, or explicit IGNORE/out-of-book. Dead aliases in `VENDOR_CANON` without a catalog confuse identity.
+9. **Millers / Rainbow decision.** LuxHome is locked (`luxhome` → `backend.luxhome_import`). Millers / Rainbow still need profile + Drop or explicit IGNORE. Dead aliases in `VENDOR_CANON` without a catalog confuse identity.
 
 10. **Pricing package boundary for POS.** Extract or freeze `backend/pricing.py` + row identity fields as the only contract POS may import. No Streamlit, no SQLite, no Drop. Do this *before* anyone copies even-dollar logic into `faf-pos-system`.
 
@@ -604,7 +604,7 @@ Do not claim the loop is safe until most of these exist. **Must** vs **should**:
 - [x] `SETTLED` covers all Tier B builders that have fixture bytes (Five Star still blocked: token + post-pass, no shape test).
 - [x] `add_builder` stub script / ticket template.
 - [x] Tombstone stale docs and wayfinder issues (in-repo). GitHub #12–#31 label/close still Judson.
-- [ ] LuxHome / Millers / Rainbow disposition.
+- [x] LuxHome disposition: locked `luxhome` profile + `backend.luxhome_import`. Millers / Rainbow still open.
 - [ ] `backend/pricing.py` documented as the POS import surface.
 - [ ] Volume/size budget note (3 GB / 2 GB) before 100 full books + images.
 
@@ -623,7 +623,7 @@ Do not claim the loop is safe until most of these exist. **Must** vs **should**:
 | CI runs the test suite | **False.** Only Fly deploy on `main` + manual DB pull. |
 | Sample workbooks are in the repo | **False.** Zero. |
 | CONTINUE.md / PROMPTS.md are safe for agents | **False** as identity (banners + rewrite). Do not lift the tombstone. |
-| LuxHome is one of the 48 | **False.** Reader + tests, no profile. |
+| LuxHome is one of the 48 | **False.** Dedicated reader + locked profile; not a SETTLED fixture contract. |
 | POS already shares this catalog | **Unverified / out of repo.** Pricing math is here; no POS code. Keep them separate. |
 | Thin catalogs are bugs | **False** for listed KEEP names; confirm on live DB. |
 | Fly Drop locks parsers | **False.** Reads shipped JSON only. |
