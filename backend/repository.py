@@ -1319,9 +1319,10 @@ class PriceBookRepository:
                     is_item_scoped = True
                 elif len(collections) > 1:
                     # Same part in multiple collections: fail closed for fuzzy
-                    # category matching; apply by part number only.
+                    # category matching. Keep the addon's collection so it
+                    # cannot guess which sellable collection owns the charge.
                     scope_part = item_parts[cand_key]
-                    scope_collection = ""
+                    scope_collection = collection
                     is_item_scoped = True
                 break
             category = scope_part if is_item_scoped else (pn if is_flat else pn.rsplit(" - ", 1)[0])

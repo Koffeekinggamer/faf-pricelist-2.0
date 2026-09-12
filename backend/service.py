@@ -673,12 +673,6 @@ class PriceBookService:
         profile: dict,
     ) -> bool:
         """Whether a locked builder proves a flat Option belongs to these items."""
-        for pattern in profile.get("global_option_patterns") or []:
-            try:
-                if re.search(str(pattern), option_key, re.IGNORECASE):
-                    return True
-            except re.error:
-                continue
         label = re.sub(r"\s+", " ", str(option_key or "").strip()).casefold()
         if not label:
             return False
@@ -687,6 +681,16 @@ class PriceBookService:
             + " | "
             + items.get("notes", pd.Series("", index=items.index)).fillna("").astype(str)
         ).map(lambda value: re.sub(r"\s+", " ", value).casefold())
+        seating_goods = r"\b(?:stools?|chairs?|seats?|benches?)\b"
+        for pattern in profile.get("global_option_patterns") or []:
+            try:
+                if not re.search(str(pattern), option_key, re.IGNORECASE):
+                    continue
+                if re.search(r"\bseats?\b", label):
+                    return bool(text.str.contains(seating_goods, regex=True).any())
+                return True
+            except re.error:
+                continue
         if text.str.contains(re.escape(label), regex=True).any():
             return True
         seat_core = re.sub(r"\s+seats?$", "", label).strip()
@@ -698,7 +702,6 @@ class PriceBookService:
         if text.str.contains(seat_word, regex=True).any():
             return True
         bare_price = rf"\b{re.escape(seat_core)}\b\s*(?:add\s*)?\$\s*\d"
-        seating_goods = r"\b(?:stools?|chairs?|seats?|benches?)\b"
         return bool(
             text.str.contains(bare_price, regex=True).any()
             and text.str.contains(seating_goods, regex=True).any()

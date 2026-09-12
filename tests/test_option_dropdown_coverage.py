@@ -422,6 +422,37 @@ def test_artisan_bar_stool_keeps_profile_declared_seat_options(tmp_path):
     ) == ["Fabric Seat", "Leather Seat"]
 
 
+def test_artisan_side_table_does_not_get_global_seat_options(tmp_path):
+    svc = PriceBookService(tmp_path / "t.db")
+    svc.init()
+    vendor = "Artisan Chairs"
+    svc.repo.insert_rows(
+        [
+            _row(vendor, part="Mission Side Table"),
+            *[
+                _row(
+                    vendor,
+                    species=None,
+                    option_key=label,
+                    part=label,
+                    line_kind="addon",
+                )
+                for label in ("Fabric Seat", "Leather Seat")
+            ],
+        ]
+    )
+
+    assert (
+        svc.list_option_keys(
+            vendor,
+            query="Mission Side Table",
+            collection="Casegoods",
+            part_number="Mission Side Table",
+        )
+        == []
+    )
+
+
 def test_service_add_addon_charge_lists_in_options(tmp_path):
     db = tmp_path / "t.db"
     init_db(db)

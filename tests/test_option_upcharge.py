@@ -321,14 +321,21 @@ def test_fn_em_dash_addon_multi_collection_never_fuzzy_bleeds_to_bar(tmp_path):
         part_number="Bar Side Chair",
     )
 
-    abe = svc.search(
-        "Abe Side Chair",
-        vendor=vendor,
-        collection="Seating",
-        part_number="Abe Side Chair",
-        option_key=["Cat. 1", label],
-    )
-    assert float(abe.iloc[0]["adjusted_price"]) == 496.0
+    for collection in ("Abe", "Seating"):
+        abe = svc.search(
+            "Abe Side Chair",
+            vendor=vendor,
+            collection=collection,
+            part_number="Abe Side Chair",
+            option_key=["Cat. 1", label],
+        )
+        assert abe.empty
+        assert label not in svc.list_option_keys(
+            vendor,
+            query="Abe Side Chair",
+            collection=collection,
+            part_number="Abe Side Chair",
+        )
 
 
 def test_paint_applies_exact_item_then_remaining_category_rows(tmp_path):
