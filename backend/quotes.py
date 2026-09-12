@@ -33,6 +33,19 @@ def _line_total(qty: float, unit_retail: float, line_discount_pct: float = 0) ->
     return round(qty * unit * (1.0 - disc), 2)
 
 
+def _unit_retail_from_row(row: Optional[dict]) -> Optional[float]:
+    """Retail from adjusted_price, else wholesale × multiplier (even-dollar)."""
+    if not row:
+        return None
+    unit_retail = row.get("adjusted_price")
+    if unit_retail is None and row.get("base_price") is not None:
+        from backend.pricing import retail_from_wholesale
+
+        mult = row.get("multiplier") or 2.7
+        unit_retail = retail_from_wholesale(row.get("base_price"), mult)
+    return unit_retail
+
+
 def _options_json(options: Any) -> str:
     if not options:
         return "{}"
@@ -227,16 +240,42 @@ class QuoteRepository:
     ) -> int:
         qty = max(1.0, float(qty or 1))
         unit_base = pricebook_row.get("base_price")
-        unit_retail = pricebook_row.get("adjusted_price")
-        if unit_retail is None and unit_base is not None:
-            from backend.pricing import retail_from_wholesale
-
-            mult = pricebook_row.get("multiplier") or 2.7
-            unit_retail = retail_from_wholesale(unit_base, mult)
+        unit_retail = _unit_retail_from_row(pricebook_row)
 
         default_row = dict(default_pricebook_row or pricebook_row)
         default_unit_base = default_row.get("base_price")
-        default_unit_retail = default_row.get("adjusted_price")
+        default_unit_retail = _unit_retail_from_row(default_row)
+        # #region agent log
+        try:
+            import json as _json
+            import time as _time
+
+            open("/opt/cursor/logs/debug.log", "a").write(
+                _json.dumps(
+                    {
+                        "hypothesisId": "A",
+                        "location": "quotes.py:add_line_from_pricebook",
+                        "message": "default retail snapshot at add",
+                        "data": {
+                            "pricebook_id": pricebook_row.get("id"),
+                            "cfg_base": unit_base,
+                            "cfg_adj": pricebook_row.get("adjusted_price"),
+                            "cfg_unit_retail": unit_retail,
+                            "def_base": default_unit_base,
+                            "def_adj": default_row.get("adjusted_price"),
+                            "def_unit_retail": default_unit_retail,
+                            "def_mult": default_row.get("multiplier"),
+                            "had_default_row_arg": default_pricebook_row is not None,
+                            "runId": "post-fix",
+                        },
+                        "timestamp": int(_time.time() * 1000),
+                    }
+                )
+                + "\n"
+            )
+        except Exception:
+            pass
+        # #endregion
         selected_options = options
         if selected_options is None and pricebook_row.get("option_key"):
             selected_options = {str(pricebook_row["option_key"]): 1}
@@ -467,10 +506,55 @@ class QuoteRepository:
             if not row:
                 return False
             data = dict(row)
+            # #region agent log
+            try:
+                import json as _json
+                import time as _time
+                open("/opt/cursor/logs/debug.log", "a").write(
+                    _json.dumps(
+                        {
+                            "hypothesisId": "A,C",
+                            "location": "quotes.py:reset_line_options:before",
+                            "message": "reset inputs from stored defaults",
+                            "data": {
+                                "line_id": line_id,
+                                "before_unit_retail": data.get("unit_retail"),
+                                "before_line_total": data.get("line_total"),
+                                "default_unit_retail": data.get("default_unit_retail"),
+                                "default_unit_base": data.get("default_unit_base"),
+                                "default_options_json": data.get("default_options_json"),
+                            },
+                            "timestamp": int(_time.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+            except Exception:
+                pass
+            # #endregion
+            default_unit_retail = data.get("default_unit_retail")
+            # Heal lines snapshotted before default retail was computed from
+            # wholesale × multiplier (Reset was writing NULL → $0.00).
+            if default_unit_retail is None and data.get("default_unit_base") is not None:
+                from backend.pricing import retail_from_wholesale
+
+                mult = 2.7
+                pb_id = data.get("pricebook_id")
+                if pb_id is not None:
+                    pb = conn.execute(
+                        "SELECT multiplier FROM pricebook WHERE id = ?",
+                        (int(pb_id),),
+                    ).fetchone()
+                    if pb is not None and pb["multiplier"] is not None:
+                        mult = float(pb["multiplier"])
+                default_unit_retail = retail_from_wholesale(
+                    data.get("default_unit_base"), mult
+                )
+                data["default_unit_retail"] = default_unit_retail
             data.update(
                 {
                     "unit_base": data.get("default_unit_base"),
-                    "unit_retail": data.get("default_unit_retail"),
+                    "unit_retail": default_unit_retail,
                     "species": data.get("default_species"),
                     "dimensions": data.get("default_dimensions"),
                     "finish_state": data.get("default_finish_state"),
@@ -490,7 +574,7 @@ class QuoteRepository:
                 UPDATE quote_lines SET
                     unit_base = ?, unit_retail = ?, species = ?, dimensions = ?,
                     finish_state = ?, options_json = ?, configuration_key = ?,
-                    line_total = ?
+                    line_total = ?, default_unit_retail = ?
                 WHERE id = ?
                 """,
                 (
@@ -502,6 +586,7 @@ class QuoteRepository:
                     data.get("options_json"),
                     data.get("configuration_key"),
                     data.get("line_total"),
+                    data.get("default_unit_retail"),
                     line_id,
                 ),
             )
@@ -510,6 +595,31 @@ class QuoteRepository:
                 (_now(), data["quote_id"]),
             )
             conn.commit()
+            # #region agent log
+            try:
+                import json as _json
+                import time as _time
+                open("/opt/cursor/logs/debug.log", "a").write(
+                    _json.dumps(
+                        {
+                            "hypothesisId": "A,C",
+                            "location": "quotes.py:reset_line_options:after",
+                            "message": "reset wrote unit_retail/line_total",
+                            "data": {
+                                "line_id": line_id,
+                                "after_unit_retail": data.get("unit_retail"),
+                                "after_unit_base": data.get("unit_base"),
+                                "after_line_total": data.get("line_total"),
+                                "ui_float_or_0": float(data.get("unit_retail") or 0),
+                            },
+                            "timestamp": int(_time.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+            except Exception:
+                pass
+            # #endregion
             return True
 
     def clear_quote(self, quote_id: int, *, confirmed: bool = False) -> bool:

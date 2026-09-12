@@ -149,3 +149,78 @@ def test_reset_line_options_restores_catalog_defaults_and_keeps_line(tmp_path):
     assert line["species"] == "Oak"
     assert line["unit_retail"] == 270.0
     assert line["line_total"] == 270.0
+
+
+def test_reset_options_computes_default_retail_when_adjusted_price_missing(tmp_path):
+    """Catalog rows often store wholesale only; Reset must not collapse to $0.00."""
+    from backend.pricing import retail_from_wholesale
+
+    svc = PriceBookService(tmp_path / "cart.db")
+    quote_id = svc.create_quote()
+    configured = {
+        **_configured_row(retail=0),
+        "base_price": 525.0,
+        "adjusted_price": None,
+        "multiplier": 2.7,
+    }
+    default = {
+        **_default_row(),
+        "base_price": 500.0,
+        "adjusted_price": None,
+        "multiplier": 2.7,
+        "option_key": "",
+    }
+    line_id = svc.add_quote_cart_line(
+        quote_id,
+        configured,
+        default_pricebook_row=default,
+        options={"Premium finish": 1},
+    )
+
+    line = svc.quote_lines(quote_id).iloc[0]
+    assert float(line["unit_retail"]) == float(retail_from_wholesale(525.0, 2.7))
+    assert float(line["default_unit_retail"]) == float(
+        retail_from_wholesale(500.0, 2.7)
+    )
+
+    assert svc.reset_quote_line_options(line_id) is True
+    line = svc.quote_lines(quote_id).iloc[0]
+    assert float(line["unit_retail"]) == float(retail_from_wholesale(500.0, 2.7))
+    assert float(line["line_total"]) == float(retail_from_wholesale(500.0, 2.7))
+    assert float(line["unit_retail"]) != 0.0
+
+
+def test_reset_options_heals_null_default_unit_retail_snapshot(tmp_path):
+    """Lines snapshotted before the retail fix still Reset to catalog retail."""
+    import sqlite3
+
+    from backend.pricing import retail_from_wholesale
+
+    svc = PriceBookService(tmp_path / "cart.db")
+    quote_id = svc.create_quote()
+    line_id = svc.add_quote_cart_line(
+        quote_id,
+        _configured_row(retail=1418.0),
+        default_pricebook_row={
+            **_default_row(),
+            "base_price": 500.0,
+            "adjusted_price": 1350.0,
+            "multiplier": 2.7,
+        },
+        options={"Premium finish": 1},
+    )
+    with sqlite3.connect(tmp_path / "cart.db") as conn:
+        conn.execute(
+            "UPDATE quote_lines SET default_unit_retail = NULL WHERE id = ?",
+            (line_id,),
+        )
+        conn.commit()
+
+    assert svc.reset_quote_line_options(line_id) is True
+    line = svc.quote_lines(quote_id).iloc[0]
+    assert float(line["unit_retail"]) == float(retail_from_wholesale(500.0, 2.7))
+    assert float(line["line_total"]) == float(retail_from_wholesale(500.0, 2.7))
+    assert line["default_unit_retail"] is not None
+    assert float(line["default_unit_retail"]) == float(
+        retail_from_wholesale(500.0, 2.7)
+    )
