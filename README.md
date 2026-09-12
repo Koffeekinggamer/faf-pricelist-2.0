@@ -53,7 +53,7 @@ OrderTrac quote / connection UI stays in the codebase behind flags (`SHOW_ORDERT
 - **GA county tax:** `backend/county_sales_tax.py` lists all 159 counties. Counties without a specified combined rate are **8%** with notes `VERIFY on GA DOR general rate chart before production`. Check those on the GA DOR chart before production use.
 - Catalog stays `master_pricebook.db`. Users / quotes / activity never overwrite catalog rows.
 
-Creating a user emails them a link to https://faf-pricebook.fly.dev (or `APP_PUBLIC_URL`). Invite-only creates include `?invite=` so they set a password. Temporary passwords are never put in the email or the activity log. Requires `SMTP_HOST` / `SMTP_USER` / `SMTP_PASSWORD` (or `[smtp]` in secrets). Account create still succeeds if mail is not configured.
+Creating a user emails them a link to https://faf-pricebook.fly.dev (or `APP_PUBLIC_URL`) and, when you set a temporary password, that password. Invite-only creates include `?invite=` so they set a password. Full tokens and password hashes stay out of the activity log. Requires `SMTP_HOST` / `SMTP_USER` / `SMTP_PASSWORD` (or `[smtp]` in secrets). Account create still succeeds if mail is not configured.
 
 See `.env.example` for `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `PRICEBOOK_APP_DB`, and SMTP.
 

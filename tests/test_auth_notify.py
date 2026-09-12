@@ -1,18 +1,27 @@
+from __future__ import annotations
+
 from email.message import EmailMessage
 
 from backend.auth.notify import account_ready_message, send_account_ready_email
 
 
-def test_account_ready_message_uses_the_live_app_and_never_a_password(
-    monkeypatch,
-) -> None:
+def test_account_ready_message_includes_the_temp_password(monkeypatch) -> None:
     monkeypatch.delenv("APP_PUBLIC_URL", raising=False)
-    subject, body, link = account_ready_message(to_email="michael@example.com", name="Michael")
+    subject, body, link = account_ready_message(
+        to_email="michael@example.com",
+        name="Michael",
+        temp_password="Admin",
+    )
     assert "account is ready" in subject.lower()
     assert "https://faf-pricebook.fly.dev" in link
     assert "https://faf-pricebook.fly.dev" in body
-    assert "Admin" not in body
-    assert "password" in body.lower()
+    assert "Your temporary password is Admin." in body
+
+
+def test_account_ready_message_omits_a_password_when_none_was_set(monkeypatch) -> None:
+    monkeypatch.delenv("APP_PUBLIC_URL", raising=False)
+    _subject, body, _link = account_ready_message(to_email="michael@example.com", name="Michael")
+    assert "Your temporary password is" not in body
 
 
 def test_invite_message_is_a_live_app_invite_link(monkeypatch) -> None:
@@ -35,7 +44,14 @@ def test_create_user_emails_the_live_app_link(tmp_path, monkeypatch) -> None:
     sent: list[tuple[str, str, str | None]] = []
 
     def fake_send(**kwargs):
-        sent.append((kwargs.get("to_email"), kwargs.get("name"), kwargs.get("invite_token")))
+        sent.append(
+            (
+                kwargs.get("to_email"),
+                kwargs.get("name"),
+                kwargs.get("invite_token"),
+                kwargs.get("temp_password"),
+            )
+        )
         return True
 
     monkeypatch.setattr("backend.auth.store.send_account_ready_email", fake_send)
@@ -51,7 +67,7 @@ def test_create_user_emails_the_live_app_link(tmp_path, monkeypatch) -> None:
         password="Admin",
         name="Michael",
     )
-    assert sent == [("michael@example.com", "Michael", None)]
+    assert sent == [("michael@example.com", "Michael", None, "Admin")]
 
 
 def test_send_account_ready_email_uses_injected_sender() -> None:
@@ -59,8 +75,10 @@ def test_send_account_ready_email_uses_injected_sender() -> None:
     ok = send_account_ready_email(
         to_email="michael@example.com",
         name="Michael",
+        temp_password="Admin",
         sender=sent.append,
     )
     assert ok is True
     assert sent[0]["To"] == "michael@example.com"
     assert "faf-pricebook.fly.dev" in sent[0].get_content()
+    assert "Your temporary password is Admin." in sent[0].get_content()

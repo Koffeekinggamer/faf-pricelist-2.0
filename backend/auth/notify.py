@@ -28,8 +28,9 @@ def account_ready_message(
     to_email: str,
     name: str = "",
     invite_token: str | None = None,
+    temp_password: str | None = None,
 ) -> tuple[str, str, str]:
-    """Return (subject, text body, link). Body never includes a password."""
+    """Return (subject, text body, link). Password is only in the email, never logs."""
     who = (name or "").strip() or "there"
     url = public_app_url()
     if invite_token:
@@ -43,12 +44,18 @@ def account_ready_message(
         )
     else:
         link = url
+        password_line = (
+            f"Your temporary password is {temp_password}.\n\n"
+            if temp_password
+            else "Use the temporary password your administrator gave you.\n\n"
+        )
         body = (
             f"Hi {who},\n\n"
             "Your Foothills Amish Furniture price book account is ready.\n\n"
             "Sign in here with this email address:\n"
             f"{link}\n\n"
-            "Use the temporary password your administrator gave you.\n"
+            f"{password_line}"
+            "You can change the password after you sign in.\n"
         )
     return "Your Foothills price book account is ready", body, link
 
@@ -108,6 +115,7 @@ def send_account_ready_email(
     to_email: str,
     name: str = "",
     invite_token: str | None = None,
+    temp_password: str | None = None,
     sender: Callable[[EmailMessage], None] | None = None,
 ) -> bool:
     """Send the live-app link. Failures never raise to the create-user path."""
@@ -115,7 +123,10 @@ def send_account_ready_email(
     if "@" not in addr:
         return False
     subject, body, _link = account_ready_message(
-        to_email=addr, name=name, invite_token=invite_token
+        to_email=addr,
+        name=name,
+        invite_token=invite_token,
+        temp_password=temp_password,
     )
     msg = EmailMessage()
     cfg = smtp_config()

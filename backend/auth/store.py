@@ -200,7 +200,9 @@ class AuthStore:
             created_by=actor.id,
             allow_short_password=True,
         )
-        emailed = send_account_ready_email(to_email=user.email, name=user.name)
+        emailed = send_account_ready_email(
+            to_email=user.email, name=user.name, temp_password=password
+        )
         self.activity.log_activity(
             actor,
             action="user.create",
