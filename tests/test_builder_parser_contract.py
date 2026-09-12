@@ -20,6 +20,8 @@ import openpyxl
 import pytest
 
 from backend.ajs_import import looks_like_ajs
+from backend.amish_aspen_import import looks_like_amish_aspen
+from backend.artisan_chairs_import import looks_like_artisan_chairs
 from backend.ashery_oak_import import looks_like_ashery_oak
 from backend.criswell_import import looks_like_criswell
 from backend.builder_parsers import (
@@ -34,25 +36,21 @@ from backend.builder_profiles import PROFILES_DIR, clear_profile_cache
 from backend.catalog_readers import spec_for_vendor
 from backend.christina import observe_drop
 from backend.fn_chair_import import looks_like_fn_level_one
+from backend.hillside_chair_import import looks_like_hillside_chair
+from backend.hw_chair_import import looks_like_hw_chair_markup
 from backend.jmw_import import looks_like_jmw
+from backend.lamb_import import looks_like_lamb
+from backend.maple_lane_import import looks_like_maple_lane
+from backend.patio_kraft_import import looks_like_patio_kraft
 from backend.standardize import resolve_builder_vendor
+from backend.windy_acres_import import looks_like_windy_acres
 from tests.fixture_corpus import (
     SETTLED_FIXTURES,
     STUB_FIXTURE,
     TIER_B_BLOCKED,
     TIER_B_SHAPE,
 )
-from wide_import import (
-    import_workbook,
-    looks_like_amish_aspen,
-    looks_like_artisan_chairs,
-    looks_like_hillside_chair,
-    looks_like_hw_chair_markup,
-    looks_like_lamb,
-    looks_like_maple_lane,
-    looks_like_patio_kraft,
-    looks_like_windy_acres,
-)
+from wide_import import import_workbook
 
 DOWNLOADS = Path.home() / "Downloads"
 

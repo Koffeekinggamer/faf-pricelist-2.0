@@ -32,8 +32,8 @@ Holt runs Drop / Load / parse / test and reports — do not ask Judson to click 
 
 Then code: `backend/builder_reader_registry.py`, `backend/catalog_readers.py`, `config/builder_profiles/`, `tests/test_builder_parser_contract.py`.
 
-**Identity sources:** this file, ADRs, dated `HANDOFF.md`, the audit.  
-**Not identity sources:** `CONTINUE.md` (stale counts / wrong remote), `PROMPTS.md` (says **upsert**), `DEPLOY.md` (mixes `pricebook-system` + Streamlit Cloud). GitHub issues **#12–#31** are superseded by ADR-0007 / ADR-0010 — do not pick them up as a backlog.
+**Identity sources:** this file, ADRs, dated `HANDOFF.md`, the audit, [`docs/CURSOR_AGENT_KICKOFF.md`](docs/CURSOR_AGENT_KICKOFF.md).  
+**Not identity sources:** `CONTINUE.md`, `PROMPTS.md`, and `DEPLOY.md` (DEPRECATED banners — archived snapshot only). GitHub issues **#12–#31** are superseded by ADR-0007 / ADR-0010 — see [`docs/wayfinder/README.md`](docs/wayfinder/README.md). Do not pick them up as a backlog.
 
 ## Non-negotiables
 

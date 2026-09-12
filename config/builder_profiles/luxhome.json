@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "vendor": "LuxHome",
+  "parser": {
+    "importer": "luxhome",
+    "source_file": "Download_2026_LuxHome_Pricelist_648810.xls",
+    "filename_hints": [
+      "luxhome"
+    ],
+    "layouts": [
+      "luxhome"
+    ],
+    "locked": true
+  }
+}

@@ -24,3 +24,5 @@ Multiplier-only changes; OrderTrac; committing DB; cross-builder bulk diff jobs.
 The deep Drop Load operation computes the versioned wholesale fingerprint before `replace_vendor`. Addon rows are part of equality: a newly captured Options page must replace a previously item-only catalog even when every sellable row is unchanged. An equal fingerprint skips the catalog wipe/reload, updates the stored source/import time, still applies an explicitly confirmed multiplier, and refreshes safe Builder Profile parser metadata. CLI and Viztech continue through the lower-level `add_rows` path.
 
 **Status:** accepted
+
+Wayfinder issues **#20–#31** are superseded by this ADR. Do not re-open them as a backlog — see [`docs/wayfinder/README.md`](../wayfinder/README.md). The fingerprint research note is tombstoned.
