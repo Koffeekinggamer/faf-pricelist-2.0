@@ -5,6 +5,10 @@
     {
       "field": "collection",
       "prefix": "Options"
+    },
+    {
+      "field": "part_number",
+      "prefix": "Options"
     }
   ],
   "parser": {

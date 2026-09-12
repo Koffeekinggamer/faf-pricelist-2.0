@@ -194,14 +194,24 @@ def test_primary_search_hides_known_legacy_option_titles_mislabeled_as_items(tmp
         [
             _row("Crystal Valley Hardwoods", part="CV-100"),
             _row("Crystal Valley Hardwoods", part="OPTION P-1"),
+            _row("Crystal Valley Hardwoods", part="option: Storage Bed"),
             _row("INTEG Wood Products", part="I-100"),
+            _row("INTEG Wood Products", part="Options"),
             {
                 **_row("INTEG Wood Products", part="Soft Close Slides"),
                 "collection": "Options",
             },
-            _row("Genuine Oak", part="GO-100"),
+            {
+                **_row("Genuine Oak", part="GO-100"),
+                "description": "Corner Curio OPTIONS: Extra Glass Shelves Add $30",
+            },
             _row("Genuine Oak", part="OPTIONS: Hardware"),
-            _row("Five Star Tables", part="T-100"),
+            _row("Elite Designs", part="ED-100"),
+            _row("Elite Designs", part="$36904 Standard hardware"),
+            {
+                **_row("Five Star Tables", part="T-100"),
+                "description": "Mission Stool Fabric Seats Add $20; Leather $40",
+            },
             _row("Five Star Tables", part="add $25 for leaf storage"),
         ]
     )
@@ -209,7 +219,16 @@ def test_primary_search_hides_known_legacy_option_titles_mislabeled_as_items(tmp
     assert set(svc.search("", vendor="Crystal Valley Hardwoods")["part_number"]) == {"CV-100"}
     assert set(svc.search("", vendor="INTEG Wood Products")["part_number"]) == {"I-100"}
     assert set(svc.search("", vendor="Genuine Oak")["part_number"]) == {"GO-100"}
+    assert set(svc.search("", vendor="Elite Designs")["part_number"]) == {"ED-100"}
     assert set(svc.search("", vendor="Five Star Tables")["part_number"]) == {"T-100"}
+    assert [
+        item.part_number
+        for item in svc.list_search_item_identities("", vendor="INTEG Wood Products")
+    ] == ["I-100"]
+    assert [
+        item.part_number
+        for item in svc.list_search_item_identities("", vendor="Elite Designs")
+    ] == ["ED-100"]
 
 
 def test_crystal_valley_end_table_does_not_get_vendor_wide_options(tmp_path):
