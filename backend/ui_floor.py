@@ -402,7 +402,7 @@ def render_admin_users(user: SessionUser) -> None:
             except AuthDenied as exc:
                 st.error(str(exc))
     st.markdown("##### Invite / create")
-    with st.form("create_user"):
+    with st.form("create_user", clear_on_submit=True):
         email = st.text_input("Email")
         name = st.text_input("Name (optional)")
         role = st.selectbox("Role", list(ROLES), index=2)
