@@ -15,10 +15,7 @@
       "beds h w",
       "living rooms"
     ],
-    "layouts": [
-      "criswell",
-      "viewed"
-    ],
+    "layouts": ["criswell", "viewed", "criswell_options", "viewed_options"],
     "locked": true
   }
 }

@@ -8,6 +8,7 @@ import openpyxl
 import pandas as pd
 
 from backend.book_options import extract_book_options, merge_book_options
+from backend.standardize import canonical_option_label
 from wide_import import WorkbookImportResult, import_workbook
 
 
@@ -267,11 +268,61 @@ def test_import_workbook_puts_size_and_finish_on_search_options():
     assert "Lock" in keys
 
 
+def test_skips_fn_ordering_select_consistent_color_instruction():
+    data = _xlsx(
+        [
+            ["*IF ORDERING SELECT (CONSISTANT COLOR) ADD 30% PER CHAIR"],
+            ["IF ORDERING SELECT (CONSISTANT COLOR OF WOOD AND STAIN) ADD 30%"],
+            ["BARSTOOLS WITH ARMS: $30"],
+        ]
+    )
+    keys = {r["option_key"] for r in extract_book_options(data, vendor="FN Chair")}
+    assert not any("ordering select" in k.lower() for k in keys)
+    assert not any("consist" in k.lower() for k in keys)
+    assert "BARSTOOLS WITH ARMS" in keys
+
+
+def test_skips_fn_elm_seat_upgrade_wood_note():
+    book = (
+        "*ANY SEAT CAN BE CHANGED TO A DIFFERENT WOOD SPECIES IF DESIRED. "
+        "(ELM ALSO AVAILABLE) IF SEAT IS A UPGRADED (HIGHER PRICE BRACKET) "
+        "WOOD SPECIE ADD $30. IF SEAT IS IN SAME PRICE BRACKET (OR LOWER) "
+        "STANDARD PRICE IS USED. ALSO SEE  FINISHING OPTIONS."
+    )
+    live = "D. (ELM ALSO AVAILABLE) IF SEAT IS A UPGRADED…"
+    data = _xlsx(
+        [
+            [book],
+            [live, 30],
+            ["INTERCHANGE ANY STYLE SEAT: $10"],
+        ]
+    )
+    keys = {r["option_key"] for r in extract_book_options(data, vendor="FN Chair")}
+    assert not any("elm also available" in k.lower() for k in keys)
+    assert not any("seat is a upgraded" in k.lower() for k in keys)
+    assert "INTERCHANGE ANY STYLE SEAT" in keys
+    assert canonical_option_label(live) is None
+    assert canonical_option_label(book) is None
+
+
 def test_skips_cover_sheet_and_catalog_fragments():
     data = _xlsx(
         [
             ["4. Password for Price List"],
             ["Password: $4"],
+            ["Suggested Markup for Online Sales: $2"],
+            ["Tri-View: $21"],
+            ["Lingerie: $34"],
+            ["Straight Mirror: $27"],
+            ["Twin/Full/Queen: $48"],
+            ["King/California King Bed: $48"],
+            ["6 Drawer Chest: $34"],
+            ["2 Drawer Armoire: $41"],
+            ["3 Drawer Night Stand: $27"],
+            ["Pull Out Swivel: $12"],
+            ["With leather: $175"],
+            ["With TV Pullout Swivel (Add): $135"],
+            ["Tall Dresser & Triple Dresser: $48"],
             ["Prices for the year: $2026"],
             ['36" Deep x 37" High OPTION: Hidden Chair: $120'],
             ["ieces 15% larger like the Premier Series, add 15%"],
@@ -287,6 +338,19 @@ def test_skips_cover_sheet_and_catalog_fragments():
     keys = {r["option_key"] for r in rows}
     assert "Password" not in keys
     assert not any("password" in k.lower() for k in keys)
+    assert not any("markup" in k.lower() or "online sales" in k.lower() for k in keys)
+    assert not any("tri" in k.lower() and "view" in k.lower() for k in keys)
+    assert "Lingerie" not in keys
+    assert "Straight Mirror" not in keys
+    assert "Twin/Full/Queen" not in keys
+    assert "King/California King Bed" not in keys
+    assert "6 Drawer Chest" not in keys
+    assert "2 Drawer Armoire" not in keys
+    assert "3 Drawer Night Stand" not in keys
+    assert "Pull Out Swivel" not in keys
+    assert "With leather" not in keys
+    assert not any("swivel" in k.lower() for k in keys)
+    assert "Tall Dresser & Triple Dresser" not in keys
     assert "Prices for the year" not in keys
     assert not any("Hidden Chair" in k or "OPTION:" in k for k in keys)
     assert not any(k[:1].islower() for k in keys)
@@ -397,6 +461,80 @@ def test_options_banner_does_not_turn_following_product_skus_into_options():
     assert "10-16" not in labels
     assert "101 CSC" not in labels
     assert "Slatted Door" in labels
+
+
+def test_brookside_island_top_sentence_shortens_to_the_floor_label():
+    data = _xlsx(
+        [
+            ["Options"],
+            [
+                'Island top is 1 1/4" plank with sawmarks *Call for pricing',
+                "Call for pricing",
+            ],
+        ]
+    )
+
+    labels = {
+        row["option_key"] for row in extract_book_options(data, vendor="Brookside Home Furnishings")
+    }
+
+    assert labels == {'1 1/4" plank island top with sawmarks'}
+    assert (
+        canonical_option_label('Island top is 1 1/4" plank with sawmarks *Cal…')
+        == '1 1/4" plank island top with sawmarks'
+    )
+
+
+def test_fn_chair_nail_heads_sentence_shortens_to_the_floor_label():
+    data = _xlsx(
+        [
+            ["Options"],
+            [
+                "TO ADD NAIL HEADS AROUND ANY UPHOLSTERED SEAT AND/OR BACK",
+                30,
+            ],
+        ]
+    )
+
+    labels = {row["option_key"] for row in extract_book_options(data, vendor="FN Chair")}
+
+    assert labels == {"Nail Heads Around Upholstered Seat"}
+    assert (
+        canonical_option_label("TO ADD NAIL HEADS AROUND ANY UPHOLSTERED SEAT…")
+        == "Nail Heads Around Upholstered Seat"
+    )
+
+
+def test_five_star_additional_leaves_sentence_shortens_to_the_floor_label():
+    data = _xlsx(
+        [
+            ["Options"],
+            [
+                "Additional leaves add $75 per leaf plus $75 for drop legs (Up to 12 Leaves)",
+                75,
+            ],
+        ]
+    )
+
+    labels = {row["option_key"] for row in extract_book_options(data, vendor="Five Star Tables")}
+
+    assert labels == {"Additional leaves ($75 per leaf)"}
+    assert (
+        canonical_option_label(
+            "Additional leaves add $75 per leaf plus $75 for drop legs (Up to 12 Leaves)"
+        )
+        == "Additional leaves ($75 per leaf)"
+    )
+    assert (
+        canonical_option_label("Additional leaves add $75 per leaf plus $75 f…")
+        == "Additional leaves ($75 per leaf)"
+    )
+    assert (
+        canonical_option_label(
+            "Additional leaves add $75 each plus $75 for drop legs (Up to 6 Leaves in select sizes)"
+        )
+        == "Additional leaves ($75 per leaf)"
+    )
 
 
 def test_quote_only_lines_surface_as_non_priced_options():

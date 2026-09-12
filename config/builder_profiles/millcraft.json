@@ -4,12 +4,8 @@
   "parser": {
     "importer": "millcraft",
     "source_file": "Millcraft/Download_2026_Pricelist_94838.xlsx",
-    "filename_hints": [
-      "millcraft"
-    ],
-    "layouts": [
-      "wide_species"
-    ],
+    "filename_hints": ["millcraft"],
+    "layouts": ["millcraft", "wide_species"],
     "locked": true
   }
 }

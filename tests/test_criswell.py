@@ -50,10 +50,7 @@ def test_cwf_filenames_resolve_to_criswell_bedroom():
     assert resolve_builder_vendor("Criswell Furniture") == "Criswell Bedroom"
     assert resolve_builder_vendor("", filename="Beds A-F.xlsx") == "Criswell Bedroom"
     assert resolve_builder_vendor("", filename="Beds H-W.xlsx") == "Criswell Bedroom"
-    assert (
-        resolve_builder_vendor("", filename="Living Rooms Price List.xlsx")
-        == "Criswell Bedroom"
-    )
+    assert resolve_builder_vendor("", filename="Living Rooms Price List.xlsx") == "Criswell Bedroom"
     assert resolve_builder_vendor("", filename="Wholesale Price List.xlsx") is None
     assert looks_like_criswell("Living Rooms Price List.xlsx", ["Markup", "Cover", "Sheet2"])
     assert looks_like_criswell("Beds A-F.xlsx", ["Markup", "Beds For Every Taste"])
@@ -68,6 +65,34 @@ def test_cwf_filenames_resolve_to_criswell_bedroom():
     )
     assert vendor == "Criswell Bedroom"
     assert parser_id == "criswell"
+
+
+def test_criswell_undermount_wording_uses_standard_option_label():
+    data = _xlsx(
+        {
+            "Markup": [["Enter Markup"], [1]],
+            "Cover": [["CRISWELL FURNITURE"]],
+            "Options ": [
+                ["Options", None, "Oak"],
+                ["With undermount full-extension soft stop drawers", 24],
+                ["Full -extension side mount drawers slides per drawer", 13],
+            ],
+            "Bloomfield Collection": [
+                [None, None, "Oak"],
+                ["CWF8111", "Tall Dresser", 1099],
+            ],
+        }
+    )
+    result = DEFAULT_READER_REGISTRY.run(
+        "criswell", data, vendor="Criswell Bedroom", filename="Wholesale Price List.xlsx"
+    )
+    addons = result.long_df[result.long_df["line_kind"] == "addon"]
+    keys = set(addons["option_key"].astype(str))
+    assert "Undermount Drawer Slides" in keys
+    assert not any("undermount full-extension" in k.lower() for k in keys)
+    under = addons[addons["option_key"] == "Undermount Drawer Slides"].iloc[0]
+    assert float(under["base_price"]) == 24.0
+    assert any("side mount" in k.lower() for k in keys)
 
 
 def test_criswell_reader_keeps_left_wholesale_copy_and_options():
@@ -127,6 +152,96 @@ def test_criswell_reader_keeps_left_wholesale_copy_and_options():
     assert result.expected_option_lines == 1
 
 
+def test_criswell_skips_stain_not_in_stock_note():
+    data = _xlsx(
+        {
+            "Markup": [["Enter Markup"], [1]],
+            "Cover": [["CRISWELL FURNITURE"]],
+            "Options ": [
+                ["Options", None, "Oak"],
+                ["Tains not in stock will need to be brought in", 10],
+                ["Please per pull", 1],
+                ["Suggested Markup for Online Sales", 2],
+                ["With VCR (Add)", 71],
+                ["Hidden Compartment", 40],
+                ["Hidden Gun Storage (In Bed)", 384],
+                ["With TV Pullout Swivel (Add)", 135],
+                ["Phone Charger", 55],
+            ],
+            "Bloomfield Collection": [
+                [None, None, "Oak"],
+                ["CWF8111", "Tall Dresser", 1099],
+            ],
+        }
+    )
+    result = DEFAULT_READER_REGISTRY.run(
+        "criswell", data, vendor="Criswell Bedroom", filename="Wholesale Price List.xlsx"
+    )
+    keys = set(result.long_df[result.long_df["line_kind"] == "addon"]["option_key"].astype(str))
+    assert "Phone Charger" in keys
+    assert not any("not in stock" in k.lower() for k in keys)
+    assert not any("per pull" in k.lower() or "perpull" in k.lower() for k in keys)
+    assert not any("markup" in k.lower() or "online sales" in k.lower() for k in keys)
+    assert not any("vcr" in k.lower() for k in keys)
+    assert not any("hidden compartment" in k.lower() for k in keys)
+    assert not any("gun storage" in k.lower() for k in keys)
+    assert not any("swivel" in k.lower() for k in keys)
+
+
+def test_criswell_skips_gentlemens_chest_as_option():
+    data = _xlsx(
+        {
+            "Markup": [["Enter Markup"], [1]],
+            "Cover": [["CRISWELL FURNITURE"]],
+            "Options ": [
+                ["Options", None, "Oak"],
+                ["Gentlemen's Chest", 48],
+                ["Gentlemens Chest", 81],
+                ["His & Hers Chest", 48],
+                ["Double Dresser", 48],
+                ["Tri-View", 21],
+                ["Lingerie", 34],
+                ["Straight Mirror", 27],
+                ["Twin/Full/Queen", 48],
+                ["King/California King Bed", 48],
+                ["6 Drawer Chest", 34],
+                ["2 Drawer Armoire", 41],
+                ["3 Drawer Night Stand", 27],
+                ["Pull Out Swivel", 12],
+                ["With leather", 175],
+                ["Tall Dresser & Triple Dresser", 48],
+                ["Phone Charger", 55],
+            ],
+            "Bloomfield Collection": [
+                [None, None, "Oak"],
+                ["CWF8135", "Gentlemans Chest", 1201],
+            ],
+        }
+    )
+    result = DEFAULT_READER_REGISTRY.run(
+        "criswell", data, vendor="Criswell Bedroom", filename="Wholesale Price List.xlsx"
+    )
+    addons = result.long_df[result.long_df["line_kind"] == "addon"]
+    items = result.long_df[result.long_df["line_kind"].fillna("item") != "addon"]
+    keys = set(addons["option_key"].astype(str))
+    assert "Phone Charger" in keys
+    assert not any("gentleman" in k.lower() for k in keys)
+    assert not any("hers chest" in k.lower() for k in keys)
+    assert not any("double dresser" in k.lower() for k in keys)
+    assert not any("tri" in k.lower() and "view" in k.lower() for k in keys)
+    assert not any("lingerie" in k.lower() for k in keys)
+    assert not any("straight mirror" in k.lower() for k in keys)
+    assert not any("twin/full/queen" in k.lower() for k in keys)
+    assert not any("california king bed" in k.lower() for k in keys)
+    assert not any("6 drawer chest" in k.lower() for k in keys)
+    assert not any("2 drawer armoire" in k.lower() for k in keys)
+    assert not any("3 drawer night" in k.lower() for k in keys)
+    assert "Pull Out Swivel" not in keys
+    assert "With leather" not in keys
+    assert not any("tall dresser" in k.lower() for k in keys)
+    assert items["part_number"].astype(str).str.contains("CWF8135").any()
+
+
 def test_criswell_deduct_option_is_emitted_as_a_negative_charge():
     data = _xlsx(
         {
@@ -146,9 +261,7 @@ def test_criswell_deduct_option_is_emitted_as_a_negative_charge():
     result = DEFAULT_READER_REGISTRY.run(
         "criswell", data, vendor="Criswell Bedroom", filename="Wholesale Price List.xlsx"
     )
-    deduct = result.long_df[
-        result.long_df["option_key"] == '20" high low footboard (DEDUCT)'
-    ]
+    deduct = result.long_df[result.long_df["option_key"] == '20" high low footboard (DEDUCT)']
 
     assert len(deduct) == 1
     assert float(deduct.iloc[0]["base_price"]) == -203.0

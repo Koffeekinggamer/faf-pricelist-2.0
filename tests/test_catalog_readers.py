@@ -10,7 +10,12 @@ import pandas as pd
 from backend.builder_parsers import guess_named_parser, identify_reader
 from backend.builder_profiles import filename_hints_for, match_profile_vendor
 from backend.builder_reader_registry import DEFAULT_READER_REGISTRY
-from backend.catalog_readers import CATALOG_SPECS, apply_catalog_description_fixes
+from backend.catalog_readers import (
+    CATALOG_SPECS,
+    apply_catalog_description_fixes,
+    import_catalog_workbook,
+    spec_for_vendor,
+)
 from wide_import import import_workbook
 
 
@@ -28,9 +33,7 @@ def _book(vendor_on_cover: str) -> bytes:
 
 
 def test_filename_hints_drop_viztech_download_stems():
-    hints = filename_hints_for(
-        "Black Horse Furniture", "Download_2026_Pricelist_286628.xlsx"
-    )
+    hints = filename_hints_for("Black Horse Furniture", "Download_2026_Pricelist_286628.xlsx")
     assert "black horse furniture" in hints
     assert "download" not in hints
     assert not any(h.startswith("download") for h in hints)
@@ -60,9 +63,7 @@ def test_every_catalog_builder_has_a_specific_reader():
 
 
 def test_next_year_named_file_resolves_to_the_catalog_reader():
-    vendor, parser_id = guess_named_parser(
-        "Black Horse Furniture/Download_2027_Pricelist.xlsx"
-    )
+    vendor, parser_id = guess_named_parser("Black Horse Furniture/Download_2027_Pricelist.xlsx")
     assert parser_id == "black_horse_furniture"
     assert vendor == "Black Horse Furniture"
 
@@ -148,7 +149,7 @@ def test_integ_upgrades_are_addons_not_fake_catalog_items():
                 "collection": "#5200 Wall Unit",
                 "part_number": "5200",
                 "description": "5200",
-                "dimensions": '45” TV Opening',
+                "dimensions": "45” TV Opening",
                 "option_key": None,
                 "line_kind": "item",
                 "base_price": 2466.0,
@@ -231,12 +232,54 @@ def test_hermies_style_header_replaces_instruction_collection():
     fixed = apply_catalog_description_fixes(
         parsed,
         "Hermies Table Shop",
-        product_context={
-            ("", "HTS1100-4260"): "652 Mission Double Pedestal Table"
-        },
+        product_context={("", "HTS1100-4260"): "652 Mission Double Pedestal Table"},
     )
 
-    assert (
-        fixed.loc[0, "collection"]
-        == "652 Mission Double Pedestal Table"
+    assert fixed.loc[0, "collection"] == "652 Mission Double Pedestal Table"
+
+
+def _millcraft_suite_book() -> bytes:
+    """Visible Pricelist shape: suite banner, selected beds, then casegoods."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Pricelist"
+    for row in (
+        ["", "Description", "Item Number", "Standard Wood", "Premium Wood"],
+        ["", "Camden Collection"],
+        ["", "PANEL BED"],
+        ["", "Queen", "MDC56QN", 1399, 1679],
+        ["", "LEATHER UPHOLSTERED BED"],
+        ["", "Queen", "MDC52QN", 1399, 1679],
+        ["", "Camden Collection"],
+        ["", "CASEGOODS"],
+        ["", "1 Door Nightstand", "MDC26NS", 499, 599],
+    ):
+        ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_millcraft_selected_beds_share_the_suite_collection():
+    spec = spec_for_vendor("Millcraft")
+    result = import_catalog_workbook(
+        spec,
+        _millcraft_suite_book(),
+        vendor="Millcraft",
+        filename="Millcraft.xlsx",
     )
+    items = result.long_df
+    items = items[items["part_number"].isin(["MDC56QN", "MDC52QN", "MDC26NS"])]
+    by_part = {
+        str(part): set(group["collection"].astype(str))
+        for part, group in items.groupby("part_number")
+    }
+    assert by_part["MDC26NS"] == {"Camden Collection"}
+    assert by_part["MDC56QN"] == {"Camden Collection"}
+    assert by_part["MDC52QN"] == {"Camden Collection"}
+    descs = {
+        str(part): set(group["description"].astype(str))
+        for part, group in items.groupby("part_number")
+    }
+    assert any("Panel Bed" in d for d in descs["MDC56QN"])
+    assert any("Leather Upholstered Bed" in d for d in descs["MDC52QN"])

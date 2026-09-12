@@ -55,7 +55,7 @@ def test_ranked_excel_plan_keeps_every_pricesheet_in_a_builder_folder(tmp_path):
     assert names == {"Harbor.xlsx", "Solo Galaxy.xlsx"}
 
 
-def test_ajs_luxhome_book_is_not_claimed_as_an_ajs_pricesheet(tmp_path):
+def test_ajs_luxhome_book_is_claimed_as_an_ajs_pricesheet(tmp_path):
     cache = tmp_path / "viztech-cache"
     folder = cache / "AJ_039_s_Furniture"
     folder.mkdir(parents=True)
@@ -66,7 +66,7 @@ def test_ajs_luxhome_book_is_not_claimed_as_an_ajs_pricesheet(tmp_path):
     names = {path.name for vendor, files in plan for path in files if "AJ" in vendor}
 
     assert any("Finished" in name for name in names)
-    assert not any("LuxHome" in name for name in names)
+    assert any("LuxHome" in name for name in names)
 
 
 def test_import_folder_binds_every_pricesheet_to_the_same_builder(tmp_path, monkeypatch):

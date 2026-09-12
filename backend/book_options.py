@@ -32,7 +32,21 @@ _SKIP_LABEL = re.compile(
     r"description|item number|item\s*#|collection|wholesale|retail|cover|index|"
     r"password|price|to|prices? for the year)$"
 )
-_JUNK_LABEL = re.compile(r"(?i)password|price list|option\s*:|past due accounts|^terms$|^net\s*30$")
+_JUNK_LABEL = re.compile(
+    r"(?i)password|price list|option\s*:|past due accounts|^terms$|^net\s*30$|"
+    r"suggested\s+markup|online\s+sales|^tri[\s-]?view$|^lingerie$|"
+    r"^straight\s+mirror$|^twin\s*/\s*full\s*/\s*queen$|"
+    r"^king\s*/\s*california\s+king\s+bed$|"
+    r"^6\s+drawer\s+chest$|^2\s+drawer\s+armoire$|"
+    r"^3\s+drawer\s+night\s*stand$|^with\s+vcr\b|"
+    r"^hidden\s+compartment$|^hidden\s+gun\s+storage\b|"
+    r"if\s+ordering\s+select|consist[ae]nt\s+color|"
+    r"elm\s+also\s+available|if\s+seat\s+is\s+a\s+upgraded|"
+    r"^pull\s+out\s+swivel$|^with\s+leather$|"
+    r"tv\s+pull[\s\-]?out\s+swivel|"
+    r"^tall\s+dresser\s*&\s*triple\s+dresser$"
+)
+_ELM_SEAT_UPGRADE_NOTE = re.compile(r"(?i)elm\s+also\s+available|if\s+seat\s+is\s+a\s+upgraded")
 _UNFINISHED_DEDUCT = re.compile(r"(?i)unfinish")
 _NO_UPCHARGE = re.compile(r"(?i)no\s+upcharge")
 _ADD_ON_BANNER = re.compile(r"(?i)add[\s\-]*on\s+options?")
@@ -119,6 +133,24 @@ def _norm_label(raw: str) -> str:
     for pat, label in aliases.items():
         if re.fullmatch(pat, s):
             return label
+    from backend.standardize import (
+        ADDITIONAL_LEAVES_PER_LEAF,
+        ISLAND_TOP_SAWMARKS,
+        NAIL_HEADS_UPHOLSTERED_SEAT,
+    )
+
+    if re.search(r"(?i)island\s+top.*(?:1\s*1\s*/\s*4|plank).*sawmark", s):
+        return ISLAND_TOP_SAWMARKS
+    if re.search(
+        r"(?i)(?:to\s+add\s+)?nail\s+heads?\s+around\s+(?:any\s+)?upholstered\s+seat",
+        s,
+    ):
+        return NAIL_HEADS_UPHOLSTERED_SEAT
+    if re.search(
+        r"(?i)^additional\s+leaves(?:\s+add\s+\$?\s*75\s+(?:per\s+leaf|each).*)?$",
+        s,
+    ):
+        return ADDITIONAL_LEAVES_PER_LEAF
     if len(s) > 48:
         s = s[:45].rstrip() + "…"
     return s
@@ -389,6 +421,8 @@ def extract_from_frame(
             continue
 
         for c in cells:
+            if _ELM_SEAT_UPGRADE_NOTE.search(c):
+                continue
             if _UNFINISHED_DEDUCT.search(c) and re.search(r"(?i)deduct|less|%", c):
                 continue
 

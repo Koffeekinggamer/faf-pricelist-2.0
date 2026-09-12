@@ -74,9 +74,7 @@ def test_mixed_batch_blocks_only_the_reader_miss(tmp_path):
     assert "Beta Furniture" in set(svc.repo.list_vendors())
 
 
-def test_profile_write_failure_keeps_catalog_and_returns_blocking_warning(
-    tmp_path, monkeypatch
-):
+def test_profile_write_failure_keeps_catalog_and_returns_blocking_warning(tmp_path, monkeypatch):
     svc = _service(tmp_path)
     data = _book("G1")
     view = svc.ensure_drop_parse_session(
@@ -253,7 +251,53 @@ def test_same_builder_multi_file_drop_concatenates_into_one_catalog(tmp_path):
     assert len(result.results) == 1
     assert result.results[0].status == "loaded"
     assert result.results[0].builder == "Criswell Bedroom"
-    parts = set(
-        svc.repo.search("", vendor="Criswell Bedroom", limit=50)["part_number"].astype(str)
-    )
+    parts = set(svc.repo.search("", vendor="Criswell Bedroom", limit=50)["part_number"].astype(str))
     assert {"CWF1100", "CWF1154", "CWF8111", "CWF3044"} <= parts
+
+
+def test_ajs_lock_survives_a_luxhome_sibling_file(tmp_path):
+    """LuxHome is AJ's second book. It must not steal the named parser."""
+    svc = _service(tmp_path)
+    svc.lock_builder_parser(
+        "AJ's Furniture",
+        importer="ajs_furniture",
+        source_file="Pricelist_Finished.xls",
+        layouts=["ajs_furniture"],
+    )
+    finished = _book("101 CSC")
+    lux = _book("30 H5PS")
+    view = svc.ensure_drop_parse_session(
+        [
+            DropUpload("Pricelist_Finished.xls", finished, size=len(finished)),
+            DropUpload("LuxHome_Pricelist.xls", lux, size=len(lux)),
+        ],
+        vendor_overrides={
+            "Pricelist_Finished.xls": "AJ's Furniture",
+            "LuxHome_Pricelist.xls": "AJ's Furniture",
+        },
+    )
+    store = svc._drop_parse_store()
+    payload = store.load(view.session_id)
+    assert payload is not None
+    payload["files"][0]["detected_importer"] = "ajs_furniture"
+    payload["files"][1]["detected_importer"] = "luxhome"
+    for file_payload in payload["files"]:
+        file_payload["readiness"] = {
+            "load_ready": True,
+            "block_code": "",
+            "block_message": "",
+        }
+    store.save(view.session_id, payload)
+
+    result = svc.commit_drop_load(
+        view.session_id,
+        [
+            DropLoadBinding(0, "AJ's Furniture", 2.7),
+            DropLoadBinding(1, "AJ's Furniture", 2.7),
+        ],
+    )
+
+    assert result.results[0].status == "loaded"
+    assert result.results[0].parser_id == "ajs_furniture"
+    profile = (tmp_path / "profiles" / "aj-s-furniture.json").read_text()
+    assert '"importer": "ajs_furniture"' in profile

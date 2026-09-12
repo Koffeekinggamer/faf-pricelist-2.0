@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import pickle
+import re
 import tempfile
 import time
 import uuid
@@ -283,7 +284,15 @@ def evaluate_readiness(file_payload: dict) -> DropReadiness:
                 f"Source promises {state} pricing but no {state} rows or Option parsed",
             )
 
-    missing = sum(1 for row in items if not str(row.get("species") or "").strip())
+    missing = sum(
+        1
+        for row in items
+        if not str(row.get("species") or "").strip()
+        and not re.fullmatch(
+            r"(?i)(?:standard|premium|ultra\s*leather|genuine\s*leather|leather|com)",
+            str(row.get("option_key") or "").strip(),
+        )
+    )
     if items and missing / len(items) >= 0.5:
         return DropReadiness(
             False,
@@ -293,7 +302,8 @@ def evaluate_readiness(file_payload: dict) -> DropReadiness:
 
     locked = str(file_payload.get("locked_parser") or "").strip().lower()
     detected = str(file_payload.get("detected_importer") or "").strip().lower()
-    if locked and locked not in {"generic", "pdf"} and detected != locked:
+    ajs_luxhome = locked == "ajs_furniture" and detected == "luxhome"
+    if locked and locked not in {"generic", "pdf"} and detected != locked and not ajs_luxhome:
         return DropReadiness(
             False,
             "settled_reader_miss",

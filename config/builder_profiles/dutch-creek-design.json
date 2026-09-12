@@ -4,15 +4,8 @@
   "parser": {
     "importer": "dutch_creek_design",
     "source_file": "Download_2026_Pricelists_456227_unzipped/DCD_2026_Furniture_Pricelist.xls + Download_2026_Pricelists_456227_unzipped/DCD_2026_Bookcase_Pricelist.xls",
-    "filename_hints": [
-      "dutch creek design",
-      "dutchcreekdesign",
-      "dcd"
-    ],
-    "layouts": [
-      "unknown",
-      "wide_species"
-    ],
+    "filename_hints": ["dutch creek design", "dutchcreekdesign", "dcd"],
+    "layouts": ["long_flat", "unknown", "viewed_options", "wide_species"],
     "locked": true
   }
 }

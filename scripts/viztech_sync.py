@@ -196,9 +196,7 @@ def login(session, user: str, password: str) -> None:
     )
     cookies = session.cookies.get_dict()
     if not any(k.startswith("wordpress_logged_in") for k in cookies):
-        raise RuntimeError(
-            f"Viztech login failed (HTTP {r.status_code}). Check credentials."
-        )
+        raise RuntimeError(f"Viztech login failed (HTTP {r.status_code}). Check credentials.")
     log(f"Logged in as {user}")
 
 
@@ -290,11 +288,7 @@ def detect_ext(path: Path) -> str:
             with zipfile.ZipFile(path) as z:
                 names = z.namelist()
                 if any(n.startswith("xl/") for n in names):
-                    return (
-                        ".xlsm"
-                        if any("vbaProject" in n for n in names)
-                        else ".xlsx"
-                    )
+                    return ".xlsm" if any("vbaProject" in n for n in names) else ".xlsx"
                 return ".zip"
         except Exception:
             return ".zip"
@@ -308,9 +302,7 @@ def detect_ext(path: Path) -> str:
     return ".bin"
 
 
-def download_catalog(
-    session, catalog: list[dict], out_dir: Path
-) -> list[dict]:
+def download_catalog(session, catalog: list[dict], out_dir: Path) -> list[dict]:
     out_dir.mkdir(parents=True, exist_ok=True)
     results: list[dict] = []
     jobs: list[dict] = []
@@ -495,9 +487,7 @@ def backup_db() -> None:
             log("DB backup via CLI")
 
 
-_NOT_A_PRICESHEET = re.compile(
-    r"(?i)quotes?\s*calculator|cover\s*page|password|instructions?"
-)
+_NOT_A_PRICESHEET = re.compile(r"(?i)quotes?\s*calculator|cover\s*page|password|instructions?")
 
 
 def is_sellable_pricesheet(path: Path, vendor: str) -> bool:
@@ -512,8 +502,8 @@ def is_sellable_pricesheet(path: Path, vendor: str) -> bool:
         return False
     if vendor == "FN Chair" and re.search(r"level.?two|two.?orange", name, re.I):
         return False
-    # LuxHome ships inside AJ's Viztech folder. It is its own builder.
-    if re.search(r"luxhome", name, re.I) and vendor != "LuxHome":
+    # LuxHome ships inside AJ's folder and is that factory's upholstery book.
+    if re.search(r"luxhome", name, re.I) and vendor not in {"AJ's Furniture", "LuxHome"}:
         return False
     return True
 
@@ -681,15 +671,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(summary, indent=2, default=str))
         log(f"Import report → {report_path}")
-        log(f"DONE ok={summary['ok']} err={summary['err']} skip={summary['skip']} stats={summary['stats']}")
+        log(
+            f"DONE ok={summary['ok']} err={summary['err']} skip={summary['skip']} stats={summary['stats']}"
+        )
         save_state(
             {
                 "last_run": run_id,
                 "last_success": datetime.now(timezone.utc).isoformat(),
                 "mode": "import-only",
-                "summary": {
-                    k: summary[k] for k in ("ok", "err", "skip", "stats")
-                },
+                "summary": {k: summary[k] for k in ("ok", "err", "skip", "stats")},
             }
         )
         return 0 if summary["err"] < summary["ok"] or summary["ok"] > 0 else 1

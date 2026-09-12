@@ -20,6 +20,10 @@ name sets ``finish_state``.
 Warranty prose sits in the columns beside the accessory prices and the yardage
 chart column reads like a number (``4 yd``, ``85 sq.ft.``). Neither is money, so
 every price column is named by its header rather than found by scanning.
+
+The LuxHome seating book ships in the same Viztech folder. It is AJ's
+upholstery line, so that file is parsed with the LuxHome reader and stored
+under AJ's Furniture.
 """
 
 from __future__ import annotations
@@ -190,9 +194,7 @@ def _read_band(cells: list[Any]) -> Optional[_Band]:
         return None
     # A FABRIC column over the tier means upholstery; the same wood columns
     # without it are the occasional tables.
-    band.collection = (
-        SEATING if len(text) > 2 and _FABRIC_HEADER_RE.match(text[2]) else OCCASIONAL
-    )
+    band.collection = SEATING if len(text) > 2 and _FABRIC_HEADER_RE.match(text[2]) else OCCASIONAL
     return band
 
 
@@ -351,6 +353,17 @@ def import_ajs_workbook(
     sheet_filter: Optional[list[str]] = None,
     filename: str = "",
 ) -> WorkbookImportResult:
+    from backend.luxhome_import import import_luxhome_workbook, looks_like_luxhome
+
+    if looks_like_luxhome(filename=filename):
+        return import_luxhome_workbook(
+            data,
+            vendor=vendor or "AJ's Furniture",
+            default_collection=default_collection,
+            sheet_filter=sheet_filter,
+            filename=filename,
+        )
+
     views = read_all_sheets(data)
     names = [view.name for view in views]
     tried: list[dict] = []

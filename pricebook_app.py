@@ -22,7 +22,8 @@ import pandas as pd
 import streamlit as st
 
 from backend import PriceBookService
-from backend.auth import login_user
+from backend.auth.permissions import AuthDenied, can
+from backend.auth.session import user_from_session
 from backend.builder_profiles import (
     exclusive_option_conflicts,
     load_builder_profile,
@@ -53,8 +54,30 @@ from backend.login_session import (
     restore_login_session,
 )
 from backend.option_labels import option_widget_key
+from backend.option_prompts import (
+    SIZE_PROMPT_FAMILIES,
+    collapse_size_prompt_options,
+    is_size_prompt_display,
+    platform_prompt_label,
+    resolve_size_choice,
+    size_by_resolved_label,
+    size_prompt_choices,
+)
 from backend.product_descriptions import floor_part_number
 from backend.standardize import mixed_wood_label
+from backend.ui_floor import (
+    add_search_row_to_cart,
+    app_stores,
+    cart_from_state,
+    current_user,
+    import_anon_cart_once,
+    render_account,
+    render_admin_activity,
+    render_admin_users,
+    render_login,
+    render_quote_cart,
+    render_quotes_list,
+)
 
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
@@ -142,6 +165,36 @@ st.markdown(
         background: #ffffff;
         border-radius: 0.45rem;
       }
+      /* Compact chrome so Search filters sit on a laptop / iPad without a long scroll. */
+      .stApp [data-testid="stHeader"] {
+        height: 2.55rem;
+        min-height: 2.55rem;
+      }
+      .stApp [data-testid="stHeader"] img {
+        max-height: 2rem;
+      }
+      .stApp .block-container,
+      .stApp [data-testid="stMainBlockContainer"] {
+        padding-top: 0.85rem;
+        padding-bottom: 1rem;
+      }
+      .stApp [data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"],
+      .stApp [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlock"] {
+        gap: 0.45rem;
+      }
+      .stApp [data-testid="stHeading"] h2,
+      .stApp h2 {
+        margin: 0.05rem 0 0.1rem;
+        font-size: 1.4rem;
+        line-height: 1.2;
+      }
+      .stApp [data-testid="stCaptionContainer"] {
+        margin: 0;
+        padding: 0;
+      }
+      .stApp [data-testid="stSegmentedControl"] {
+        margin: 0;
+      }
       /* Larger tap targets on touch devices */
       @media (max-width: 900px) {
         .stTextInput input, .stSelectbox div[data-baseweb="select"] {
@@ -149,7 +202,7 @@ st.markdown(
           font-size: 1.05rem !important;
         }
         div[data-testid="stDataFrame"] { font-size: 0.95rem; }
-        .block-container { padding-top: 1rem; padding-left: 0.8rem; padding-right: 0.8rem; }
+        .block-container { padding-top: 0.7rem; padding-left: 0.8rem; padding-right: 0.8rem; }
         button { min-height: 2.5rem; }
       }
       /* Favorite chip row */
@@ -194,13 +247,17 @@ def _favorites_path() -> Path:
 
 
 def _apply_auth_session(session: dict) -> None:
+    email = str(session.get("email") or session.get("username") or "")
     st.session_state["authenticated"] = True
-    st.session_state["auth_user"] = session["username"]
-    st.session_state["auth_display"] = session.get("display_name")
+    st.session_state["auth_user"] = email
+    st.session_state["auth_display"] = session.get("display_name") or session.get("name") or email
     st.session_state["auth_role"] = session.get("role") or "sales"
     st.session_state["auth_user_id"] = session.get("user_id")
     st.session_state["auth_session"] = session
     st.session_state.pop("auth_forget", None)
+    who = user_from_session(session)
+    if who:
+        import_anon_cart_once(who)
 
 
 def _write_login_cookie(token: str) -> None:
@@ -271,7 +328,28 @@ if _pending_login_cookie is not None:
 
 def _require_login() -> bool:
     """Show login form until authenticated. Returns True when logged in."""
+    pending = st.session_state.pop("_pending_login", None)
+    if pending:
+        _apply_auth_session(pending)
+        _remember_login(pending)
+        st.rerun()
+
     if st.session_state.get("authenticated"):
+        auth, _, _ = app_stores()
+        uid = st.session_state.get("auth_user_id")
+        try:
+            live = auth.require_active(uid)
+            session = st.session_state.get("auth_session") or {}
+            session["role"] = live.role
+            session["active"] = live.active
+            session["email"] = live.email
+            session["name"] = live.name
+            session["display_name"] = live.name
+            _apply_auth_session(session)
+        except AuthDenied as exc:
+            st.session_state.clear()
+            st.error(str(exc))
+            return False
         return True
 
     if not st.session_state.get("auth_forget"):
@@ -284,33 +362,12 @@ def _require_login() -> bool:
                 _apply_auth_session(session)
                 return True
 
-    st.markdown(
-        """
-        <div style="max-width:420px;margin:4rem auto 1rem auto;text-align:center;">
-          <div style="font-size:2rem;font-weight:700;color:#244a2e;">FAF Price Book</div>
-          <div style="color:#1f2937;margin-top:0.25rem;">Foothills Amish Furniture · sign in to continue</div>
-          <div style="color:#4b5563;margin-top:0.5rem;font-size:0.9rem;">
-            Use your FAF floor login
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    col_l, col_c, col_r = st.columns([1, 1.2, 1])
-    with col_c:
-        with st.form("login_form", clear_on_submit=False):
-            user = st.text_input("Username", autocomplete="username")
-            pw = st.text_input("Password", type="password", autocomplete="current-password")
-            submitted = st.form_submit_button("Sign in", type="primary", use_container_width=True)
-            if submitted:
-                session = login_user(user, pw)
-                if session:
-                    _apply_auth_session(session)
-                    _remember_login(session)
-                    st.rerun()
-                else:
-                    st.error("Incorrect username or password.")
+    ready = render_login()
+    if ready and st.session_state.get("_pending_login"):
+        pending = st.session_state.pop("_pending_login")
+        _apply_auth_session(pending)
+        _remember_login(pending)
+        st.rerun()
     return False
 
 
@@ -325,19 +382,20 @@ if _auth_sess.get("must_change_password") and st.session_state.get("auth_user_id
         npw = st.text_input("New password", type="password")
         npw2 = st.text_input("Confirm new password", type="password")
         if st.form_submit_button("Save new password", type="primary"):
-            if not npw or len(npw) < 6:
-                st.error("Password must be at least 6 characters.")
+            if not npw or len(npw) < 10:
+                st.error("Password must be at least 10 characters.")
             elif npw != npw2:
                 st.error("Passwords do not match.")
             else:
-                _svc_tmp = PriceBookService()
-                _svc_tmp.init()
-                _svc_tmp.set_app_user_password(
-                    int(st.session_state["auth_user_id"]), npw, must_change=False
-                )
-                st.session_state["auth_session"]["must_change_password"] = False
-                st.success("Password updated.")
-                st.rerun()
+                auth_store, _, _ = app_stores()
+                who = current_user()
+                if who is None:
+                    st.error("Sign in required.")
+                else:
+                    auth_store.set_password_direct(who.id, npw, must_change=False)
+                    st.session_state["auth_session"]["must_change_password"] = False
+                    st.success("Password updated.")
+                    st.rerun()
     st.stop()
 
 # ---------------------------------------------------------------------------
@@ -346,7 +404,7 @@ if _auth_sess.get("must_change_password") and st.session_state.get("auth_user_id
 
 # Bump when PriceBookService gains methods that Admin/OrderTrac need.
 # Stale @st.cache_resource instances omit new methods until cache is cleared.
-_SERVICE_CACHE_VERSION = 8
+_SERVICE_CACHE_VERSION = 9
 
 
 @st.cache_resource
@@ -427,6 +485,11 @@ def _option_checkbox_key(vendor_key: str, option_label: str) -> str:
 def _option_qty_key(vendor_key: str, option_label: str) -> str:
     """Session key for Extra Drawers/Doors quantity."""
     return _option_checkbox_key(vendor_key, option_label) + "_qty"
+
+
+def _option_size_key(vendor_key: str, option_label: str) -> str:
+    """Session key for Platform bed-size prompt."""
+    return _option_checkbox_key(vendor_key, option_label) + "_size"
 
 
 def _enforce_single_select_options(
@@ -729,8 +792,35 @@ def _quote_sidebar_badge() -> None:
 st.sidebar.title("FAF Price Book")
 who = st.session_state.get("auth_display") or st.session_state.get("auth_user") or "user"
 role = st.session_state.get("auth_role") or "sales"
-st.sidebar.caption(f"Signed in as **{who}** · `{role}`")
+_floor_user = current_user()
+st.sidebar.caption(f"Signed in as **{who}**")
+st.sidebar.markdown(f"`{role}`")
+_cart_n = cart_from_state().badge_count
+if st.sidebar.button(f"Quote ({_cart_n})", use_container_width=True):
+    st.session_state["quote_cart_open"] = not bool(st.session_state.get("quote_cart_open"))
+    st.session_state["faf_nav"] = "Search"
+    st.rerun()
+if st.sidebar.button("Account", use_container_width=True):
+    st.session_state["faf_nav"] = "Account"
+    st.rerun()
+if _floor_user and can(_floor_user, "quote.view.own"):
+    if st.sidebar.button("Quotes", use_container_width=True):
+        st.session_state["faf_nav"] = "Quotes"
+        st.rerun()
+if _floor_user and can(_floor_user, "users.manage"):
+    if st.sidebar.button("Admin → Users", use_container_width=True):
+        st.session_state["faf_nav"] = "Users"
+        st.rerun()
+if _floor_user and can(_floor_user, "activity.view"):
+    if st.sidebar.button("Admin → Activity", use_container_width=True):
+        st.session_state["faf_nav"] = "Activity"
+        st.rerun()
 if st.sidebar.button("Sign out"):
+    if _floor_user:
+        try:
+            app_stores()[0].logout(_floor_user)
+        except Exception:
+            pass
     _forget_login()
     for k in (
         "authenticated",
@@ -739,8 +829,11 @@ if st.sidebar.button("Sign out"):
         "auth_role",
         "auth_user_id",
         "auth_session",
+        "quote_cart",
+        f"quote_draft_{_floor_user.id}" if _floor_user else "",
     ):
-        st.session_state.pop(k, None)
+        if k:
+            st.session_state.pop(k, None)
     st.rerun()
 
 stats = svc.stats()
@@ -781,8 +874,14 @@ else:
 # ===========================================================================
 
 _NAV = ["Search", "Drop files", "Vendors", "Admin"]
+if _floor_user and can(_floor_user, "quote.view.own"):
+    _NAV = ["Search", "Quotes", "Drop files", "Vendors", "Admin"]
+if _floor_user and can(_floor_user, "users.manage"):
+    _NAV = _NAV + ["Users", "Activity"]
+if "Account" not in _NAV:
+    _NAV = _NAV + ["Account"]
 if SHOW_ORDERTRAC_QUOTE:
-    _NAV = ["Search", "OrderTrac quote", "Drop files", "Vendors", "Admin"]
+    _NAV = ["Search", "OrderTrac quote"] + [x for x in _NAV if x != "Search"]
 nav = st.segmented_control(
     "Section",
     options=_NAV,
@@ -798,8 +897,6 @@ tab_quote = "OrderTrac quote" if SHOW_ORDERTRAC_QUOTE else None
 # SEARCH
 # ---------------------------------------------------------------------------
 if nav == "Search":
-    st.subheader("Find a price")
-
     # Apply pin / clear BEFORE any widgets with keys sq/sv/sf exist
     # (Streamlit forbids changing those keys after the widgets are created)
     _pending_pin = st.session_state.pop("_pin_select", None)
@@ -819,17 +916,26 @@ if nav == "Search":
         st.session_state["pin_panel_open"] = False
     pins_open = bool(st.session_state["pin_panel_open"])
 
-    if pins_open:
-        search_col, pin_col = st.columns([3.1, 1.4], gap="medium")
+    cart_open = bool(st.session_state.get("quote_cart_open"))
+    if pins_open and cart_open:
+        search_col, pin_col, cart_col = st.columns([2.2, 1.0, 1.3], gap="small")
+    elif cart_open:
+        search_col, cart_col = st.columns([2.4, 1.3], gap="small")
+        pin_col = None
+    elif pins_open:
+        search_col, pin_col = st.columns([3.1, 1.4], gap="small")
+        cart_col = None
     else:
         search_col = st.container()
         pin_col = None
+        cart_col = None
 
     with search_col:
         if not pins_open:
-            # Compact control to reopen the pin rail
-            t1, t2 = st.columns([5.5, 1.2])
-            with t2:
+            title_col, pin_btn_col = st.columns([5.5, 1.2], gap="small")
+            with title_col:
+                st.subheader("Find a price")
+            with pin_btn_col:
                 n_pins = len(favorites)
                 label = f"Pins ({n_pins}) ›" if n_pins else "Pins ›"
                 if st.button(
@@ -840,6 +946,8 @@ if nav == "Search":
                 ):
                     st.session_state["pin_panel_open"] = True
                     st.rerun()
+        else:
+            st.subheader("Find a price")
 
         vendors = ["All"] + all_vendors
         # Put favorites first after All for faster floor pick in dropdown only
@@ -854,6 +962,11 @@ if nav == "Search":
             f1, f2, f3 = st.columns([1.5, 1.3, 0.9])
         with f1:
             vf = st.selectbox("Builder", vendors, key="sv")
+        # Clear the search box when Builder changes (before the sq widget exists).
+        _prev_builder = st.session_state.get("_search_builder")
+        if _prev_builder is not None and _prev_builder != vf:
+            st.session_state["sq"] = ""
+        st.session_state["_search_builder"] = vf
         with f2:
             # Wood — only species used by the selected builder (or whole book if All)
             wood_list = _wood_dropdown_options(vf if vf else "All")
@@ -887,8 +1000,57 @@ if nav == "Search":
                             _save_favorites(favorites + [vf])
                             st.rerun()
 
-        # Option — hidden until the floor opts in (keeps Search clean).
+        q_col, clear_col = st.columns([5.5, 1.0], gap="small")
+        with q_col:
+            q = st.text_input(
+                "Search the master book",
+                placeholder="Part # or product words…",
+                key="sq",
+                label_visibility="collapsed",
+            )
+        with clear_col:
+            has_query = bool((st.session_state.get("sq") or "").strip())
+            if st.button(
+                "Clear",
+                key="sq_clear",
+                use_container_width=True,
+                disabled=not has_query,
+                help="Clear the search box",
+            ):
+                st.session_state["_clear_search"] = True
+                st.rerun()
+
+        # Option — under the search box; filtered to the piece being looked up.
         opt_list = _option_dropdown_options(vf if vf else "All", _catalog_stamp())
+        if vf not in (None, "All") and opt_list:
+            opt_list = svc.options_for_search(
+                vf,
+                q,
+                opt_list,
+                species=None if not wf or wf == "All" else wf,
+            )
+        catalog_opts = list(opt_list)
+        if vf not in (None, "All"):
+            for family in SIZE_PROMPT_FAMILIES:
+                members = family.members(catalog_opts)
+                if len(members) < 2 and not (
+                    family.always_prompt and family.display in catalog_opts
+                ):
+                    continue
+                dkey = _option_checkbox_key(vf, family.display)
+                skey = _option_size_key(vf, family.display)
+                for size, label in members.items():
+                    old_key = _option_checkbox_key(vf, label)
+                    if st.session_state.get(old_key):
+                        st.session_state[dkey] = True
+                        if skey not in st.session_state or st.session_state.get(skey) in (
+                            None,
+                            "",
+                            "Select size",
+                        ):
+                            st.session_state[skey] = size
+                        st.session_state[old_key] = False
+            opt_list = collapse_size_prompt_options(catalog_opts)
         # Migrate legacy select / multiselect session value into checkbox keys once.
         if "so" in st.session_state:
             cur = st.session_state.pop("so")
@@ -914,8 +1076,8 @@ if nav == "Search":
             show_opts = st.checkbox(
                 "Options",
                 key="so_panel_open",
-                help="This builder's live options from the catalog — not a "
-                "fixed list. Leave off for base retail.",
+                help="Options for this builder that fit the piece in the "
+                "search box. Leave off for base retail.",
             )
             if show_opts:
                 with st.container(border=True):
@@ -940,6 +1102,12 @@ if nav == "Search":
                             for opt in opt_list:
                                 st.session_state[_option_checkbox_key(vf, opt)] = False
                                 st.session_state[_option_qty_key(vf, opt)] = 1
+                            for family in SIZE_PROMPT_FAMILIES:
+                                for label in family.members(catalog_opts).values():
+                                    st.session_state[_option_checkbox_key(vf, label)] = False
+                                st.session_state[_option_size_key(vf, family.display)] = (
+                                    "Select size"
+                                )
                             st.rerun()
                     n_cols = 2 if len(opt_list) <= 6 else 3
                     cb_cols = st.columns(n_cols)
@@ -951,7 +1119,18 @@ if nav == "Search":
                                 on_change=_enforce_single_select_options,
                                 args=(vf, opt, opt_list),
                             )
-                            if checked:
+                            if checked and is_size_prompt_display(opt):
+                                size = st.selectbox(
+                                    platform_prompt_label(),
+                                    size_prompt_choices(catalog_opts, opt),
+                                    key=_option_size_key(vf, opt),
+                                )
+                                resolved = resolve_size_choice(
+                                    catalog_opts, opt, selected=True, size=size
+                                )
+                                if resolved:
+                                    of_list.append(resolved)
+                            elif checked:
                                 of_list.append(opt)
                                 if PriceBookService._option_qty_allowed(opt):
                                     qkey = _option_qty_key(vf, opt)
@@ -969,9 +1148,22 @@ if nav == "Search":
                                     option_qty[opt] = int(qty)
                     if of_list:
                         bits = []
+                        size_by_label = size_by_resolved_label(catalog_opts)
+                        display_by_member = {
+                            lab: family.display
+                            for family in SIZE_PROMPT_FAMILIES
+                            for lab in family.members(catalog_opts).values()
+                        }
                         for o in of_list:
-                            q = option_qty.get(o, 1)
-                            bits.append(f"{o} ×{q}" if q > 1 else o)
+                            opt_q = option_qty.get(o, 1)
+                            if o in size_by_label:
+                                shown = f"{display_by_member.get(o, o)} ({size_by_label[o]})"
+                            elif is_size_prompt_display(o):
+                                pick = st.session_state.get(_option_size_key(vf, o))
+                                shown = f"{o} ({pick})" if pick and pick != "Select size" else o
+                            else:
+                                shown = o
+                            bits.append(f"{shown} ×{opt_q}" if opt_q > 1 else shown)
                         st.markdown(
                             '<div class="faf-option-selected"><strong>Selected:</strong> '
                             + " · ".join(bits)
@@ -990,27 +1182,10 @@ if nav == "Search":
         elif vf == "All":
             pass  # no option chrome until a builder is chosen
         elif vf != "All" and not opt_list:
-            st.caption("No options parsed for this builder.")
-
-        q_col, clear_col = st.columns([5.5, 1.0], gap="small")
-        with q_col:
-            q = st.text_input(
-                "Search the master book",
-                placeholder="Part # or product words…",
-                key="sq",
-                label_visibility="collapsed",
-            )
-        with clear_col:
-            has_query = bool((st.session_state.get("sq") or "").strip())
-            if st.button(
-                "Clear",
-                key="sq_clear",
-                use_container_width=True,
-                disabled=not has_query,
-                help="Clear the search box",
-            ):
-                st.session_state["_clear_search"] = True
-                st.rerun()
+            if (q or "").strip():
+                st.caption("No options for this piece — try a different search or Builder.")
+            else:
+                st.caption("No options parsed for this builder.")
 
         # Don't dump the whole book when search is empty — unless a builder is chosen
         if not (q or "").strip() and vf == "All":
@@ -1189,6 +1364,44 @@ if nav == "Search":
                 row_height=64,
             )
 
+            if (
+                _floor_user
+                and can(_floor_user, "quote.create")
+                and "id" in results.columns
+                and not results.empty
+            ):
+                st.markdown("##### Add to quote")
+                st.caption("Enter adds the selected Search row. Retail comes from this price book.")
+                labels = []
+                row_by_label = {}
+                for _, r in results.head(80).iterrows():
+                    rid = int(r["id"])
+                    part = str(r.get("part_number") or "")[:28]
+                    desc = str(r.get("description") or "")[:36]
+                    retail = float(r.get("adjusted_price") or 0)
+                    lab = f"#{rid} · {part} · ${retail:,.0f} · {desc}"
+                    labels.append(lab)
+                    row_by_label[lab] = r
+                with st.form("add_floor_quote", clear_on_submit=False):
+                    fq1, fq2, fq3 = st.columns([3.2, 0.8, 1.4])
+                    pick = fq1.selectbox("Search result", labels, key="floor_quote_pick")
+                    add_qty = fq2.number_input(
+                        "Qty", min_value=1, value=1, step=1, key="floor_quote_qty"
+                    )
+                    separate = fq3.checkbox("Add as separate line", key="floor_quote_sep")
+                    if st.form_submit_button("Add to quote", type="primary"):
+                        try:
+                            raw = row_by_label[pick]
+                            add_search_row_to_cart(
+                                _floor_user,
+                                raw.to_dict(),
+                                qty=int(add_qty),
+                                add_as_separate_line=bool(separate),
+                            )
+                            st.rerun()
+                        except AuthDenied as exc:
+                            st.error(str(exc))
+
             if SHOW_ORDERTRAC_QUOTE:
                 if "id" in results.columns and not results.empty:
                     st.markdown("##### Add to OrderTrac quote (from FAF price)")
@@ -1310,6 +1523,31 @@ if nav == "Search":
                 if st.button("Clear pins", key="clear_all_pins", use_container_width=True):
                     _save_favorites([])
                     st.rerun()
+
+    if cart_col is not None:
+        with cart_col:
+            render_quote_cart(_floor_user)
+    elif st.session_state.get("quote_cart_open"):
+        with st.expander(f"Quote ({cart_from_state().badge_count})", expanded=True):
+            render_quote_cart(_floor_user)
+
+if nav == "Quotes" and _floor_user:
+    render_quotes_list(_floor_user)
+
+if nav == "Account" and _floor_user:
+    render_account(_floor_user)
+
+if nav == "Users":
+    if not _floor_user or not can(_floor_user, "users.manage"):
+        st.error("Admin only.")
+        st.stop()
+    render_admin_users(_floor_user)
+
+if nav == "Activity":
+    if not _floor_user or not can(_floor_user, "activity.view"):
+        st.error("Admin only.")
+        st.stop()
+    render_admin_activity(_floor_user)
 
 if SHOW_ORDERTRAC_QUOTE and nav == "OrderTrac quote":
     # ---------------------------------------------------------------------------

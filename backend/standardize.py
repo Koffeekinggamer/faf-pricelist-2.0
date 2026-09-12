@@ -688,6 +688,50 @@ def clean_catalog_label(text: str) -> str:
     return fix_catalog_grammar(fix_catalog_typos(text))
 
 
+UNDERMOUNT_DRAWER_SLIDES = "Undermount Drawer Slides"
+DRAWER_UNIT_ON_ALL_BED_SIZES = "drawer unit on all bed sizes"
+ISLAND_TOP_SAWMARKS = '1 1/4" plank island top with sawmarks'
+NAIL_HEADS_UPHOLSTERED_SEAT = "Nail Heads Around Upholstered Seat"
+ADDITIONAL_LEAVES_PER_LEAF = "Additional leaves ($75 per leaf)"
+_UNDERMOUNT_SLIDE_RE = re.compile(
+    r"(?i)\bunder[\s\-]*mount\b.*\b(slides?|draw)"
+    r"|\b(slides?|draw).*\bunder[\s\-]*mount\b"
+)
+_SIDE_MOUNT_RE = re.compile(r"(?i)\bside[\s\-]*mount\b")
+_DRAWER_UNIT_OPTION_RE = re.compile(r"(?i)^drawer\s+unit$")
+_ISLAND_TOP_SAWMARK_RE = re.compile(r"(?i)island\s+top.*(?:1\s*1\s*/\s*4|plank).*sawmark")
+_NAIL_HEADS_UPHOLSTERED_SEAT_RE = re.compile(
+    r"(?i)(?:to\s+add\s+)?nail\s+heads?\s+around\s+(?:any\s+)?upholstered\s+seat"
+)
+_ELM_SEAT_UPGRADE_NOTE_RE = re.compile(r"(?i)elm\s+also\s+available|if\s+seat\s+is\s+a\s+upgraded")
+_ADDITIONAL_LEAVES_RE = re.compile(
+    r"(?i)^additional\s+leaves(?:\s+add\s+\$?\s*75\s+(?:per\s+leaf|each).*)?$"
+)
+
+
+def canonical_option_label(val: Any) -> Optional[str]:
+    """Map factory slide wording to the floor standard; else return cleaned text."""
+    raw = str(val or "").strip()
+    if not raw or raw.lower() in {"nan", "none"}:
+        return None
+    cleaned = clean_catalog_label(raw)
+    if _ELM_SEAT_UPGRADE_NOTE_RE.search(cleaned) or _ELM_SEAT_UPGRADE_NOTE_RE.search(raw):
+        return None
+    if _SIDE_MOUNT_RE.search(cleaned):
+        return cleaned
+    if _UNDERMOUNT_SLIDE_RE.search(cleaned):
+        return UNDERMOUNT_DRAWER_SLIDES
+    if _DRAWER_UNIT_OPTION_RE.fullmatch(cleaned):
+        return DRAWER_UNIT_ON_ALL_BED_SIZES
+    if _ISLAND_TOP_SAWMARK_RE.search(cleaned):
+        return ISLAND_TOP_SAWMARKS
+    if _NAIL_HEADS_UPHOLSTERED_SEAT_RE.search(cleaned):
+        return NAIL_HEADS_UPHOLSTERED_SEAT
+    if _ADDITIONAL_LEAVES_RE.search(cleaned):
+        return ADDITIONAL_LEAVES_PER_LEAF
+    return cleaned
+
+
 def standardize_collection(val: Any, *, vendor: str = "") -> Optional[str]:
     if val is None:
         # vendor default only when truly empty
@@ -831,11 +875,11 @@ VENDOR_CANON = {
     "premier woodcraft": "Premier Woodcraft",
     "premier": "Premier Woodcraft",
     "charleston forge": "Charleston Forge",
-    "luxhome": "LuxHome",
-    "lux home": "LuxHome",
-    "aj's luxhome": "LuxHome",
-    "ajs luxhome": "LuxHome",
-    "aj luxhome": "LuxHome",
+    "luxhome": "AJ's Furniture",
+    "lux home": "AJ's Furniture",
+    "aj's luxhome": "AJ's Furniture",
+    "ajs luxhome": "AJ's Furniture",
+    "aj luxhome": "AJ's Furniture",
     "aj's furniture": "AJ's Furniture",
     "ajs furniture": "AJ's Furniture",
     "aj s furniture": "AJ's Furniture",
@@ -887,7 +931,7 @@ _VENDOR_FILENAME_HINTS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"(?i)rainbow\s*bedding|jan\s*2026\s*wholesale"), "Rainbow Bedding"),
     (re.compile(r"(?i)premier\s*woodcraft|\bpremier\b"), "Premier Woodcraft"),
     (re.compile(r"(?i)charleston\s*forge"), "Charleston Forge"),
-    (re.compile(r"(?i)lux\s*home|luxhome|aj'?s?\s*lux"), "LuxHome"),
+    (re.compile(r"(?i)lux\s*home|luxhome|aj'?s?\s*lux"), "AJ's Furniture"),
     (re.compile(r"(?i)aj'?s\s*furniture|ajs\s*furniture"), "AJ's Furniture"),
     (re.compile(r"(?i)amish\s*aspen"), "Amish Aspen"),
     (re.compile(r"(?i)brookside\s+home\s+furnishings"), "Brookside Home Furnishings"),
@@ -1118,6 +1162,12 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
     if not collection and vendor in _VENDOR_DEFAULT_COLLECTION:
         collection = _VENDOR_DEFAULT_COLLECTION[vendor]
     option_key = standardize_text(out.get("option_key")) or fn_option
+    if option_key:
+        canon = canonical_option_label(option_key)
+        if canon is None and _ELM_SEAT_UPGRADE_NOTE_RE.search(option_key):
+            option_key = None
+        else:
+            option_key = canon or option_key
     notes = standardize_text(out.get("notes"))
     unit = standardize_text(out.get("unit"))
     source = standardize_text(out.get("source_file"))
@@ -1145,6 +1195,19 @@ def standardize_row(row: dict, *, default_multiplier: float = 2.7) -> Optional[d
     line_kind = kind_raw.lower() if kind_raw else "item"
     if line_kind not in {"item", "addon"}:
         line_kind = "item"
+    if line_kind == "addon" and any(
+        _ELM_SEAT_UPGRADE_NOTE_RE.search(str(value or ""))
+        for value in (out.get("option_key"), option_key, part, desc)
+    ):
+        return None
+    if line_kind == "addon" and option_key in {
+        UNDERMOUNT_DRAWER_SLIDES,
+        DRAWER_UNIT_ON_ALL_BED_SIZES,
+    }:
+        if canonical_option_label(part) == option_key:
+            part = option_key
+        if canonical_option_label(desc) == option_key:
+            desc = option_key
     from backend.product_descriptions import human_description
 
     desc = human_description(

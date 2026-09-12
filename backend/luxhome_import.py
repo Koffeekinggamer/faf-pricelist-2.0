@@ -348,7 +348,7 @@ def import_luxhome_workbook(
     sheet_filter: Optional[list[str]] = None,
     filename: str = "",
 ) -> WorkbookImportResult:
-    vendor_name = (vendor or "").strip() or "LuxHome"
+    vendor_name = (vendor or "").strip() or "AJ's Furniture"
     rows: list[dict] = []
     tried: list[dict] = []
     views = read_all_sheets(data)

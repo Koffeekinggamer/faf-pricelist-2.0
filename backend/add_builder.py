@@ -81,6 +81,13 @@ def existing_reader_for(vendor: str) -> Optional[ReaderEntry]:
     key = (vendor or "").strip().lower()
     if not key:
         return None
+    from backend.builder_parsers import preferred_parser_for
+
+    locked = preferred_parser_for(vendor)
+    if locked:
+        entry = DEFAULT_READER_REGISTRY.get(locked)
+        if entry is not None and entry.specific:
+            return entry
     for entry in DEFAULT_READER_REGISTRY.entries:
         if entry.specific and entry.vendor.strip().lower() == key:
             return entry
@@ -92,9 +99,7 @@ def parser_id_for(vendor: str, parser_id: str = "") -> str:
     existing = existing_reader_for(vendor)
     if existing:
         if raw and raw != existing.parser_id:
-            raise AddBuilderError(
-                f"{vendor} already locks {existing.parser_id}; refusing {raw}"
-            )
+            raise AddBuilderError(f"{vendor} already locks {existing.parser_id}; refusing {raw}")
         return existing.parser_id
     if raw:
         return raw
@@ -192,9 +197,7 @@ def _profile_dict(
     }
     if stub:
         out["stub"] = True
-        out["note"] = (
-            "Template only - not a selling factory. Clone via scripts/add_builder.py."
-        )
+        out["note"] = "Template only - not a selling factory. Clone via scripts/add_builder.py."
     return out
 
 
@@ -220,9 +223,7 @@ def plan_builder(
     )
     source = source_file or next_file
     stub = vend == STUB_VENDOR
-    profile = _profile_dict(
-        vend, pid, kind=kind_key, source_file=source, stub=stub
-    )
+    profile = _profile_dict(vend, pid, kind=kind_key, source_file=source, stub=stub)
     catalog_spec: Optional[CatalogSpec] = None
     reader_entry: Optional[ReaderEntry] = None
     if kind_key == "catalog":
@@ -267,9 +268,7 @@ def render_catalog_spec(plan: BuilderScaffold) -> str:
         return "# shape kind — splice a ReaderEntry into DEFAULT_READER_REGISTRY"
     extras = plan.catalog_spec.extra_tokens
     if extras:
-        return (
-            f'CatalogSpec("{plan.parser_id}", "{plan.vendor}", extra_tokens={extras}),'
-        )
+        return f'CatalogSpec("{plan.parser_id}", "{plan.vendor}", extra_tokens={extras}),'
     return f'CatalogSpec("{plan.parser_id}", "{plan.vendor}"),'
 
 
@@ -376,9 +375,9 @@ def render_test_hook(plan: BuilderScaffold) -> str:
         "    keys = set()\n"
         '    if "option_key" in df.columns:\n'
         "        keys = {\n"
-        '            str(key).strip()\n'
+        "            str(key).strip()\n"
         '            for key in df["option_key"].dropna()\n'
-        '            if str(key).strip()\n'
+        "            if str(key).strip()\n"
         "        }\n"
         "    missing = [key for key in OPTION_KEYS if key not in keys]\n"
         "    assert not missing, missing\n"

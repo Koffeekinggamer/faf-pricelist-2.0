@@ -58,11 +58,13 @@ def _addon_cat(vendor, label, category, base, retail):
 def test_flat_drawer_option_upcharges_only_eligible_items(tmp_path):
     svc = _svc(tmp_path)
     V = "Test Builder"
-    svc.repo.insert_rows([
-        _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
-        _item(V, "Bedroom", "B1", "Queen Bed", 2000.0),
-        _addon(V, "Undermount Drawer Slides", 20.0, 54.0),
-    ])
+    svc.repo.insert_rows(
+        [
+            _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
+            _item(V, "Bedroom", "B1", "Queen Bed", 2000.0),
+            _addon(V, "Undermount Drawer Slides", 20.0, 54.0),
+        ]
+    )
 
     res = svc.search("", vendor=V, option_key="Undermount Drawer Slides")
     parts = set(res["part_number"])
@@ -84,27 +86,35 @@ def test_finish_option_upcharges_every_wood_item_by_category(tmp_path):
     # comes from the item's matched category. Non-wood accessories are excluded.
     svc = _svc(tmp_path)
     V = "Test Builder"
-    svc.repo.insert_rows([
-        _item(V, "Bedroom", "Q1", "Queen Panel Bed", 2000.0),
-        _item(V, "Bedroom", "D9", "9 Drawer Dresser", 1000.0),
-        {
-            "vendor": V, "collection": "Misc", "part_number": "AC1",
-            "description": "Knob Set", "species": None, "finish_state": "finished",
-            "base_price": 10.0, "adjusted_price": 27.0, "line_kind": "item",
-        },
-        _addon_cat(V, "Paint", "Queen Bed", 130.0, 352.0),
-        _addon_cat(V, "Paint", "9 Drawer Dresser", 150.0, 406.0),
-    ])
+    svc.repo.insert_rows(
+        [
+            _item(V, "Bedroom", "Q1", "Queen Panel Bed", 2000.0),
+            _item(V, "Bedroom", "D9", "9 Drawer Dresser", 1000.0),
+            {
+                "vendor": V,
+                "collection": "Misc",
+                "part_number": "AC1",
+                "description": "Knob Set",
+                "species": None,
+                "finish_state": "finished",
+                "base_price": 10.0,
+                "adjusted_price": 27.0,
+                "line_kind": "item",
+            },
+            _addon_cat(V, "Paint", "Queen Bed", 130.0, 352.0),
+            _addon_cat(V, "Paint", "9 Drawer Dresser", 150.0, 406.0),
+        ]
+    )
 
     res = svc.search("", vendor=V, option_key="Paint")
     parts = set(res["part_number"])
-    assert "Q1" in parts and "D9" in parts   # every wood item eligible
-    assert "AC1" not in parts                # non-wood accessory excluded
+    assert "Q1" in parts and "D9" in parts  # every wood item eligible
+    assert "AC1" not in parts  # non-wood accessory excluded
 
     q = res[res["part_number"] == "Q1"].iloc[0]
     d = res[res["part_number"] == "D9"].iloc[0]
-    assert q["adjusted_price"] == 2352.0     # 2000 + Queen Bed Paint 352
-    assert d["adjusted_price"] == 1406.0     # 1000 + 9 Drawer Dresser Paint 406
+    assert q["adjusted_price"] == 2352.0  # 2000 + Queen Bed Paint 352
+    assert d["adjusted_price"] == 1406.0  # 1000 + 9 Drawer Dresser Paint 406
     assert "Queen Bed" in str(q["notes"])
     assert "9 Drawer Dresser" in str(d["notes"])
 
@@ -113,21 +123,23 @@ def test_percent_addon_raises_eligible_items_by_pct(tmp_path):
     """addon_pct Option: retail += item_retail × pct/100 (ADR-0008 / ADR-0011)."""
     svc = _svc(tmp_path)
     V = "Test Builder"
-    svc.repo.insert_rows([
-        _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
-        _item(V, "Bedroom", "B1", "Queen Bed", 2000.0),
-        {
-            "vendor": V,
-            "collection": "Addons",
-            "part_number": "Premium Drawer Slides",
-            "description": "Premium Drawer Slides pct",
-            "option_key": "Premium Drawer Slides",
-            "base_price": None,
-            "adjusted_price": None,
-            "addon_pct": 10.0,
-            "line_kind": "addon",
-        },
-    ])
+    svc.repo.insert_rows(
+        [
+            _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
+            _item(V, "Bedroom", "B1", "Queen Bed", 2000.0),
+            {
+                "vendor": V,
+                "collection": "Addons",
+                "part_number": "Premium Drawer Slides",
+                "description": "Premium Drawer Slides pct",
+                "option_key": "Premium Drawer Slides",
+                "base_price": None,
+                "adjusted_price": None,
+                "addon_pct": 10.0,
+                "line_kind": "addon",
+            },
+        ]
+    )
 
     res = svc.search("", vendor=V, option_key="Premium Drawer Slides")
     parts = set(res["part_number"])
@@ -143,13 +155,15 @@ def test_multi_options_stack_upcharges(tmp_path):
     """Selecting Paint + Undermount Drawer Slides stacks both on a dresser."""
     svc = _svc(tmp_path)
     V = "Test Builder"
-    svc.repo.insert_rows([
-        _item(V, "Bedroom", "D9", "9 Drawer Dresser", 1000.0),
-        _item(V, "Bedroom", "Q1", "Queen Panel Bed", 2000.0),
-        _addon(V, "Undermount Drawer Slides", 20.0, 54.0),
-        _addon_cat(V, "Paint", "9 Drawer Dresser", 150.0, 406.0),
-        _addon_cat(V, "Paint", "Queen Bed", 130.0, 352.0),
-    ])
+    svc.repo.insert_rows(
+        [
+            _item(V, "Bedroom", "D9", "9 Drawer Dresser", 1000.0),
+            _item(V, "Bedroom", "Q1", "Queen Panel Bed", 2000.0),
+            _addon(V, "Undermount Drawer Slides", 20.0, 54.0),
+            _addon_cat(V, "Paint", "9 Drawer Dresser", 150.0, 406.0),
+            _addon_cat(V, "Paint", "Queen Bed", 130.0, 352.0),
+        ]
+    )
 
     res = svc.search(
         "",
@@ -268,13 +282,15 @@ def test_mirrors_exempt_from_drawer_door_options(tmp_path):
     """Mirrors never get drawer/door upcharges (even console / vanity mirrors)."""
     svc = _svc(tmp_path)
     V = "Test Builder"
-    svc.repo.insert_rows([
-        _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
-        _item(V, "Bedroom", "M1", "Tri-View Mirror", 500.0),
-        _item(V, "Bedroom", "M2", "Console Mirror", 400.0),
-        _addon(V, "Undermount Drawer Slides", 20.0, 54.0),
-        _addon(V, "Extra Drawers or Doors", 30.0, 81.0),
-    ])
+    svc.repo.insert_rows(
+        [
+            _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
+            _item(V, "Bedroom", "M1", "Tri-View Mirror", 500.0),
+            _item(V, "Bedroom", "M2", "Console Mirror", 400.0),
+            _addon(V, "Undermount Drawer Slides", 20.0, 54.0),
+            _addon(V, "Extra Drawers or Doors", 30.0, 81.0),
+        ]
+    )
 
     slides = svc.search("", vendor=V, option_key="Undermount Drawer Slides")
     assert "D1" in set(slides["part_number"])
@@ -300,6 +316,7 @@ def test_any_drawer_option_gets_a_qty_control():
     assert allowed("Add Adj Shelves")
     assert allowed("Per Knob")
     assert allowed("Additional leaves")
+    assert allowed("Additional leaves ($75 per leaf)")
     assert not allowed("Two-tone")
     assert not allowed("Lock")
     assert not allowed("Distressing")
@@ -409,10 +426,12 @@ def test_quote_required_option_survives_standardization_with_no_price():
 def test_cedar_drawer_bottoms_qty_multiplies_flat_charge(tmp_path):
     svc = _svc(tmp_path)
     V = "Millcraft"
-    svc.repo.insert_rows([
-        _item(V, "Bedroom", "NS1", "3 Drawer Nightstand", 1000.0),
-        _addon(V, "Cedar Drawer Bottoms", 80.0, 216.0),
-    ])
+    svc.repo.insert_rows(
+        [
+            _item(V, "Bedroom", "NS1", "3 Drawer Nightstand", 1000.0),
+            _addon(V, "Cedar Drawer Bottoms", 80.0, 216.0),
+        ]
+    )
 
     three = svc.search(
         "",
@@ -426,10 +445,12 @@ def test_cedar_drawer_bottoms_qty_multiplies_flat_charge(tmp_path):
     """Qty N stacks the Extra Drawers or Doors flat charge N times."""
     svc = _svc(tmp_path)
     V = "Test Builder"
-    svc.repo.insert_rows([
-        _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
-        _addon(V, "Extra Drawers or Doors", 30.0, 81.0),
-    ])
+    svc.repo.insert_rows(
+        [
+            _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
+            _addon(V, "Extra Drawers or Doors", 30.0, 81.0),
+        ]
+    )
 
     one = svc.search("", vendor=V, option_key="Extra Drawers or Doors")
     assert float(one.iloc[0]["adjusted_price"]) == 1081.0
@@ -449,10 +470,12 @@ def test_undermount_slides_qty_multiplies_flat_charge(tmp_path):
     """Qty N stacks Undermount Drawer Slides flat charge N times."""
     svc = _svc(tmp_path)
     V = "Test Builder"
-    svc.repo.insert_rows([
-        _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
-        _addon(V, "Undermount Drawer Slides", 20.0, 54.0),
-    ])
+    svc.repo.insert_rows(
+        [
+            _item(V, "Bedroom", "D1", "6 Drawer Dresser", 1000.0),
+            _addon(V, "Undermount Drawer Slides", 20.0, 54.0),
+        ]
+    )
 
     three = svc.search(
         "",
@@ -463,6 +486,61 @@ def test_undermount_slides_qty_multiplies_flat_charge(tmp_path):
     dresser = three.iloc[0]
     assert float(dresser["adjusted_price"]) == 1000.0 + 20.0 * 3
     assert "×3" in str(dresser["notes"])
+
+
+def test_drawer_unit_option_uses_bed_size_wording():
+    row = standardize_row(
+        {
+            "vendor": "Criswell Bedroom",
+            "collection": "Addons",
+            "part_number": "Drawer Unit",
+            "description": "Drawer Unit",
+            "option_key": "Drawer Unit",
+            "line_kind": "addon",
+            "base_price": 45.0,
+            "multiplier": 2.7,
+        }
+    )
+    assert row is not None
+    assert row["option_key"] == "drawer unit on all bed sizes"
+    assert row["part_number"] == "drawer unit on all bed sizes"
+
+
+def test_criswell_factory_sentence_becomes_undermount_drawer_slides():
+    row = standardize_row(
+        {
+            "vendor": "Criswell Bedroom",
+            "collection": "Addons",
+            "part_number": "With undermount full-extension soft stop draw…",
+            "description": "With undermount full-extension soft stop draw…",
+            "option_key": "With undermount full-extension soft stop draw…",
+            "line_kind": "addon",
+            "base_price": 24.0,
+            "multiplier": 2.7,
+        }
+    )
+    assert row is not None
+    assert row["option_key"] == "Undermount Drawer Slides"
+    assert row["part_number"] == "Undermount Drawer Slides"
+    assert row["multiplier"] == 1.0
+    assert row["adjusted_price"] == 24.0
+
+
+def test_truncated_undermount_drawe_ellipsis_is_standard_label():
+    row = standardize_row(
+        {
+            "vendor": "Criswell Bedroom",
+            "collection": "Addons",
+            "part_number": "Full extention, soft close, under-mount drawe…",
+            "description": "Full extention, soft close, under-mount drawe…",
+            "option_key": "Full extention, soft close, under-mount drawe…",
+            "line_kind": "addon",
+            "base_price": 24.0,
+            "multiplier": 2.7,
+        }
+    )
+    assert row is not None
+    assert row["option_key"] == "Undermount Drawer Slides"
 
 
 def test_future_imports_store_undermount_slides_without_markup():

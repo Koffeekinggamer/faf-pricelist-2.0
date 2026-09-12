@@ -32,6 +32,7 @@ master_pricebook.db
 # Secrets / env
 .env
 .env.*
+!.env.example
 *.pem
 credentials.json
 

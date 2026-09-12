@@ -42,9 +42,48 @@ def _finished_book() -> bytes:
         [
             [None, None, None, "FINISHED PRICES", None, None, None, "OPTIONS"],
             HEADER,
-            ["101 CSC", "Cubic Slat Chair", "Standard", 887.45, 1008.58, 1109.69, None, 77.7, 94.5, 105.0, "4 yd", 393.75],
-            ["101 CSC", "Cubic Slat Chair", "Premium", 916.85, 1037.98, 1139.09, None, 77.7, 94.5, 105.0, None, 423.15],
-            ["101 CSC", "Cubic Slat Chair", "Leather", 1132.1, 1253.23, 1354.34, None, 77.7, 94.5, 105.0, "85 sq.ft.", 638.4],
+            [
+                "101 CSC",
+                "Cubic Slat Chair",
+                "Standard",
+                887.45,
+                1008.58,
+                1109.69,
+                None,
+                77.7,
+                94.5,
+                105.0,
+                "4 yd",
+                393.75,
+            ],
+            [
+                "101 CSC",
+                "Cubic Slat Chair",
+                "Premium",
+                916.85,
+                1037.98,
+                1139.09,
+                None,
+                77.7,
+                94.5,
+                105.0,
+                None,
+                423.15,
+            ],
+            [
+                "101 CSC",
+                "Cubic Slat Chair",
+                "Leather",
+                1132.1,
+                1253.23,
+                1354.34,
+                None,
+                77.7,
+                94.5,
+                105.0,
+                "85 sq.ft.",
+                638.4,
+            ],
         ],
     )
 
@@ -66,6 +105,38 @@ def test_luxhome_seating_is_not_claimed_by_the_ajs_reader():
         filename="Download_2026_LuxHome_Pricelist_648810.xls",
         sheet_names=["Wholesale MARKUP"],
     )
+
+
+def test_ajs_pricebook_includes_luxhome_sofas():
+    """LuxHome is AJ's upholstery book — those sofas live on AJ's Furniture."""
+    book = _book(
+        "Wholesale MARKUP",
+        [
+            ["Harmony Collection"],
+            [None, None, None, "Standard", "Premium", "Ultra Leather", "Genuine Leather"],
+            [
+                "30 H5PS",
+                "Harmony WH 5-Piece Sectional",
+                None,
+                4300.5,
+                4483.5,
+                5397.0,
+                6772.5,
+            ],
+        ],
+    )
+
+    result = import_ajs_workbook(
+        book,
+        vendor="AJ's Furniture",
+        filename="Download_2026_LuxHome_Pricelist_648810.xls",
+    )
+    items = result.long_df[result.long_df["line_kind"] == "item"]
+
+    assert set(items["vendor"]) == {"AJ's Furniture"}
+    assert set(items["part_number"]) == {"30 H5PS"}
+    assert set(items["collection"]) == {"Harmony Collection"}
+    assert 4300.5 in set(items["base_price"])
 
 
 def test_fabric_tier_is_the_option_not_a_dropped_column():
@@ -126,7 +197,20 @@ def test_the_unfinished_twin_is_an_unfinished_row_not_a_second_finished_price():
         [
             [None, None, None, "UNFINISHED PRICES", None, None, None, "OPTIONS"],
             HEADER,
-            ["101 CSC", "Cubic Slat Chair", "Standard", 787.7, 908.83, 1009.94, None, 77.7, None, None, "4 yd", None],
+            [
+                "101 CSC",
+                "Cubic Slat Chair",
+                "Standard",
+                787.7,
+                908.83,
+                1009.94,
+                None,
+                77.7,
+                None,
+                None,
+                "4 yd",
+                None,
+            ],
         ],
     )
 
@@ -171,15 +255,22 @@ def test_occasional_tables_have_no_fabric_tier_but_still_price_by_wood():
         "Finished Wholesale",
         [
             [None, None, None, "FINISHED PRICES", None, None, None, "OPTIONS"],
-            [None, None, None, "RED OAK & BROWN MAPLE", "CHERRY &\n1/4 SAWN\n WHITE", "WALNUT", "Roughsawn Brown Maple", "LIFT TOP ADD"],
+            [
+                None,
+                None,
+                None,
+                "RED OAK & BROWN MAPLE",
+                "CHERRY &\n1/4 SAWN\n WHITE",
+                "WALNUT",
+                "Roughsawn Brown Maple",
+                "LIFT TOP ADD",
+            ],
             ["BN-25", "Barrington Coffee Table", None, 506.41, 646.73, 788.86, None, 120.75],
             ["RS-BT16", 'Beaumont 16" End Table', None, None, None, None, 346.08, None],
         ],
     )
 
-    result = import_ajs_workbook(
-        tables, vendor="AJ's Furniture", filename="Pricelist_Finished.xls"
-    )
+    result = import_ajs_workbook(tables, vendor="AJ's Furniture", filename="Pricelist_Finished.xls")
 
     items = result.long_df[result.long_df["line_kind"] == "item"]
     coffee = items[items["part_number"] == "BN-25"]
@@ -207,9 +298,7 @@ def test_custom_finish_upcharge_is_an_option_not_a_ninety_dollar_sofa():
         ],
     )
 
-    result = import_ajs_workbook(
-        custom, vendor="AJ's Furniture", filename="Pricelist_Finished.xls"
-    )
+    result = import_ajs_workbook(custom, vendor="AJ's Furniture", filename="Pricelist_Finished.xls")
 
     rows = result.long_df
     assert set(rows["line_kind"]) == {"addon"}
@@ -235,7 +324,16 @@ def test_each_band_shape_names_its_own_collection():
         "Finished Wholesale",
         [
             ["OCCASIONAL PIECES", None, None, None, None, None, None, None],
-            [None, None, None, "RED OAK & BROWN MAPLE", "CHERRY &\n1/4 SAWN\n WHITE", "WALNUT", "Roughsawn Brown Maple", "LIFT TOP ADD"],
+            [
+                None,
+                None,
+                None,
+                "RED OAK & BROWN MAPLE",
+                "CHERRY &\n1/4 SAWN\n WHITE",
+                "WALNUT",
+                "Roughsawn Brown Maple",
+                "LIFT TOP ADD",
+            ],
             ["BN-25", "Barrington Coffee Table", None, 506.41, 646.73, 788.86, None, 120.75],
         ],
     )
@@ -264,9 +362,7 @@ def test_each_band_shape_names_its_own_collection():
             ["101 CSC", "Cubic Slat Chair", None, 99.75],
         ],
     )
-    finish = import_ajs_workbook(
-        custom, vendor="AJ's Furniture", filename="Pricelist_Finished.xls"
-    )
+    finish = import_ajs_workbook(custom, vendor="AJ's Furniture", filename="Pricelist_Finished.xls")
     assert set(finish.long_df["collection"]) == {"Custom Finish"}
 
 
@@ -282,7 +378,20 @@ def test_quote_only_cushion_is_an_option_the_floor_can_see():
         [
             [None, None, None, "FINISHED PRICES", None, None, None, "OPTIONS"],
             HEADER,
-            ["RS32 HDS", "Houston Deluxe Sofa", "Standard", None, None, None, 1738.48, None, None, None, "12 1/2 yd", "Quote"],
+            [
+                "RS32 HDS",
+                "Houston Deluxe Sofa",
+                "Standard",
+                None,
+                None,
+                None,
+                1738.48,
+                None,
+                None,
+                None,
+                "12 1/2 yd",
+                "Quote",
+            ],
         ],
     )
 
@@ -303,16 +412,31 @@ def test_page_furniture_and_footnotes_never_become_products():
         [
             [None, None, None, "FINISHED PRICES", None, None, None, "OPTIONS"],
             HEADER,
-            ["101 CSC", "Cubic Slat Chair", "Standard", 887.45, None, None, None, None, None, None, None, None],
+            [
+                "101 CSC",
+                "Cubic Slat Chair",
+                "Standard",
+                887.45,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
             [None, None, None, "use Cherry & 1/4 Sawn White pricing for /Hard Maple/Hickory"],
             ["When selecting options, list them clearly", None, None, None],
-            ["FINISHED WHOLESALE\nAJ's Furniture\n5355W 400S", None, "**All pricing based on Heartland"],
+            [
+                "FINISHED WHOLESALE\nAJ's Furniture\n5355W 400S",
+                None,
+                "**All pricing based on Heartland",
+            ],
             [None, None, None, None],
         ],
     )
 
-    result = import_ajs_workbook(
-        noisy, vendor="AJ's Furniture", filename="Pricelist_Finished.xls"
-    )
+    result = import_ajs_workbook(noisy, vendor="AJ's Furniture", filename="Pricelist_Finished.xls")
 
     assert set(result.long_df["part_number"]) == {"101 CSC"}

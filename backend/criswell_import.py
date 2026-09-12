@@ -28,7 +28,21 @@ _SIZE_RE = re.compile(
 )
 _BANNER_SKIP = re.compile(
     r"(?i)preferred\s+5\s*piece|please\s+note|standard\s+with|for\s+glaz|"
-    r"prices\s+effective|internet\s+policy|buy\s+5|but\s+5"
+    r"prices\s+effective|internet\s+policy|buy\s+5|but\s+5|"
+    r"not\s+in\s+stock|need\s+to\s+be\s+brought|"
+    r"please\s+per\s*pull|suggested\s+markup|online\s+sales|"
+    r"with\s+vcr\b|^hidden\s+compartment\b|^hidden\s+gun\s+storage\b|"
+    r"tv\s+pull[\s\-]?out\s+swivel"
+)
+_PRODUCT_AS_OPTION_SKIP = re.compile(
+    r"(?i)^gentlemen?'?s?\s+chest\b|^his\s*&\s*hers\s+chest\b|"
+    r"^double\s+dresser\b|^tri[\s-]?view\b|^lingerie\b|"
+    r"^straight\s+mirror\b|^twin\s*/\s*full\s*/\s*queen\b|"
+    r"^king\s*/\s*california\s+king\s+bed\b|"
+    r"^6\s+drawer\s+chest\b|^2\s+drawer\s+armoire\b|"
+    r"^3\s+drawer\s+night\s*stand\b|^pull\s+out\s+swivel\b|"
+    r"^with\s+leather$|"
+    r"^tall\s+dresser\s*&\s*triple\s+dresser\b"
 )
 
 
@@ -201,21 +215,30 @@ def _emit_priced(
 
 
 def _parse_options(rows: list[list[Any]], *, vendor: str) -> list[dict]:
+    from backend.standardize import canonical_option_label
+
     woods = _wood_labels(rows[:6])
     out: list[dict] = []
     for row in rows:
         pane = _left_pane(row)
-        label = _text(pane[0] if pane else "")
+        raw_label = _text(pane[0] if pane else "")
+        label = canonical_option_label(raw_label) or raw_label
         if not label or re.fullmatch(r"(?i)options", label):
             continue
-        if _SKU_RE.match(label):
+        if (
+            _SKU_RE.match(label)
+            or _BANNER_SKIP.search(raw_label or label)
+            or _PRODUCT_AS_OPTION_SKIP.search(raw_label or label)
+        ):
             continue
         priced = _emit_priced(
             vendor=vendor,
             collection="Addons",
             part_number=label,
             description=label,
-            pane=pane if _price(pane[1] if len(pane) > 1 else None) is None else [label, None, pane[1]],
+            pane=pane
+            if _price(pane[1] if len(pane) > 1 else None) is None
+            else [label, None, pane[1]],
             woods=woods or {2: "All woods"},
             line_kind="addon",
             option_key=label,
@@ -268,7 +291,11 @@ def count_criswell_option_lines(data: bytes) -> int:
             label = _text(pane[0] if pane else "")
             if not label or re.fullmatch(r"(?i)options", label):
                 continue
-            if _SKU_RE.match(label) or _BANNER_SKIP.search(label):
+            if (
+                _SKU_RE.match(label)
+                or _BANNER_SKIP.search(label)
+                or _PRODUCT_AS_OPTION_SKIP.search(label)
+            ):
                 continue
             amount = _price(pane[1] if len(pane) > 1 else None)
             if amount is None:
@@ -299,9 +326,7 @@ def _parse_product_sheet(
         pane = _left_pane(row)
         label = _text(pane[0] if pane else "")
         prices = [
-            _price(pane[idx])
-            for idx in range(2, len(pane), 2)
-            if _price(pane[idx]) is not None
+            _price(pane[idx]) for idx in range(2, len(pane), 2) if _price(pane[idx]) is not None
         ]
         if not label and not prices:
             if any(_text(pane[idx]) for idx in range(2, min(len(pane), 12), 2)):
@@ -315,9 +340,7 @@ def _parse_product_sheet(
             header_buf.append(row)
             sku = _normalize_sku(label)
             if re.search(r"(?i)collection", label) and not sku:
-                collection = re.sub(
-                    r"(?i)\s*collection.*$", "", label
-                ).strip() or collection
+                collection = re.sub(r"(?i)\s*collection.*$", "", label).strip() or collection
             if sku or re.search(r"(?i)\bbed\b", label):
                 current_bed = label
                 current_sku = sku or current_sku
@@ -442,9 +465,7 @@ def import_criswell_workbook(
             }
         )
 
-    long_df = (
-        pd.concat(frames, ignore_index=True, sort=False) if frames else pd.DataFrame()
-    )
+    long_df = pd.concat(frames, ignore_index=True, sort=False) if frames else pd.DataFrame()
     return tag_import_result(
         WorkbookImportResult(
             sheets_tried=tried,

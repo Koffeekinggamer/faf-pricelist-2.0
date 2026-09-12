@@ -247,6 +247,31 @@ def test_unfinished_source_without_unfinished_rows_or_option_blocks_load():
     assert "unfinished" in readiness.block_message.lower()
 
 
+def test_fabric_grade_upholstery_may_omit_species():
+    rows = [
+        {
+            "vendor": "AJ's Furniture",
+            "part_number": "30 H5PS",
+            "description": "Harmony WH 5-Piece Sectional",
+            "collection": "Harmony Collection",
+            "option_key": "Standard",
+            "species": None,
+            "base_price": 4300.5,
+            "line_kind": "item",
+        }
+    ]
+
+    readiness = evaluate_readiness(
+        {
+            "rows": rows,
+            "detected_importer": "luxhome",
+            "locked_parser": "ajs_furniture",
+        }
+    )
+
+    assert readiness.load_ready is True
+
+
 def test_unfinished_source_with_unfinished_rows_passes_finish_gate():
     rows = [
         {

@@ -25,6 +25,7 @@ PARSER_IDS = DEFAULT_READER_REGISTRY.parser_ids
 GENERIC_PARSER_IDS = DEFAULT_READER_REGISTRY.generic_ids
 SPECIFIC_PARSER_IDS = DEFAULT_READER_REGISTRY.specific_ids
 
+
 def profile_writes_allowed() -> bool:
     """Local/Mac Drop may write profiles; Fly container FS is ephemeral."""
     return _profile_writes_allowed()
@@ -58,9 +59,7 @@ def guess_named_parser(
             names = list_excel_sheets(data)
         except Exception:
             names = []
-    return DEFAULT_READER_REGISTRY.detect(
-        filename, sheet_names=names, data=data
-    )
+    return DEFAULT_READER_REGISTRY.detect(filename, sheet_names=names, data=data)
 
 
 def identify_reader(
@@ -135,6 +134,11 @@ def preferred_parser_for(
     prof = load_builder_profile(vend, root=root)
     parser = prof.get("parser") or {}
     importer = str(parser.get("importer") or "").strip().lower()
+    if importer == "ajs_furniture" and filename:
+        from backend.luxhome_import import looks_like_luxhome
+
+        if looks_like_luxhome(filename=filename):
+            return "luxhome"
     if importer in PARSER_IDS:
         return importer
     return ""

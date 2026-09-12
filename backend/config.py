@@ -37,6 +37,25 @@ def resolve_db_path() -> Path:
     return resolve_data_dir() / "master_pricebook.db"
 
 
+def resolve_app_db_path(*, catalog_path: Path | None = None) -> Path:
+    """Users / quotes / activity — sibling of the catalog, never mixed into a dump."""
+    env = _env_path("PRICEBOOK_APP_DB")
+    if not env:
+        raw = _env_path("DATABASE_URL")
+        if raw.startswith("sqlite:///"):
+            env = raw[len("sqlite:///") :]
+        elif raw and "://" not in raw:
+            env = raw
+    if env:
+        return Path(env).expanduser()
+    catalog = Path(catalog_path) if catalog_path is not None else resolve_db_path()
+    return catalog.parent / "pricebook_app.db"
+
+
+def resolve_session_secret() -> str:
+    return _env_path("SESSION_SECRET", "NEXTAUTH_SECRET", "FAF_LOGIN_SECRET")
+
+
 def resolve_secrets_path() -> Path:
     env = _env_path("FAF_SECRETS_PATH")
     if env:

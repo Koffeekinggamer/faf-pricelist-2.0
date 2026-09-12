@@ -63,7 +63,20 @@ def _harmony_book() -> bytes:
             ["Harmony Collection", None, None, None, None, None, None],
             OPTIONS_HEADER,
             TIERS,
-            ["21 HRR", "Harmony Rocker Recliner", None, 764.4, 795.9, 953.4, 1197.0, None, 80, 100, "7 yd", "124 sq.ft."],
+            [
+                "21 HRR",
+                "Harmony Rocker Recliner",
+                None,
+                764.4,
+                795.9,
+                953.4,
+                1197.0,
+                None,
+                80,
+                100,
+                "7 yd",
+                "124 sq.ft.",
+            ],
         ]
     )
 
@@ -86,7 +99,7 @@ def test_detects_the_luxhome_book_by_name():
 def test_registry_points_detector_and_reader_at_luxhome_import():
     entry = DEFAULT_READER_REGISTRY.get("luxhome")
     assert entry is not None
-    assert entry.vendor == "LuxHome"
+    assert entry.vendor == "AJ's Furniture"
     assert entry.specific is True
     assert entry.detector == "backend.luxhome_import:looks_like_luxhome"
     assert entry.reader == "backend.luxhome_import:import_luxhome_workbook"
@@ -97,41 +110,46 @@ def test_registry_points_detector_and_reader_at_luxhome_import():
 
 
 def test_locked_profile_names_luxhome_importer():
-    path = PROFILES_DIR / f"{vendor_slug('LuxHome')}.json"
+    slug = vendor_slug("AJ's Furniture")
+    path = PROFILES_DIR / f"{slug}.json"
     raw = json.loads(path.read_text(encoding="utf-8"))
     parser = raw.get("parser") or {}
     locked = str(parser.get("importer") or "")
-    assert raw.get("vendor") == "LuxHome"
-    assert locked == "luxhome"
+    assert raw.get("vendor") == "AJ's Furniture"
+    assert locked == "ajs_furniture"
     assert locked not in GENERIC_PARSER_IDS
     assert parser.get("locked") is True
     hints = [str(hint).strip().lower() for hint in (parser.get("filename_hints") or [])]
+    layouts = [str(layout).strip().lower() for layout in (parser.get("layouts") or [])]
     assert "luxhome" in hints
+    assert "luxhome" in layouts
     assert not any(is_short_token(hint) for hint in hints)
     assert not any(hint in WATCHED_SHORT_TOKENS for hint in hints)
-    assert preferred_parser_for("LuxHome") == "luxhome"
+    assert (
+        preferred_parser_for(
+            "AJ's Furniture",
+            filename="Download_2026_LuxHome_Pricelist_648810.xls",
+        )
+        == "luxhome"
+    )
 
 
 def test_add_builder_reuses_luxhome_and_refuses_generic():
     plan = plan_builder("LuxHome", kind="shape", source_file=LUXHOME_NEXT_FILE)
-    assert plan.vendor == "LuxHome"
-    assert plan.parser_id == "luxhome"
+    assert plan.vendor == "AJ's Furniture"
+    assert plan.parser_id == "ajs_furniture"
     assert plan.parser_id not in GENERIC_PARSER_IDS
     assert plan.kind == "shape"
     assert plan.reader_entry is not None
-    assert plan.reader_entry.detector.startswith("backend.luxhome_import:")
-    assert plan.reader_entry.reader.startswith("backend.luxhome_import:")
-    with pytest.raises(AddBuilderError, match="luxhome"):
+    with pytest.raises(AddBuilderError, match="ajs_furniture"):
         plan_builder("LuxHome", parser_id="generic")
 
 
 def test_identify_reader_locks_luxhome_on_the_book_name():
     hits = matching_readers(LUXHOME_NEXT_FILE, sheet_names=LUXHOME_SHEETS)
     assert {hit.parser_id for hit in hits} == {"luxhome"}
-    vendor, parser_id, source = identify_reader(
-        LUXHOME_NEXT_FILE, sheet_names=LUXHOME_SHEETS
-    )
-    assert vendor == "LuxHome"
+    vendor, parser_id, source = identify_reader(LUXHOME_NEXT_FILE, sheet_names=LUXHOME_SHEETS)
+    assert vendor == "AJ's Furniture"
     assert parser_id == "luxhome"
     assert source == "saved"
 
@@ -208,9 +226,7 @@ def test_a_section_banner_names_the_collection_without_the_word_collection():
         ]
     )
 
-    rows = import_luxhome_workbook(
-        book, vendor="LuxHome", filename="LuxHome_Pricelist.xls"
-    ).long_df
+    rows = import_luxhome_workbook(book, vendor="LuxHome", filename="LuxHome_Pricelist.xls").long_df
 
     assert dict(zip(rows["part_number"], rows["collection"])) == {
         "301 OSC": "Oaklee Swivel Chairs",
@@ -229,9 +245,7 @@ def test_a_product_description_never_becomes_a_collection():
         ]
     )
 
-    rows = import_luxhome_workbook(
-        book, vendor="LuxHome", filename="LuxHome_Pricelist.xls"
-    ).long_df
+    rows = import_luxhome_workbook(book, vendor="LuxHome", filename="LuxHome_Pricelist.xls").long_df
 
     assert set(rows["collection"]) == {"Harmony Collection"}
     assert set(rows["part_number"]) == {"30 H5PS"}
@@ -241,15 +255,31 @@ def test_pillows_price_by_grade_down_the_rows_under_one_price_column():
     book = _book(
         [
             ["Pillows", None, None, None, None, None, None, None],
-            [None, "*Price per pillow", None, "PRICE", None, None, None, "LEATHER SQ FOOTAGE CHART"],
+            [
+                None,
+                "*Price per pillow",
+                None,
+                "PRICE",
+                None,
+                None,
+                None,
+                "LEATHER SQ FOOTAGE CHART",
+            ],
             ["213 SP", "13x13 Small Pillow", "Standard", 32.55, None, None, None, "15 sq.ft."],
-            ["213 SP", "13x13 Small Pillow", "Genuine Leather", 77.5, None, None, None, "15 sq.ft."],
+            [
+                "213 SP",
+                "13x13 Small Pillow",
+                "Genuine Leather",
+                77.5,
+                None,
+                None,
+                None,
+                "15 sq.ft.",
+            ],
         ]
     )
 
-    rows = import_luxhome_workbook(
-        book, vendor="LuxHome", filename="LuxHome_Pricelist.xls"
-    ).long_df
+    rows = import_luxhome_workbook(book, vendor="LuxHome", filename="LuxHome_Pricelist.xls").long_df
 
     pillow = rows[rows["part_number"] == "213 SP"]
     assert set(pillow["collection"]) == {"Pillows"}
@@ -265,9 +295,31 @@ def test_an_included_option_is_kept_as_a_no_charge_choice():
     book = _book(
         [
             ["Ellington Collection", None, None, None, None, None, None],
-            [None, None, None, None, None, None, None, None, "OPTIONAL FOAM BACKS ADD", "Nail Heads"],
+            [
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                "OPTIONAL FOAM BACKS ADD",
+                "Nail Heads",
+            ],
             TIERS,
-            ["1114-EL", "Ellington Corner Seat", None, 1000.0, 1050.0, 1200.0, 1400.0, None, 77.7, 0],
+            [
+                "1114-EL",
+                "Ellington Corner Seat",
+                None,
+                1000.0,
+                1050.0,
+                1200.0,
+                1400.0,
+                None,
+                77.7,
+                0,
+            ],
         ]
     )
 
@@ -295,9 +347,7 @@ def test_an_options_band_does_not_leak_into_the_next_section():
         ]
     )
 
-    rows = import_luxhome_workbook(
-        book, vendor="LuxHome", filename="LuxHome_Pricelist.xls"
-    ).long_df
+    rows = import_luxhome_workbook(book, vendor="LuxHome", filename="LuxHome_Pricelist.xls").long_df
 
     serene = rows[rows["part_number"] == "10 SC-FA"]
     assert set(serene["line_kind"]) == {"item"}
@@ -319,9 +369,7 @@ def test_page_furniture_never_becomes_a_product_or_a_section():
         ]
     )
 
-    rows = import_luxhome_workbook(
-        book, vendor="LuxHome", filename="LuxHome_Pricelist.xls"
-    ).long_df
+    rows = import_luxhome_workbook(book, vendor="LuxHome", filename="LuxHome_Pricelist.xls").long_df
 
     assert set(rows["part_number"]) == {"21 HRR"}
     assert set(rows["collection"]) == {"Harmony Collection"}

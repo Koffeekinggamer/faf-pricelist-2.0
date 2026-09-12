@@ -154,7 +154,12 @@ CATALOG_SPECS: tuple[CatalogSpec, ...] = (
     CatalogSpec("premier_woodcraft", "Premier Woodcraft"),
     CatalogSpec("quality_fabrications", "Quality Fabrications"),
     CatalogSpec("red_barn_woodworking", "Red Barn Woodworking"),
-    CatalogSpec("rh_yoder", "RH Yoder", extra_tokens=("rhyoder",)),
+    CatalogSpec(
+        "rh_yoder",
+        "RH Yoder",
+        extra_tokens=("rhyoder",),
+        reader="backend.rh_yoder_import:import_rh_yoder_workbook",
+    ),
     CatalogSpec("sharp_run_wood", "Sharp Run Wood"),
     CatalogSpec("signature_designs", "Signature Designs"),
     CatalogSpec("stone_river_furniture", "Stone River Furniture"),
@@ -198,12 +203,44 @@ def apply_five_star_oak_tables(df):
     return apply_oak(df)
 
 
-def apply_piece_name_collections(df):
-    """Millcraft: Collection is the piece name, not the sheet title.
+_MILLCRAFT_SUITE = re.compile(r"(?i).+\s+collection\s*$")
+_MILLCRAFT_SKU = re.compile(r"(?i)^[A-Z]{2,5}\d{2,}[A-Z0-9-]*$")
 
-    Casegoods have no suite banner, so Collection is the description
-    (1 Drw Nightstand). Bed styles already land as section headers
-    (Panel Bed). Add-on rows stay Addons.
+
+def millcraft_suite_context(data: bytes) -> dict[tuple[str, str], str]:
+    """Visible Millcraft suite banners keyed by the SKUs printed under them.
+
+    Each collection prints selected beds, then casegoods. Bed-style banners
+    (PANEL BED) are not collections — they sit inside the suite.
+    """
+    from backend.workbook_sheets import read_all_sheets
+
+    context: dict[tuple[str, str], str] = {}
+    for view in read_all_sheets(data):
+        raw = view.raw
+        if raw is None or getattr(raw, "empty", True):
+            continue
+        suite = ""
+        for values in raw.values.tolist():
+            texts = [_context_text(value) for value in values]
+            for text in texts:
+                if _MILLCRAFT_SUITE.fullmatch(text) and not _MILLCRAFT_SKU.fullmatch(text):
+                    suite = text
+                    break
+            if not suite:
+                continue
+            for text in texts:
+                sku = _MILLCRAFT_SKU.fullmatch(text)
+                if sku:
+                    context[("", sku.group(0).upper())] = suite
+    return context
+
+
+def apply_piece_name_collections(df):
+    """Millcraft: fill blank Collection from the piece name.
+
+    Suite banners (Camden Collection) stay. Rows with no suite — leftover
+    sheet titles — use the description. Add-on rows stay Addons.
     """
     if df is None or getattr(df, "empty", True):
         return df
@@ -408,6 +445,31 @@ def apply_catalog_description_fixes(
             )
             if label:
                 out.at[index, "collection"] = label
+    elif vendor == "Millcraft" and product_context:
+        if "collection" not in out.columns:
+            out["collection"] = None
+        if "part_number" not in out.columns:
+            return out
+        for index, row in out.iterrows():
+            if str(row.get("line_kind") or "item").strip().lower() == "addon":
+                continue
+            part_number = _context_text(row.get("part_number"))
+            label = product_context.get(("", part_number.upper()))
+            if not label:
+                continue
+            old = _context_text(row.get("collection"))
+            if (
+                old
+                and old != label
+                and not _MILLCRAFT_SUITE.fullmatch(old)
+                and not re.fullmatch(r"(?i)casegoods?", old)
+            ):
+                desc = _context_text(row.get("description"))
+                if desc and old.lower() not in desc.lower():
+                    out.at[index, "description"] = f"{desc} — {old}"
+                elif not desc:
+                    out.at[index, "description"] = old
+            out.at[index, "collection"] = label
     if vendor == "Mirror Lake Woodworks" and "unfinished" in str(filename or "").lower():
         out["finish_state"] = "unfinished"
     return out
@@ -438,6 +500,8 @@ def import_catalog_workbook(
         product_context = integ_product_context(data)
     elif spec.vendor == "Hermies Table Shop":
         product_context = hermies_product_context(data)
+    elif spec.vendor == "Millcraft":
+        product_context = millcraft_suite_context(data)
     else:
         product_context = None
     result.long_df = apply_catalog_description_fixes(

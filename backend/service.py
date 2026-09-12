@@ -42,6 +42,11 @@ from backend.db import init_db
 from backend.export import to_csv_bytes, to_excel_bytes, to_pdf_bytes
 from backend.import_service import ExcelImportPreview, ImportService, PdfImportPreview
 from backend.normalize import map_columns, read_excel_bytes
+from backend.option_fit import (
+    filter_options_for_kinds,
+    furniture_kinds_from_text,
+    order_search_options,
+)
 from backend.quotes import QuoteRepository
 from backend.repository import PriceBookRepository
 from backend.users import UserRepository
@@ -532,6 +537,8 @@ class PriceBookService:
             return False
         if re.search(r"^\s*\d+\s+drawer\b", o):
             return False
+        if re.search(r"drawer\s+unit", o):
+            return False
         if re.search(r"\bwithout\s+drawers?\b|\bdrawer\s+in\s+drawer\b", o):
             return False
         if re.search(r"\b(?:usb|port|charger)\b.*\bdrawer\b", o):
@@ -925,8 +932,48 @@ class PriceBookService:
         keys = self.repo.list_option_keys(vendor=vendor)
         label = finish_option_label(self._search_profile(vendor))
         if label and label not in keys:
-            return [label, *keys]
-        return keys
+            keys = [label, *keys]
+        return order_search_options(keys)
+
+    def options_for_search(
+        self,
+        vendor: Optional[str],
+        query: str,
+        options: Optional[Sequence[str]] = None,
+        *,
+        species: Optional[str] = None,
+    ) -> list[str]:
+        """Builder Options that fit the piece named in Search (all builders)."""
+        self.ensure_ready()
+        keys = list(options) if options is not None else self.list_option_keys(vendor)
+        blob = str(query or "").strip()
+        if not blob:
+            return order_search_options(filter_options_for_kinds(keys, set(), text=""))
+        query_kinds = furniture_kinds_from_text(blob)
+        drawer_kinds = {"casegood", "nightstand", "wardrobe"}
+        if "bed" in query_kinds and not (query_kinds & drawer_kinds):
+            return order_search_options(filter_options_for_kinds(keys, query_kinds, text=blob))
+        kinds_blob = blob
+        if vendor and vendor not in ("All", ""):
+            hits = self.repo.search(
+                blob,
+                vendor=vendor,
+                species=None if not species or species == "All" else species,
+                limit=40,
+            )
+            if hits is not None and not hits.empty:
+                parts = []
+                for _, row in hits.head(25).iterrows():
+                    parts.append(
+                        " ".join(
+                            str(row.get(col) or "")
+                            for col in ("description", "collection", "part_number")
+                        )
+                    )
+                kinds_blob = f"{blob} {' '.join(parts)}"
+        return order_search_options(
+            filter_options_for_kinds(keys, furniture_kinds_from_text(kinds_blob), text=blob)
+        )
 
     def _search_profile(self, vendor: Optional[str]) -> dict:
         if not vendor or vendor == "All":
@@ -1609,12 +1656,34 @@ class PriceBookService:
 
             profile_saved = False
             profile_warning = ""
+            from backend.builder_reader_registry import DEFAULT_READER_REGISTRY
+
+            existing_imp = (
+                str(
+                    (
+                        load_builder_profile(builder, root=self._builder_profile_root).get("parser")
+                        or {}
+                    ).get("importer")
+                    or ""
+                )
+                .strip()
+                .lower()
+            )
+            lock_importer = lock_fields.importer
+            if existing_imp in DEFAULT_READER_REGISTRY.specific_ids:
+                lock_importer = existing_imp
+            lock_layouts: list[str] = []
+            for _binding, file_payload in ready:
+                lock_layouts.extend(_lock_fields_from_payload(file_payload).layouts)
+            if not lock_layouts:
+                lock_layouts = list(lock_fields.layouts)
+            lock_layouts = list(dict.fromkeys(str(x) for x in lock_layouts if x))
             try:
                 parser_path = self.lock_builder_parser(
                     builder,
-                    importer=lock_fields.importer,
+                    importer=lock_importer,
                     source_file=filename,
-                    layouts=list(lock_fields.layouts),
+                    layouts=lock_layouts,
                 )
                 profile_saved = bool(parser_path)
                 # Fly intentionally reads shipped profiles and does not write.
@@ -1634,7 +1703,7 @@ class PriceBookService:
                     status="unchanged" if unchanged else "loaded",
                     multiplier=mult,
                     catalog=catalog,
-                    parser_id=lock_fields.importer,
+                    parser_id=lock_importer,
                     profile_saved=profile_saved,
                     profile_warning=profile_warning,
                 )

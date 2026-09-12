@@ -31,6 +31,7 @@ SOURCE_DIR = Path(
 SOURCE_FILES = (
     "Download_2026_Pricelist_Finished_301390.xls",
     "Download_2026_Pricelist_Unfinished_301389.xls",
+    "Download_2026_LuxHome_Pricelist_648810.xls",
 )
 SOURCE_LABEL = "AJ_039_s_Furniture"
 
@@ -72,8 +73,10 @@ def main() -> int:
     svc = PriceBookService()
     before = svc.repo.search("", vendor=VENDOR, limit=1_000_000)
     print(f"\nparsed {len(rows):,} rows · {option_rows:,} carry an Option")
-    print(f"live {len(before):,} rows · options today "
-          f"{int(before['option_key'].fillna('').astype(str).str.strip().ne('').sum()):,}")
+    print(
+        f"live {len(before):,} rows · options today "
+        f"{int(before['option_key'].fillna('').astype(str).str.strip().ne('').sum()):,}"
+    )
 
     if not args.apply:
         print("\ndry run — no changes written. Pass --apply to write.")

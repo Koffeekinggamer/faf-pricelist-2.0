@@ -104,6 +104,24 @@ def test_import_workbook_routes_fn_level_one(tmp_path: Path):
     )
 
 
+def test_import_workbook_skips_ordering_select_consistent_color_note(tmp_path: Path):
+    path = tmp_path / "FNC_Level_One_Blue.xlsx"
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        _mini_pl_print_df().to_excel(writer, sheet_name="PL Print", header=False, index=False)
+        pd.DataFrame([["*IF ORDERING SELECT (CONSISTANT COLOR) ADD 30% PER CHAIR"]]).to_excel(
+            writer, sheet_name="Price List Notes", header=False, index=False
+        )
+        pd.DataFrame([["STAIN COLORS"]]).to_excel(
+            writer, sheet_name="PCL Color List", header=False, index=False
+        )
+    data = path.read_bytes()
+    result = import_workbook(data, vendor="FN Chair", filename="FNC_2028_Pricelist_0915.xlsm")
+    keys = {str(k) for k in result.long_df["option_key"].dropna()}
+    assert "Cat. 1" in keys
+    assert not any("ordering select" in k.lower() for k in keys)
+    assert not any("consist" in k.lower() for k in keys)
+
+
 def test_uploaded_fn_workbook_if_present():
     """Smoke-parse the fresh Level One Blue doc when available in uploads."""
     uploads = Path("/home/ubuntu/.cursor/projects/workspace/uploads")

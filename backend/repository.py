@@ -17,6 +17,7 @@ from backend.db import get_connection
 from backend.duplicate_verify import VERIFY_SELECT, verify_duplicate_group
 from backend.models import PRICEBOOK_COLS, SELECT_COLS
 from backend.standardize import (
+    canonical_option_label,
     is_wood_column_label,
     mixed_wood_label,
     mixed_wood_search_values,
@@ -227,7 +228,7 @@ class PriceBookRepository:
                 (vendor,),
             ):
                 if raw:
-                    s = str(raw).strip()
+                    s = canonical_option_label(raw) or str(raw).strip()
                     if s and not is_wood_column_label(s):
                         found.add(s)
             for (raw,) in conn.execute(
@@ -1207,27 +1208,16 @@ class PriceBookRepository:
         """
         if not vendor or not option_key:
             return None
-        with self._conn() as conn:
-            row = conn.execute(
-                """
-                SELECT base_price, adjusted_price, addon_pct, part_number
-                FROM pricebook
-                WHERE vendor = ? AND option_key = ?
-                  AND lower(COALESCE(line_kind, '')) = 'addon'
-                ORDER BY (CASE WHEN trim(COALESCE(part_number,'')) = ? THEN 0 ELSE 1 END),
-                         COALESCE(adjusted_price, 0)
-                LIMIT 1
-                """,
-                (vendor, option_key, option_key),
-            ).fetchone()
-        if row is None:
+        rows = self.get_addon_rows(vendor, option_key)
+        if not rows:
             return None
+        pick = next((r for r in rows if r.get("is_flat")), rows[0])
         return {
-            "base_price": row["base_price"],
-            "adjusted_price": row["adjusted_price"],
-            "addon_pct": row["addon_pct"],
-            "part_number": row["part_number"],
-            "is_flat": (row["part_number"] or "").strip() == option_key.strip(),
+            "base_price": pick["base_price"],
+            "adjusted_price": pick["adjusted_price"],
+            "addon_pct": pick["addon_pct"],
+            "part_number": pick.get("category") if pick.get("is_flat") else option_key,
+            "is_flat": bool(pick.get("is_flat")),
         }
 
     def get_addon_rows(self, vendor: str, option_key: str) -> list[dict]:
@@ -1240,21 +1230,41 @@ class PriceBookRepository:
         """
         if not vendor or not option_key:
             return []
-        opt = option_key.strip()
+        opt = canonical_option_label(option_key) or option_key.strip()
         with self._conn() as conn:
             rows = conn.execute(
                 """
-                SELECT part_number, base_price, adjusted_price, addon_pct
+                SELECT part_number, base_price, adjusted_price, addon_pct,
+                       option_key
                 FROM pricebook
                 WHERE vendor = ? AND option_key = ?
                   AND lower(COALESCE(line_kind, '')) = 'addon'
                 """,
                 (vendor, opt),
             ).fetchall()
+            if not rows:
+                rows = [
+                    r
+                    for r in conn.execute(
+                        """
+                        SELECT part_number, base_price, adjusted_price, addon_pct,
+                               option_key
+                        FROM pricebook
+                        WHERE vendor = ?
+                          AND lower(COALESCE(line_kind, '')) = 'addon'
+                        """,
+                        (vendor,),
+                    )
+                    if (
+                        canonical_option_label(r["option_key"])
+                        or str(r["option_key"] or "").strip()
+                    )
+                    == opt
+                ]
         out: list[dict] = []
         for r in rows:
             pn = (r["part_number"] or "").strip()
-            is_flat = pn == opt
+            is_flat = pn == opt or (canonical_option_label(pn) or "") == opt
             category = pn if is_flat else pn.rsplit(" - ", 1)[0]
             out.append(
                 {
