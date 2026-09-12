@@ -117,9 +117,14 @@ def render_login() -> bool:
 
 def render_accept_invite(token: str) -> bool:
     auth, _, _ = app_stores()
+    peeked = auth.peek_invite(token)
+    locked_email = peeked[0] if peeked else ""
     st.subheader("Accept invite")
+    if not peeked:
+        st.error("Invite is invalid or expired.")
+        return False
     with st.form("accept_invite"):
-        email = st.text_input("Email", disabled=True, value="", key="invite_email_locked")
+        email = st.text_input("Email", disabled=True, value=locked_email, key="invite_email_locked")
         st.caption("Email is locked to the invite. Set your password and name.")
         name = st.text_input("Name")
         pw = st.text_input("Password", type="password")
@@ -412,7 +417,7 @@ def render_admin_users(user: SessionUser) -> None:
                         password=temp,
                         name=name,  # type: ignore[arg-type]
                     )
-                    st.success(f"Created {created.email}")
+                    st.success(f"Created {created.email}. A sign-in link was emailed to them.")
                 else:
                     invite = auth.create_invite(
                         actor=user,
@@ -420,10 +425,12 @@ def render_admin_users(user: SessionUser) -> None:
                         role=role,
                         name=name,  # type: ignore[arg-type]
                     )
-                    st.success(
-                        f"Invite for {invite.email} · last4 {invite.token_last4} · "
-                        f"open `?invite=` with the full token (shown once below)."
+                    sent = (
+                        "Invite email sent."
+                        if invite.email_sent
+                        else "Invite saved — email was not sent (SMTP not configured)."
                     )
+                    st.success(f"Invite for {invite.email} · last4 {invite.token_last4}. {sent}")
                     st.code(invite.invite_token or "", language=None)
             except AuthDenied as exc:
                 st.error(str(exc))

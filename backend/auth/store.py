@@ -10,6 +10,7 @@ from pathlib import Path
 
 from backend.activity.log_activity import ActivityStore
 from backend.app_db import get_app_connection, init_app_db
+from backend.auth.notify import send_account_ready_email
 from backend.auth.passwords import (
     MIN_PASSWORD_LENGTH,
     hash_password,
@@ -72,6 +73,7 @@ class InviteResult:
     temp_password: str | None
     invite_token: str | None
     token_last4: str
+    email_sent: bool = False
 
 
 class AuthStore:
@@ -198,12 +200,14 @@ class AuthStore:
             created_by=actor.id,
             allow_short_password=True,
         )
+        emailed = send_account_ready_email(to_email=user.email, name=user.name)
         self.activity.log_activity(
             actor,
             action="user.create",
             resource_type="user",
             resource_id=str(user.id),
             summary=f"Created {user.email} as {user.role}",
+            metadata={"email_sent": emailed},
         )
         return user
 
@@ -243,16 +247,39 @@ class AuthStore:
                 ),
             )
             conn.commit()
+        emailed = send_account_ready_email(
+            to_email=addr, name=name or email_local_part(addr), invite_token=token
+        )
         self.activity.log_activity(
             actor,
             action="user.create",
             resource_type="user",
             summary=f"Invited {addr} as {role}",
-            metadata={"invite_token": last4},
+            metadata={"invite_token": last4, "email_sent": emailed},
         )
         return InviteResult(
-            email=addr, role=role, temp_password=None, invite_token=token, token_last4=last4
+            email=addr,
+            role=role,
+            temp_password=None,
+            invite_token=token,
+            token_last4=last4,
+            email_sent=emailed,
         )
+
+    def peek_invite(self, token: str) -> tuple[str, str] | None:
+        """Return (email, name) for a valid unused invite. Never returns the raw token."""
+        hashed = _token_hash(token)
+        with get_app_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT email, name, expires_at FROM invites WHERE token_hash = ? AND accepted_at IS NULL",
+                (hashed,),
+            ).fetchone()
+        if not row:
+            return None
+        expires = _parse_dt(row["expires_at"])
+        if expires is None or expires < _now():
+            return None
+        return str(row["email"] or ""), str(row["name"] or "")
 
     def accept_invite(self, token: str, password: str, name: str = "") -> SessionUser:
         hashed = _token_hash(token)
