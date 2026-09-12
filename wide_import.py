@@ -1405,25 +1405,49 @@ def __getattr__(name: str):
     mapping = {
         "looks_like_patio_kraft": ("backend.patio_kraft_import", "looks_like_patio_kraft"),
         "parse_patio_kraft_sheet": ("backend.patio_kraft_import", "parse_patio_kraft_sheet"),
-        "import_patio_kraft_workbook": ("backend.patio_kraft_import", "import_patio_kraft_workbook"),
+        "import_patio_kraft_workbook": (
+            "backend.patio_kraft_import",
+            "import_patio_kraft_workbook",
+        ),
         "looks_like_lamb": ("backend.lamb_import", "looks_like_lamb"),
         "parse_lamb_wholesale_sheet": ("backend.lamb_import", "parse_lamb_wholesale_sheet"),
         "import_lamb_workbook": ("backend.lamb_import", "import_lamb_workbook"),
         "looks_like_windy_acres": ("backend.windy_acres_import", "looks_like_windy_acres"),
         "parse_windy_acres_sheet": ("backend.windy_acres_import", "parse_windy_acres_sheet"),
-        "import_windy_acres_workbook": ("backend.windy_acres_import", "import_windy_acres_workbook"),
+        "import_windy_acres_workbook": (
+            "backend.windy_acres_import",
+            "import_windy_acres_workbook",
+        ),
         "looks_like_hw_chair_markup": ("backend.hw_chair_import", "looks_like_hw_chair_markup"),
         "import_hw_chair_workbook": ("backend.hw_chair_import", "import_hw_chair_workbook"),
         "looks_like_amish_aspen": ("backend.amish_aspen_import", "looks_like_amish_aspen"),
-        "import_amish_aspen_workbook": ("backend.amish_aspen_import", "import_amish_aspen_workbook"),
+        "import_amish_aspen_workbook": (
+            "backend.amish_aspen_import",
+            "import_amish_aspen_workbook",
+        ),
         "looks_like_artisan_chairs": ("backend.artisan_chairs_import", "looks_like_artisan_chairs"),
-        "artisan_chairs_option_addons": ("backend.artisan_chairs_import", "artisan_chairs_option_addons"),
-        "artisan_chairs_product_rows": ("backend.artisan_chairs_import", "artisan_chairs_product_rows"),
-        "count_artisan_option_lines": ("backend.artisan_chairs_import", "count_artisan_option_lines"),
+        "artisan_chairs_option_addons": (
+            "backend.artisan_chairs_import",
+            "artisan_chairs_option_addons",
+        ),
+        "artisan_chairs_product_rows": (
+            "backend.artisan_chairs_import",
+            "artisan_chairs_product_rows",
+        ),
+        "count_artisan_option_lines": (
+            "backend.artisan_chairs_import",
+            "count_artisan_option_lines",
+        ),
         "count_priced_option_lines": ("backend.artisan_chairs_import", "count_priced_option_lines"),
-        "import_artisan_chairs_workbook": ("backend.artisan_chairs_import", "import_artisan_chairs_workbook"),
+        "import_artisan_chairs_workbook": (
+            "backend.artisan_chairs_import",
+            "import_artisan_chairs_workbook",
+        ),
         "looks_like_hillside_chair": ("backend.hillside_chair_import", "looks_like_hillside_chair"),
-        "import_hillside_chair_workbook": ("backend.hillside_chair_import", "import_hillside_chair_workbook"),
+        "import_hillside_chair_workbook": (
+            "backend.hillside_chair_import",
+            "import_hillside_chair_workbook",
+        ),
         "looks_like_maple_lane": ("backend.maple_lane_import", "looks_like_maple_lane"),
         "import_maple_lane_workbook": ("backend.maple_lane_import", "import_maple_lane_workbook"),
         "looks_like_millers": ("backend.millers_import", "looks_like_millers"),
@@ -1754,6 +1778,13 @@ def import_workbook(
     }
     skip_markup_dup = bool(markup_dup_sheets and plain_price_sheets and sheet_filter is None)
 
+    def _sheet_collection(sheet_name: str) -> str:
+        from backend.book_options import sheet_finish_state
+
+        if sheet_finish_state(sheet_name):
+            return default_collection or ""
+        return default_collection or sheet_name
+
     for name in names:
         if sheet_filter is not None and name not in sheet_filter:
             continue
@@ -1828,17 +1859,17 @@ def import_workbook(
             long = unpivot_wide_species(
                 df,
                 layout,
-                default_collection=default_collection or name,
+                default_collection=_sheet_collection(name),
                 vendor=vendor,
                 wholesale_map=wmap,
             )
         elif layout.layout == "wide_finish":
             long = unpivot_wide_finish(
-                df, layout, default_collection=default_collection or name, vendor=vendor
+                df, layout, default_collection=_sheet_collection(name), vendor=vendor
             )
         elif layout.layout == "long_flat":
             long = extract_long_flat(
-                df, layout, default_collection=default_collection or name, vendor=vendor
+                df, layout, default_collection=_sheet_collection(name), vendor=vendor
             )
         elif layout.layout == "skip":
             tried.append({"sheet": name, "layout": "skip", "rows": 0, "note": layout.notes})
@@ -1860,7 +1891,7 @@ def import_workbook(
                 long = unpivot_wide_species(
                     df,
                     layout_try,
-                    default_collection=default_collection or name,
+                    default_collection=_sheet_collection(name),
                     vendor=vendor,
                     wholesale_map=wmap2,
                 )
@@ -1873,7 +1904,7 @@ def import_workbook(
                     price_cols=numericish,
                 )
                 long = extract_long_flat(
-                    df, layout_try, default_collection=default_collection or name, vendor=vendor
+                    df, layout_try, default_collection=_sheet_collection(name), vendor=vendor
                 )
 
         # Drop obvious junk rows (tiny prices with no SKU on info pages)
@@ -1922,7 +1953,7 @@ def import_workbook(
             catalog = extract_multi_name_price_catalog(
                 df,
                 vendor=vendor,
-                default_collection=default_collection or name,
+                default_collection=_sheet_collection(name),
             )
             if (
                 catalog is not None
@@ -1947,12 +1978,17 @@ def import_workbook(
             }
         )
         if n > 0:
-            # if collection empty, use sheet name
-            if "collection" in long.columns:
+            # if collection empty, use sheet name — never Finished/Unfinished tabs
+            from backend.book_options import (
+                apply_sheet_base_material,
+                apply_sheet_finish_state,
+                sheet_finish_state,
+            )
+
+            if "collection" in long.columns and not sheet_finish_state(str(name)):
                 long["collection"] = long["collection"].fillna(name)
                 long.loc[long["collection"].astype(str).str.strip() == "", "collection"] = name
-            from backend.book_options import apply_sheet_base_material
-
+            long = apply_sheet_finish_state(long, str(name))
             long = apply_sheet_base_material(long, str(name))
             frames.append(long)
 

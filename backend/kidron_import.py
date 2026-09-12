@@ -7,6 +7,7 @@ factory wholesale finished/unfinished twins used by Search.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
@@ -22,9 +23,7 @@ _TRAILING_SKU = re.compile(
 # First wholesale column in the two-block books (Solo Galaxy).
 _WHOLESALE_COL = 8
 # Footer prose sits in the SKU column with no prices; it is not a collection.
-_FOOTER_PROSE = re.compile(
-    r"(?i)^\*|available\b|compliant\b|^note[s]?\b|^all\s+other\b|^prices?\b"
-)
+_FOOTER_PROSE = re.compile(r"(?i)^\*|available\b|compliant\b|^note[s]?\b|^all\s+other\b|^prices?\b")
 
 
 def _text(value: Any) -> str:
@@ -58,7 +57,7 @@ def _species(value: Any) -> str:
 
 
 def _collection_from_filename(filename: str) -> str:
-    stem = re.sub(r"\.[A-Za-z0-9]+$", "", str(filename or "").strip())
+    stem = Path(str(filename or "").strip()).stem
     stem = re.sub(r"[_\-]+", " ", stem)
     return re.sub(r"\s+", " ", stem).strip()
 
@@ -75,9 +74,7 @@ def _pairs_with_finish_twins(
     twinned = [
         pair
         for pair in price_pairs
-        if any(
-            _money(row[pair[1]]) for row in data_rows if pair[1] < len(row)
-        )
+        if any(_money(row[pair[1]]) for row in data_rows if pair[1] < len(row))
     ]
     return twinned if twinned and len(twinned) != len(price_pairs) else price_pairs
 
@@ -138,9 +135,7 @@ def _parse_prices(raw: pd.DataFrame, vendor: str) -> list[dict[str, Any]]:
         if trailing:
             part_number = trailing.group("sku").strip()
             description = trailing.group("desc").strip() or part_number
-            out.extend(
-                _price_rows(row, price_pairs, vendor, collection, part_number, description)
-            )
+            out.extend(_price_rows(row, price_pairs, vendor, collection, part_number, description))
             continue
         if not match:
             if (
@@ -152,9 +147,7 @@ def _parse_prices(raw: pd.DataFrame, vendor: str) -> list[dict[str, Any]]:
             continue
         part_number, description = match.groups()
         description = description.strip() or part_number
-        out.extend(
-            _price_rows(row, price_pairs, vendor, collection, part_number, description)
-        )
+        out.extend(_price_rows(row, price_pairs, vendor, collection, part_number, description))
     return out
 
 
@@ -168,9 +161,7 @@ def _parse_finished_configurations(
     header_index: Optional[int] = None
     columns: list[tuple[int, str]] = []
     for row_index, row in enumerate(rows):
-        fin_columns = [
-            col for col, value in enumerate(row) if _text(value).casefold() == "fin"
-        ]
+        fin_columns = [col for col, value in enumerate(row) if _text(value).casefold() == "fin"]
         if len(fin_columns) < 2 or row_index == 0:
             continue
         for col in fin_columns:
@@ -197,13 +188,20 @@ def _parse_finished_configurations(
             if key in seen:
                 continue
             seen.add(key)
+            config = configuration.casefold()
+            if "with cowhide" in config:
+                species = "Cowhide"
+            elif "without cowhide" in config:
+                species = "Leather"
+            else:
+                species = configuration
             out.append(
                 {
                     "vendor": vendor,
                     "collection": collection,
                     "part_number": None,
                     "description": f"{size} — {configuration}",
-                    "species": None,
+                    "species": species,
                     "finish_state": "finished",
                     "base_price": price,
                     "price_basis": "wholesale",

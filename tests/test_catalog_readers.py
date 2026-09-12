@@ -283,3 +283,54 @@ def test_millcraft_selected_beds_share_the_suite_collection():
     }
     assert any("Panel Bed" in d for d in descs["MDC56QN"])
     assert any("Leather Upholstered Bed" in d for d in descs["MDC52QN"])
+
+
+def _genuine_oak_finished_unfinished_book() -> bytes:
+    wb = openpyxl.Workbook()
+    finished = wb.active
+    finished.title = "Finished"
+    finished.append(["ITEM #", "DESCRIPTION", "Oak, Br. Maple", "Cherry, Hickory"])
+    for sku, name, oak, cherry in (
+        ("G0-100", "Nightstand", 200, 240),
+        ("G0-101", "Dresser", 400, 480),
+        ("G0-102", "Chest", 360, 432),
+        ("G0-103", "Armoire", 520, 624),
+        ("G0-104", "Bookcase", 280, 336),
+        ("G0-105", "Media Cabinet", 310, 372),
+    ):
+        finished.append([sku, name, oak, cherry])
+    unfinished = wb.create_sheet("Unfinished")
+    unfinished.append(["ITEM #", "DESCRIPTION", "Oak, Br. Maple", "Cherry, Hickory"])
+    for sku, name, oak, cherry in (
+        ("G0-100", "Nightstand", 160, 192),
+        ("G0-101", "Dresser", 320, 384),
+        ("G0-102", "Chest", 288, 346),
+        ("G0-103", "Armoire", 416, 499),
+        ("G0-104", "Bookcase", 224, 269),
+        ("G0-105", "Media Cabinet", 248, 298),
+    ):
+        unfinished.append([sku, name, oak, cherry])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_genuine_oak_unfinished_tab_is_unfinished_not_a_collection():
+    spec = spec_for_vendor("Genuine Oak")
+    result = import_catalog_workbook(
+        spec,
+        _genuine_oak_finished_unfinished_book(),
+        vendor="Genuine Oak",
+        filename="Download_2026_Pricelist_3481.xlsx",
+    )
+    items = result.long_df
+    if "line_kind" in items.columns:
+        items = items[items["line_kind"].fillna("item").astype(str).str.lower() != "addon"]
+    finishes = set(items["finish_state"].astype(str).str.lower())
+    assert finishes == {"finished", "unfinished"}
+    unfinished = items[items["finish_state"].astype(str).str.lower() == "unfinished"]
+    assert not unfinished.empty
+    collections = {str(value).strip().lower() for value in unfinished["collection"].dropna()}
+    assert "unfinished" not in collections
+    oak = unfinished[unfinished["species"].astype(str).str.contains("Oak", case=False)]
+    assert float(oak["base_price"].iloc[0]) == 160.0

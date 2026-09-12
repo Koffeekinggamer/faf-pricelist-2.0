@@ -141,8 +141,12 @@ def test_repeated_species_block_is_not_counted_twice():
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sheet1"
-    ws.append([None, "Brown Maple\nOak", None, None, None, None, None, None, None, "Brown Maple\nOak"])
-    ws.append(["***ROUGH SAWN PRICE", "Fin", "Unfin", None, None, None, None, None, None, "Fin", "Unfin"])
+    ws.append(
+        [None, "Brown Maple\nOak", None, None, None, None, None, None, None, "Brown Maple\nOak"]
+    )
+    ws.append(
+        ["***ROUGH SAWN PRICE", "Fin", "Unfin", None, None, None, None, None, None, "Fin", "Unfin"]
+    )
     ws.append(["#1962 Timberline TV Stand", 716, 628, None, None, None, None, None, None, 716, 628])
     buf = io.BytesIO()
     wb.save(buf)
@@ -162,7 +166,9 @@ def test_distinct_species_blocks_both_survive():
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sheet1"
-    ws.append([None, "Brown Maple Oak (Rough Sawn)", None, None, None, None, None, None, None, "Walnut"])
+    ws.append(
+        [None, "Brown Maple Oak (Rough Sawn)", None, None, None, None, None, None, None, "Walnut"]
+    )
     ws.append([None, "Fin", "Unfin", None, None, None, None, None, None, "Fin", "Unfin"])
     ws.append(["Deluxe Dresser #1974", 1225, 1092, None, None, None, None, None, None, 1846, 1638])
     buf = io.BytesIO()
@@ -252,7 +258,7 @@ def test_grand_isle_finished_configurations_are_not_dropped_for_lacking_skus():
     rows = import_kidron_workbook(
         buf.getvalue(),
         vendor="Kidron Woodcraft",
-        filename="Grand_Isle.xlsx",
+        filename="Download_2026_Pricelists_3224_unzipped/Grand_Isle.xlsx",
     ).long_df
 
     assert len(rows) == 4
@@ -264,6 +270,11 @@ def test_grand_isle_finished_configurations_are_not_dropped_for_lacking_skus():
         "King — Without Cowhide",
     }
     assert set(rows["finish_state"]) == {"finished"}
+    by_desc = dict(zip(rows["description"], rows["species"]))
+    assert by_desc["Queen & Full — With Cowhide"] == "Cowhide"
+    assert by_desc["Queen & Full — Without Cowhide"] == "Leather"
+    assert by_desc["King — With Cowhide"] == "Cowhide"
+    assert by_desc["King — Without Cowhide"] == "Leather"
 
 
 def test_collection_falls_back_to_the_book_name():

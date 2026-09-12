@@ -695,6 +695,37 @@ def _fill_blank_species_from_wood_context(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def sheet_finish_state(sheet_name: str) -> str:
+    """Visible Finished / Unfinished tabs are the finish, not a collection."""
+    label = re.sub(r"\s+", " ", str(sheet_name or "")).strip()
+    if re.fullmatch(r"(?i)unfinished|unfin", label):
+        return "unfinished"
+    if re.fullmatch(r"(?i)finished", label):
+        return "finished"
+    return ""
+
+
+def apply_sheet_finish_state(df: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
+    """Stamp finish from a Finished/Unfinished tab onto sellable rows."""
+    finish = sheet_finish_state(sheet_name)
+    if not finish or df is None or getattr(df, "empty", True):
+        return df
+    out = df.copy()
+    if "finish_state" not in out.columns:
+        out["finish_state"] = finish
+        return out
+    if "line_kind" in out.columns:
+        mask = out["line_kind"].fillna("item").astype(str).str.lower().ne("addon")
+    else:
+        mask = pd.Series(True, index=out.index)
+    if finish == "unfinished":
+        out.loc[mask, "finish_state"] = finish
+    else:
+        blank = out["finish_state"].isna() | out["finish_state"].astype(str).str.strip().eq("")
+        out.loc[mask & blank, "finish_state"] = finish
+    return out
+
+
 def apply_sheet_base_material(df: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
     """Metal Bases / Steel Bases tabs stamp that material on blank item rows."""
     from backend.standardize import base_material_label
