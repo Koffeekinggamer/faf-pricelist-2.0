@@ -11,11 +11,15 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from backend.add_builder import plan_builder  # noqa: E402
+from backend.add_builder import write_fixture as write_stub_fixture  # noqa: E402
 from tests.fixture_corpus import (  # noqa: E402
     OPTIONS_FIXTURE,
     SETTLED_FIXTURES,
+    STUB_FIXTURE,
     WIDE_FIXTURE,
 )
+from tests.fixtures.build_tier_b import TIER_B_BUILDERS  # noqa: E402
 
 
 def _book(sheets: dict[str, list[list]]) -> openpyxl.Workbook:
@@ -332,6 +336,7 @@ def main() -> None:
         "J & M Woodworking": build_jmw,
         "Artisan Chairs": build_artisan_chairs,
         "Criswell Bedroom": build_criswell,
+        **TIER_B_BUILDERS,
     }
     for builder, _importer, _next_file, path, _opts in SETTLED_FIXTURES:
         builders[builder](path)
@@ -341,6 +346,10 @@ def main() -> None:
     build_millcraft_options(OPTIONS_FIXTURE[3])
     print(
         f"wrote {OPTIONS_FIXTURE[3].relative_to(ROOT)} ({OPTIONS_FIXTURE[3].stat().st_size} bytes)"
+    )
+    write_stub_fixture(plan_builder(STUB_FIXTURE[0]), STUB_FIXTURE[3])
+    print(
+        f"wrote {STUB_FIXTURE[3].relative_to(ROOT)} ({STUB_FIXTURE[3].stat().st_size} bytes)"
     )
 
 

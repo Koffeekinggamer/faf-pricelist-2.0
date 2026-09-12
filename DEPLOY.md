@@ -1,15 +1,22 @@
+# DEPRECATED sections below are not identity
+
+> **Canonical remote is `Koffeekinggamer/faf-pricelist-2.0`.** Live app is Fly `faf-pricebook` (https://faf-pricebook.fly.dev). Do not clone, push, or deploy `pricebook-system`. Streamlit Community Cloud is historical — not the floor book.
+>
+> Identity and deploy gates: [`AGENTS.md`](./AGENTS.md), [`docs/PRICEBOOK_AGENT_AUDIT.md`](./docs/PRICEBOOK_AGENT_AUDIT.md), [`docs/CURSOR_AGENT_KICKOFF.md`](./docs/CURSOR_AGENT_KICKOFF.md). `fly deploy` and Fly DB push/pull need Judson.
+
 # Deploy FAF Price Book (online access)
 
 ## Source of truth
 
 | Asset                     | Location                                                   | Notes                         |
 | ------------------------- | ---------------------------------------------------------- | ----------------------------- |
-| **Authoritative catalog** | `~/FAF-pricelist-2.0/master_pricebook.db` on the store Mac | **Never** committed to GitHub |
-| **App code**              | `origin` → `Koffeekinggamer/pricebook-system`              | Safe to deploy                |
+| **Authoritative catalog** | Mac/SSD `master_pricebook.db` (`HANDOFF.md` path)          | **Never** committed to GitHub |
+| **App code**              | `origin` → `Koffeekinggamer/faf-pricelist-2.0`             | Safe to deploy **code** only  |
+| **Live app**              | Fly `faf-pricebook` → https://faf-pricebook.fly.dev        | Volume holds the catalog      |
 | **Backups**               | `~/Documents/FAF-pricebook-backups/`                       | Local only                    |
 
-**Important:** Streamlit Cloud / Fly deploy the **code**, not the private ~500k-row DB (gitignored).  
-Floor staff should use **local** or the **Mac public tunnel** for current prices.
+**Important:** Fly (and any old Cloud recipe) deploys the **code**, not the private catalog (gitignored).  
+Floor staff should use **local** or Fly for current prices. Do not treat Streamlit Cloud as identity.
 
 ---
 
@@ -48,12 +55,14 @@ cloudflared tunnel --url http://127.0.0.1:8501 --no-autoupdate
 
 ---
 
-## Streamlit Community Cloud (code only — empty/small DB unless you inject data)
+## Streamlit Community Cloud (HISTORICAL — not the live app)
 
-Repo: https://github.com/Koffeekinggamer/pricebook-system
+Do not deploy here. Do not use repo `Koffeekinggamer/pricebook-system`. Live path is Fly `faf-pricebook` on `Koffeekinggamer/faf-pricelist-2.0`.
+
+The old Cloud recipe (kept so this file is not silently deleted):
 
 1. https://share.streamlit.io/deploy
-2. Repository `Koffeekinggamer/pricebook-system` · branch `main` · main file `pricebook_app.py`
+2. Repository `Koffeekinggamer/faf-pricelist-2.0` · branch `main` · main file `pricebook_app.py` — **still not the floor book**
 3. Secrets (optional):
 
 ```toml
@@ -140,5 +149,5 @@ Credentials: `.streamlit/secrets.toml` `[viztech]` (gitignored).
 | Need                            | Use                                                           |
 | ------------------------------- | ------------------------------------------------------------- |
 | Floor sales today, full book    | **Local 8501** or **quick tunnel**                            |
-| Permanent public marketing demo | Cloud/Fly with a **sanitized sample DB** (not full wholesale) |
+| Permanent public marketing demo | Fly with a **sanitized sample DB** (not full wholesale)       |
 | Keep prices private             | Never commit `*.db`; use Mac tunnel only for staff            |

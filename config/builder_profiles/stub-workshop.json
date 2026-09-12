@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "vendor": "Stub Workshop",
+  "parser": {
+    "importer": "stub_workshop",
+    "source_file": "Stub_Workshop_2028_Pricelist.xlsx",
+    "filename_hints": [
+      "stub workshop",
+      "stubworkshop"
+    ],
+    "layouts": [
+      "wide_species"
+    ],
+    "locked": true
+  },
+  "stub": true,
+  "note": "Template only - not a selling factory. Clone via scripts/add_builder.py."
+}
