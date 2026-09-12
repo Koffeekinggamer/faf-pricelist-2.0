@@ -103,7 +103,11 @@ CATALOG_SPECS: tuple[CatalogSpec, ...] = (
     CatalogSpec("ebony_woodworking", "Ebony Woodworking"),
     CatalogSpec("elite_designs", "Elite Designs"),
     CatalogSpec("farmside_wood", "Farmside Wood"),
-    CatalogSpec("five_star_tables", "Five Star Tables"),
+    CatalogSpec(
+        "five_star_tables",
+        "Five Star Tables",
+        reader="backend.five_star_import:import_five_star_workbook",
+    ),
     CatalogSpec(
         "fredericksburg_furniture",
         "Fredericksburg Furniture",
@@ -137,6 +141,12 @@ CATALOG_SPECS: tuple[CatalogSpec, ...] = (
     ),
     CatalogSpec("meadow_lane_furniture", "Meadow Lane Furniture"),
     CatalogSpec("millcraft", "Millcraft"),
+    CatalogSpec(
+        "millers_woodshop",
+        "Millers Woodshop",
+        extra_tokens=("mws",),
+        reader="backend.millers_import:import_millers_workbook",
+    ),
     CatalogSpec("millwood_quality_furniture", "Millwood Quality Furniture"),
     CatalogSpec("mirror_lake_woodworks", "Mirror Lake Woodworks"),
     CatalogSpec("nisley_cabinet_llc", "Nisley Cabinet LLC", extra_tokens=("nisley",)),
@@ -181,48 +191,11 @@ def spec_for_vendor(vendor: str) -> Optional[CatalogSpec]:
 _SHEET_COLLECTION = re.compile(r"(?i)^(pricelist|price list)$")
 
 
-_FIVE_STAR_WOOD_ADDONS = (
-    ("Sap Cherry / Brown Maple / Wormy Maple", 15.0),
-    ("Cherry / Maple / Elm", 35.0),
-    ("Hickory / Rustic Cherry", 25.0),
-    ("QSWO / Rustic QSWO / Flat Sawn White Oak", 45.0),
-    ("Rustic Hickory", 25.0),
-    ("Walnut", 80.0),
-    ("Rustic Walnut", 45.0),
-    ("Wormy Maple / Walnut Combo", 35.0),
-    ("Rustic Hickory / Walnut Combo", 35.0),
-)
-_FIVE_STAR_JUNK = re.compile(
-    r"(?i)^(terms|net 30|standard table|locks on all|levelers|please call|"
-    r"2%\s+will be added|table of contents)$"
-)
-
-
 def apply_five_star_oak_tables(df):
-    """Tables are priced in Oak; other woods become Wood-column species."""
-    from backend.book_options import convert_option_woods_to_species
+    """Compat wrapper — the shape reader lives in ``five_star_import``."""
+    from backend.five_star_import import apply_five_star_oak_tables as apply_oak
 
-    if df is None or getattr(df, "empty", True):
-        return df
-    out = df.copy()
-    if "species" not in out.columns:
-        out["species"] = None
-    if "line_kind" in out.columns:
-        kind = out["line_kind"].fillna("item").astype(str).str.lower()
-    else:
-        kind = "item"
-        out["line_kind"] = "item"
-    blank = out["species"].isna() | out["species"].astype(str).str.strip().eq("")
-    if not isinstance(kind, str):
-        blank = blank & (kind != "addon")
-    out.loc[blank, "species"] = "Oak"
-    if "option_key" in out.columns and not isinstance(kind, str):
-        junk = kind.eq("addon") & out["option_key"].fillna("").astype(str).map(
-            lambda s: bool(_FIVE_STAR_JUNK.search(s))
-        )
-        out = out.loc[~junk].reset_index(drop=True)
-    adders = {label: pct / 100.0 for label, pct in _FIVE_STAR_WOOD_ADDONS}
-    return convert_option_woods_to_species(out, adders)
+    return apply_oak(df)
 
 
 def apply_piece_name_collections(df):
@@ -461,8 +434,6 @@ def import_catalog_workbook(
     )
     if spec.parser_id == "millcraft":
         result.long_df = apply_piece_name_collections(result.long_df)
-    if spec.parser_id == "five_star_tables":
-        result.long_df = apply_five_star_oak_tables(result.long_df)
     if spec.vendor == "INTEG Wood Products":
         product_context = integ_product_context(data)
     elif spec.vendor == "Hermies Table Shop":
