@@ -427,6 +427,8 @@ def render_admin_users(user: SessionUser) -> None:
                     st.code(invite.invite_token or "", language=None)
             except AuthDenied as exc:
                 st.error(str(exc))
+            except ValueError as exc:
+                st.error(str(exc))
     st.markdown("##### Admin password reset")
     emails = [str(r.get("email") or "") for r in rows]
     if emails:
@@ -438,6 +440,8 @@ def render_admin_users(user: SessionUser) -> None:
                 auth.admin_reset_password(user, int(match["id"]), new_pw)
                 st.success("Password reset. They must change it on next login.")
             except AuthDenied as exc:
+                st.error(str(exc))
+            except ValueError as exc:
                 st.error(str(exc))
 
 

@@ -138,6 +138,29 @@ def test_08_admin_creates_jane_as_sales(tmp_path: Path, monkeypatch: pytest.Monk
     assert jane.email == "jane@example.com"
 
 
+def test_admin_create_user_accepts_a_short_temp_password(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ADMIN_EMAIL", "owner@faf.example")
+    monkeypatch.setenv("ADMIN_PASSWORD", "admin-pass-1")
+    path = _app_db(tmp_path)
+    bootstrap_users(path)
+    store = AuthStore(path)
+    admin = store.authenticate("owner@faf.example", "admin-pass-1")
+    assert admin is not None
+    michael = store.create_user(
+        actor=admin,
+        email="michael@example.com",
+        role="manager",
+        password="Admin",
+        name="Michael",
+    )
+    assert michael.email == "michael@example.com"
+    signed_in = store.authenticate("michael@example.com", "Admin")
+    assert signed_in is not None
+    assert signed_in.role == "manager"
+
+
 def test_09_jane_logs_in_any_case_builds_quote(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

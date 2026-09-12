@@ -196,6 +196,7 @@ class AuthStore:
             role=parsed,
             name=name,
             created_by=actor.id,
+            allow_short_password=True,
         )
         self.activity.log_activity(
             actor,
@@ -492,15 +493,12 @@ class AuthStore:
 
     def admin_reset_password(self, actor: SessionUser, user_id: int, new_password: str) -> None:
         require(actor, "users.manage")
-        if len(new_password) < MIN_PASSWORD_LENGTH:
-            raise AuthDenied(
-                f"Password must be at least {MIN_PASSWORD_LENGTH} characters.",
-                reason="password",
-            )
+        if not new_password:
+            raise AuthDenied("Password required.", reason="password")
         target = self.get_by_id(user_id)
         if target is None:
             raise AuthDenied("User not found.", status_code=404)
-        self._write_password(user_id, new_password, must_change=True)
+        self._write_password(user_id, new_password, must_change=True, allow_short=True)
         self.activity.log_activity(
             actor,
             action="user.password.reset.admin",
@@ -581,7 +579,9 @@ class AuthStore:
     ) -> None:
         self._write_password(user_id, password, must_change=must_change)
 
-    def _write_password(self, user_id: int, password: str, *, must_change: bool) -> None:
+    def _write_password(
+        self, user_id: int, password: str, *, must_change: bool, allow_short: bool = False
+    ) -> None:
         with get_app_connection(self.db_path) as conn:
             conn.execute(
                 """
@@ -589,7 +589,12 @@ class AuthStore:
                 SET password_hash = ?, must_change_password = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (hash_password(password), 1 if must_change else 0, _iso(), user_id),
+                (
+                    hash_password(password, allow_short=allow_short),
+                    1 if must_change else 0,
+                    _iso(),
+                    user_id,
+                ),
             )
             conn.commit()
 
