@@ -357,6 +357,37 @@ def test_five_star_stool_keeps_only_seat_options_printed_in_title(tmp_path):
     ) == ["Fabric Seat", "Leather Seat"]
 
 
+def test_five_star_non_seat_goods_reject_bare_leather_or_fabric_price(tmp_path):
+    """Bare Leather $40 / Fabric $20 evidence requires seating-goods context."""
+    svc = PriceBookService(tmp_path / "t.db")
+    svc.init()
+    vendor = "Five Star Tables"
+    table = _row(vendor, part="T-200")
+    table["description"] = "Mission Dining Table — Leather $40; Fabric $20 available"
+    svc.repo.insert_rows(
+        [
+            table,
+            *[
+                _row(
+                    vendor,
+                    species=None,
+                    option_key=label,
+                    part=label,
+                    line_kind="addon",
+                )
+                for label in ("Fabric Seat", "Leather Seat", "Butterfly Leaves")
+            ],
+        ]
+    )
+
+    assert svc.list_option_keys(
+        vendor,
+        query="T-200",
+        collection="Casegoods",
+        part_number="T-200",
+    ) == []
+
+
 def test_artisan_bar_stool_keeps_profile_declared_seat_options(tmp_path):
     svc = PriceBookService(tmp_path / "t.db")
     svc.init()

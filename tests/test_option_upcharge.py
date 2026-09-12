@@ -275,6 +275,124 @@ def test_fn_em_dash_addon_only_prices_its_exact_chair(tmp_path):
     )
 
 
+def test_fn_em_dash_addon_multi_collection_never_fuzzy_bleeds_to_bar(tmp_path):
+    """Ambiguous Abe (two collections) must fail closed — never fuzzy-match Bar."""
+    svc = _svc(tmp_path)
+    vendor = "FN Chair"
+    label = "Solid Fabrics / COM"
+    svc.repo.insert_rows(
+        [
+            {
+                **_item(vendor, "Abe", "Abe Side Chair", "Abe Side Chair", 428.0),
+                "option_key": "Cat. 1",
+            },
+            {
+                **_item(vendor, "Seating", "Abe Side Chair", "Abe Side Chair", 428.0),
+                "option_key": "Cat. 1",
+            },
+            {
+                **_item(vendor, "Seating", "Bar Side Chair", "Bar Side Chair", 460.0),
+                "option_key": "Cat. 1",
+            },
+            {
+                **_addon(vendor, label, 23.0, 68.0),
+                "collection": "Addons",
+                "part_number": f"Abe Side Chair — {label}",
+            },
+        ]
+    )
+
+    rows = svc.repo.get_addon_rows(vendor, label)
+    assert all(r.get("is_item_scoped") for r in rows)
+    assert all(not (r.get("category") or "").casefold().startswith("abe side chair —") for r in rows)
+
+    bar = svc.search(
+        "Bar Side Chair",
+        vendor=vendor,
+        collection="Seating",
+        part_number="Bar Side Chair",
+        option_key=["Cat. 1", label],
+    )
+    assert bar.empty
+    assert label not in svc.list_option_keys(
+        vendor,
+        query="Bar Side Chair",
+        collection="Seating",
+        part_number="Bar Side Chair",
+    )
+
+    abe = svc.search(
+        "Abe Side Chair",
+        vendor=vendor,
+        collection="Seating",
+        part_number="Abe Side Chair",
+        option_key=["Cat. 1", label],
+    )
+    assert float(abe.iloc[0]["adjusted_price"]) == 496.0
+
+
+def test_paint_applies_exact_item_then_remaining_category_rows(tmp_path):
+    """Item-scoped Paint must not suppress other valid category Paint rows."""
+    svc = _svc(tmp_path)
+    vendor = "Paint Mix Co"
+    svc.repo.insert_rows(
+        [
+            _item(vendor, "Bedroom", "Queen Bed", "Queen Bed", 2000.0),
+            _item(vendor, "Bedroom", "D9", "9 Drawer Dresser", 1000.0),
+            {
+                **_addon(vendor, "Paint", 130.0, 352.0),
+                "part_number": "Queen Bed - Paint",
+                "collection": "Bedroom",
+            },
+            _addon_cat(vendor, "Paint", "9 Drawer Dresser", 150.0, 406.0),
+        ]
+    )
+
+    res = svc.search("", vendor=vendor, option_key="Paint")
+    parts = set(res["part_number"])
+    assert parts == {"Queen Bed", "D9"}
+    bed = res[res["part_number"] == "Queen Bed"].iloc[0]
+    dresser = res[res["part_number"] == "D9"].iloc[0]
+    assert float(bed["adjusted_price"]) == 2352.0
+    assert float(dresser["adjusted_price"]) == 1406.0
+    assert str(bed["notes"]).count("+ Paint") == 1
+    assert str(dresser["notes"]).count("+ Paint") == 1
+
+
+def test_per_sku_addon_collection_match_is_case_insensitive(tmp_path):
+    svc = _svc(tmp_path)
+    vendor = "LuxHome"
+    svc.repo.insert_rows(
+        [
+            {
+                **_item(
+                    vendor,
+                    "Harmony Collection",
+                    "21 HRR",
+                    "Harmony Rocker Recliner",
+                    270.0,
+                ),
+                "species": None,
+                "option_key": "Standard",
+            },
+            {
+                **_addon(vendor, "Motorized Mechanism", 80.0, 216.0),
+                "collection": "harmony collection",
+                "part_number": "21 HRR",
+                "description": "Harmony Rocker Recliner",
+            },
+        ]
+    )
+
+    rows = svc.repo.get_addon_rows(vendor, "Motorized Mechanism")
+    assert len(rows) == 1
+    assert rows[0]["is_item_scoped"] is True
+
+    priced = svc.search("21 HRR", vendor=vendor, option_key="Motorized Mechanism")
+    assert list(priced["part_number"]) == ["21 HRR"]
+    assert float(priced.iloc[0]["adjusted_price"]) == 486.0
+
+
 def test_per_sku_addon_only_prices_its_catalog_item(tmp_path):
     """LuxHome-style addon columns belong to the SKU printed on that row."""
     svc = _svc(tmp_path)

@@ -692,10 +692,17 @@ class PriceBookService:
         seat_core = re.sub(r"\s+seats?$", "", label).strip()
         if seat_core == label or not seat_core:
             return False
-        priced_seat = (
-            rf"\b{re.escape(seat_core)}\b(?:\s+seats?)?\s*(?:add\s*)?\$\s*\d"
+        # "Fabric Seats Add $20" is enough on its own; bare "Leather $40" only
+        # counts when the same item text is seating goods (stool / chair / …).
+        seat_word = rf"\b{re.escape(seat_core)}\b\s+seats?\s*(?:add\s*)?\$\s*\d"
+        if text.str.contains(seat_word, regex=True).any():
+            return True
+        bare_price = rf"\b{re.escape(seat_core)}\b\s*(?:add\s*)?\$\s*\d"
+        seating_goods = r"\b(?:stools?|chairs?|seats?|benches?)\b"
+        return bool(
+            text.str.contains(bare_price, regex=True).any()
+            and text.str.contains(seating_goods, regex=True).any()
         )
-        return bool(text.str.contains(priced_seat, regex=True).any())
 
     def _match_addon_category(
         self,
@@ -793,22 +800,25 @@ class PriceBookService:
 
         item_scoped = [a for a in addons if a.get("is_item_scoped")]
         if item_scoped:
-            # Some factory books print add-on columns directly on each SKU
-            # (LuxHome). Those charges are exact-item data, not categories and
-            # never a builder-wide fallback. Identity is builder (caller) +
-            # part_number + collection.
-            by_item = {
-                (
-                    str(a.get("part_number") or "").strip().casefold(),
-                    str(a.get("collection") or "").strip().casefold(),
-                ): a
-                for a in item_scoped
-                if str(a.get("part_number") or "").strip()
-            }
+            # Exact SKU charges first (LuxHome columns, FN "Abe — fabric").
+            # Empty collection means part-only scope (ambiguous multi-collection
+            # suffix rows). Remaining category/flat rows still apply below to
+            # rows that did not receive an exact hit — never double-charge.
+            by_item: dict[tuple[str, str], dict] = {}
+            by_part_only: dict[str, dict] = {}
+            for a in item_scoped:
+                part = str(a.get("part_number") or "").strip().casefold()
+                if not part:
+                    continue
+                coll = str(a.get("collection") or "").strip().casefold()
+                if coll:
+                    by_item[(part, coll)] = a
+                else:
+                    by_part_only[part] = a
             for idx in df.index:
                 part = str(df.at[idx, "part_number"] or "").strip().casefold()
                 coll = str(df.at[idx, "collection"] or "").strip().casefold()
-                addon = by_item.get((part, coll))
+                addon = by_item.get((part, coll)) or by_part_only.get(part)
                 if addon is None:
                     continue
                 r = df.loc[idx]
@@ -827,14 +837,17 @@ class PriceBookService:
                 n = notes.at[idx] if idx in notes.index else ""
                 df.at[idx, "notes"] = f"{n} · {tag}".strip(" ·") if n else tag
                 applied.at[idx] = True
-            return df, applied
+            flat = [a for a in addons if a.get("is_flat") and not a.get("is_item_scoped")]
+            cats = [a for a in addons if not a.get("is_flat") and not a.get("is_item_scoped")]
+            if not flat and not cats:
+                return df, applied
 
         if is_drawer_door and flat:
             eligible = text.apply(
                 lambda s: (
                     any(k in s for k in drawer_keywords) and not any(x in s for x in drawer_exclude)
                 )
-            )
+            ) & ~applied
             if not eligible.any():
                 return df, applied
             for idx in df.index[eligible]:
@@ -869,9 +882,10 @@ class PriceBookService:
             return df, applied
 
         if parser_locked and flat:
+            pending = df.loc[~applied]
             flat = (
                 flat
-                if self._locked_flat_option_has_item_evidence(df, option_key, profile)
+                if self._locked_flat_option_has_item_evidence(pending, option_key, profile)
                 else []
             )
             if not flat and not cats:
@@ -880,7 +894,8 @@ class PriceBookService:
         # Finish / per-category (or non-drawer flat): every physical WOOD item.
         # Qty does not apply to finish options — only extras.
         has_wood = df.get("species").fillna("").astype(str).str.strip() != ""
-        if not has_wood.any():
+        pending_wood = has_wood & ~applied
+        if not pending_wood.any():
             return df, applied
 
         rc = sorted(
@@ -902,7 +917,7 @@ class PriceBookService:
                     med_addon = a
                     break
 
-        for idx in df.index[has_wood]:
+        for idx in df.index[pending_wood]:
             r = df.loc[idx]
             itext = f"{r.get('description') or ''} {r.get('collection') or ''} {r.get('part_number') or ''}"
             if cats:

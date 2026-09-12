@@ -1281,13 +1281,18 @@ class PriceBookRepository:
                 """,
                 (vendor,),
             ).fetchall()
+        # Collection identity is case-insensitive; keep one display spelling.
         item_collections: dict[str, set[str]] = {}
         item_parts: dict[str, str] = {}
+        item_collection_display: dict[tuple[str, str], str] = {}
         for item in item_rows:
             part = str(item["part_number"] or "").strip()
             collection = str(item["collection"] or "").strip()
-            item_parts.setdefault(part.casefold(), part)
-            item_collections.setdefault(part.casefold(), set()).add(collection)
+            part_key = part.casefold()
+            coll_key = collection.casefold()
+            item_parts.setdefault(part_key, part)
+            item_collections.setdefault(part_key, set()).add(coll_key)
+            item_collection_display.setdefault((part_key, coll_key), collection)
         out: list[dict] = []
         for r in rows:
             pn = (r["part_number"] or "").strip()
@@ -1297,17 +1302,26 @@ class PriceBookRepository:
             scope_collection = collection
             is_item_scoped = (
                 pn.casefold() in item_collections
-                and collection in item_collections[pn.casefold()]
+                and collection.casefold() in item_collections[pn.casefold()]
             )
             for separator in (" — ", " - "):
                 suffix = separator + opt
                 if not pn.casefold().endswith(suffix.casefold()):
                     continue
                 candidate = pn[: -len(suffix)].strip()
-                collections = item_collections.get(candidate.casefold(), set())
+                cand_key = candidate.casefold()
+                collections = item_collections.get(cand_key, set())
                 if len(collections) == 1:
-                    scope_part = item_parts[candidate.casefold()]
-                    scope_collection = next(iter(collections))
+                    # Unique catalog identity — exact item scope.
+                    scope_part = item_parts[cand_key]
+                    coll_key = next(iter(collections))
+                    scope_collection = item_collection_display[(cand_key, coll_key)]
+                    is_item_scoped = True
+                elif len(collections) > 1:
+                    # Same part in multiple collections: fail closed for fuzzy
+                    # category matching; apply by part number only.
+                    scope_part = item_parts[cand_key]
+                    scope_collection = ""
                     is_item_scoped = True
                 break
             category = scope_part if is_item_scoped else (pn if is_flat else pn.rsplit(" - ", 1)[0])
