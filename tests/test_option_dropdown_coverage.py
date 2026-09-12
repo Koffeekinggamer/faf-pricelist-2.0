@@ -82,26 +82,40 @@ def test_service_options_are_scoped_to_the_matching_builder_item(tmp_path):
     db = tmp_path / "t.db"
     init_db(db)
     svc = PriceBookService(db)
+    harmony = {
+        **_row("LuxHome", species=None, option_key="Standard", part="21 HRR"),
+        "collection": "Harmony Collection",
+    }
+    serene = {
+        **_row("LuxHome", species=None, option_key="Premium", part="10 SC-FA"),
+        "collection": "Serene Collection",
+    }
     svc.repo.insert_rows(
         [
-            _row("LuxHome", species=None, option_key="Standard", part="21 HRR"),
-            _row("LuxHome", species=None, option_key="Premium", part="10 SC-FA"),
-            _row(
-                "LuxHome",
-                species=None,
-                option_key="Motorized Mechanism",
-                part="21 HRR",
-                line_kind="addon",
-                base_price=80,
-            ),
-            _row(
-                "LuxHome",
-                species=None,
-                option_key="Battery Pack",
-                part="10 SC-FA",
-                line_kind="addon",
-                base_price=100,
-            ),
+            harmony,
+            serene,
+            {
+                **_row(
+                    "LuxHome",
+                    species=None,
+                    option_key="Motorized Mechanism",
+                    part="21 HRR",
+                    line_kind="addon",
+                    base_price=80,
+                ),
+                "collection": "Harmony Collection",
+            },
+            {
+                **_row(
+                    "LuxHome",
+                    species=None,
+                    option_key="Battery Pack",
+                    part="10 SC-FA",
+                    line_kind="addon",
+                    base_price=100,
+                ),
+                "collection": "Serene Collection",
+            },
             _row("Other Builder", option_key="Other Option", part="21 HRR"),
         ]
     )

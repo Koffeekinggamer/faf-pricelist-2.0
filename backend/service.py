@@ -713,15 +713,20 @@ class PriceBookService:
         if item_scoped:
             # Some factory books print add-on columns directly on each SKU
             # (LuxHome). Those charges are exact-item data, not categories and
-            # never a builder-wide fallback.
-            by_part = {
-                str(a.get("part_number") or "").strip().casefold(): a
+            # never a builder-wide fallback. Identity is builder (caller) +
+            # part_number + collection.
+            by_item = {
+                (
+                    str(a.get("part_number") or "").strip().casefold(),
+                    str(a.get("collection") or "").strip().casefold(),
+                ): a
                 for a in item_scoped
                 if str(a.get("part_number") or "").strip()
             }
             for idx in df.index:
                 part = str(df.at[idx, "part_number"] or "").strip().casefold()
-                addon = by_part.get(part)
+                coll = str(df.at[idx, "collection"] or "").strip().casefold()
+                addon = by_item.get((part, coll))
                 if addon is None:
                     continue
                 r = df.loc[idx]

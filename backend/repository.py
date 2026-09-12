@@ -1223,6 +1223,7 @@ class PriceBookRepository:
                 """
                 SELECT
                     addon.part_number,
+                    addon.collection,
                     addon.base_price,
                     addon.adjusted_price,
                     addon.addon_pct,
@@ -1233,6 +1234,8 @@ class PriceBookRepository:
                         WHERE item.vendor = addon.vendor
                           AND trim(COALESCE(item.part_number, '')) =
                               trim(COALESCE(addon.part_number, ''))
+                          AND trim(COALESCE(item.collection, '')) =
+                              trim(COALESCE(addon.collection, ''))
                           AND lower(COALESCE(item.line_kind, 'item')) != 'addon'
                     ) AS is_item_scoped
                 FROM pricebook addon
@@ -1281,6 +1284,7 @@ class PriceBookRepository:
                 {
                     "category": category,
                     "part_number": pn,
+                    "collection": (r["collection"] or "").strip() or None,
                     "base_price": r["base_price"],
                     "adjusted_price": r["adjusted_price"],
                     "addon_pct": r["addon_pct"],

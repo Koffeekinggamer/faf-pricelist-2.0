@@ -503,6 +503,18 @@ def _option_size_key(vendor_key: str, option_label: str) -> str:
     return _option_checkbox_key(vendor_key, option_label) + "_size"
 
 
+def _format_selected_option_labels(
+    selected: list[str],
+    option_qty: dict[str, int],
+) -> list[str]:
+    """Labels for the Options panel Selected line — never touch Search ``q``."""
+    bits: list[str] = []
+    for option in selected:
+        qty = int(option_qty.get(option, 1) or 1)
+        bits.append(f"{option} ×{qty}" if qty > 1 else option)
+    return bits
+
+
 def _enforce_single_select_options(
     vendor_key: str,
     option_label: str,

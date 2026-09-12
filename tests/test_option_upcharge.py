@@ -258,6 +258,7 @@ def test_per_sku_addon_only_prices_its_catalog_item(tmp_path):
             },
             {
                 **_addon(vendor, "Motorized Mechanism", 80.0, 216.0),
+                "collection": "Harmony Collection",
                 "part_number": "21 HRR",
                 "description": "Harmony Rocker Recliner",
             },
@@ -278,6 +279,50 @@ def test_per_sku_addon_only_prices_its_catalog_item(tmp_path):
     assert list(harmony["part_number"]) == ["21 HRR"]
     assert float(harmony.iloc[0]["adjusted_price"]) == 2280.0
     assert serene.empty
+
+
+def test_per_sku_addon_requires_matching_collection(tmp_path):
+    """Same part # in another collection must not inherit the charge."""
+    svc = _svc(tmp_path)
+    vendor = "LuxHome"
+    svc.repo.insert_rows(
+        [
+            {
+                **_item(
+                    vendor,
+                    "Harmony Collection",
+                    "21 HRR",
+                    "Harmony Rocker Recliner",
+                    270.0,
+                ),
+                "species": None,
+                "option_key": "Standard",
+            },
+            {
+                **_item(
+                    vendor,
+                    "Other Collection",
+                    "21 HRR",
+                    "Lookalike SKU",
+                    270.0,
+                ),
+                "species": None,
+                "option_key": "Standard",
+            },
+            {
+                **_addon(vendor, "Motorized Mechanism", 80.0, 216.0),
+                "collection": "Harmony Collection",
+                "part_number": "21 HRR",
+                "description": "Harmony Rocker Recliner",
+            },
+        ]
+    )
+
+    priced = svc.search("21 HRR", vendor=vendor, option_key="Motorized Mechanism")
+    assert list(priced["collection"]) == ["Harmony Collection"]
+    assert float(priced.iloc[0]["adjusted_price"]) == 486.0
+    # Menu still lists Motorized because Harmony matches the query; Other is unpriced.
+    assert "Motorized Mechanism" in svc.list_option_keys(vendor, query="21 HRR")
 
 
 def test_locked_builder_never_uses_an_unmatched_category_fallback(tmp_path):
